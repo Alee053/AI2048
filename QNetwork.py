@@ -38,15 +38,15 @@ class ConvDQN(nn.Module):
 
 
 def board_to_tensor(board):
-    # The board values are powers of 2 (2^1, 2^2, etc.), we need the exponent.
-    # A value of 0 on the board is an empty tile.
-    board = np.where(board != 0, np.log2(board), 0).astype(np.int64)
+    log_board = np.zeros_like(board, dtype=np.float32)
 
-    # Create a 16-channel tensor for 16 possible tile values (0 to 2^15)
+    np.log2(board, out=log_board, where=(board != 0))
+
+    board_int = log_board.astype(np.int64)
+
     tensor = np.zeros((16, 4, 4), dtype=np.float32)
 
-    # For each tile value, set the corresponding channel to 1
     for i in range(16):
-        tensor[i][board == i] = 1
+        tensor[i][board_int == i] = 1
 
     return tensor

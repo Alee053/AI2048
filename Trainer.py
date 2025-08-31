@@ -31,7 +31,8 @@ TAU = 0.005
 LR = 1e-4
 UPDATE_FREQUENCY = 4
 
-DEVICE = "cuda"
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {DEVICE}")
 
 MEMORY_SIZE = 100000
 
@@ -190,23 +191,31 @@ class Trainer:
         self.save_model()
         wandb.finish()
 
+
     def prefill_memory(self, prefill_steps):
         print(f"Prefilling replay buffer with {prefill_steps} random steps...")
+        # state is now always a numpy array representing the environment's state
         state, info = self.env.reset()
-        state = torch.tensor(state, dtype=torch.float32, device=DEVICE).unsqueeze(0)
 
         for _ in tqdm(range(prefill_steps)):
-            action = torch.tensor([[self.env.action_space.sample()]], device=DEVICE, dtype=torch.long)
-            observation, reward, terminated, _ = self.env.step(action.item())
-            reward = torch.tensor([reward], device=DEVICE)
+            # Convert the current numpy state to a tensor for storage
+            state_tensor = torch.tensor(state, dtype=torch.float32, device=DEVICE).unsqueeze(0)
+
+            action_tensor = torch.tensor([[self.env.action_space.sample()]], device=DEVICE, dtype=torch.long)
+            observation, reward, terminated, _ = self.env.step(action_tensor.item())
+            reward_tensor = torch.tensor([reward], device=DEVICE)
 
             if terminated:
-                observation, info = self.env.reset()  # Reset env if done
+                next_state_tensor = None
+                # The next state for the loop comes from the reset
+                state, info = self.env.reset()
+            else:
+                next_state_tensor = torch.tensor(observation, dtype=torch.float32, device=DEVICE).unsqueeze(0)
+                # The next state for the loop is the observation we just received
+                state = observation
 
-            next_state = torch.tensor(observation, dtype=torch.float32, device=DEVICE).unsqueeze(0)
-
-            self.memory.push(state, action, next_state, reward)
-            state = next_state
+            # Always push the TENSOR versions to memory
+            self.memory.push(state_tensor, action_tensor, next_state_tensor, reward_tensor)
 
     def debug(self, total_episode_reward, t):
         print("Max Tile:", 2 ** self.env.game.max_tile)

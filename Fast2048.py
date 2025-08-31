@@ -93,37 +93,38 @@ class Fast2048:
         return False
 
     def move(self, direction):
-        reward=0
+        merge_score=0
         prev=self.board.copy()
 
         if direction==3:
             for i in range(4):
                 index= row_to_number(self.board[i])
-                reward=self.move_reward_LUT[index]
+                merge_score+=self.move_reward_LUT[index]
                 self.board[i] = self.move_row_LUT[index]
         elif direction==1:
             for i in range(4):
                 index= row_to_number(self.board[i][::-1])
-                reward=self.move_reward_LUT[index]
+                merge_score+=self.move_reward_LUT[index]
                 self.board[i] = self.move_row_LUT[index][::-1]
         elif direction==0:
             for i in range(4):
                 index= row_to_number(self.board[:,i])
-                reward=self.move_reward_LUT[index]
+                merge_score+=self.move_reward_LUT[index]
                 self.board[:,i] = self.move_row_LUT[index]
         elif direction==2:
             for i in range(4):
                 index= row_to_number(self.board[:,i][::-1])
-                reward=self.move_reward_LUT[index]
+                merge_score+=self.move_reward_LUT[index]
                 self.board[:,i] = self.move_row_LUT[index][::-1]
 
 
-        self.score+=reward
+        self.score+=merge_score
 
 
         moved=not np.array_equal(prev, self.board)
         if moved:
             self.generate_random()
+            reward=merge_score
         else:
             self.done=True
             reward=-1
