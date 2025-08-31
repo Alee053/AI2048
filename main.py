@@ -1,7 +1,7 @@
-from Model import Model
+from Trainer import Trainer
 
 
-model=Model("model_5")
+model=Trainer("model_5")
 
 #model.load_model("model_5")
 model.train_model(10000,1000)

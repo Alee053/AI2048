@@ -11,7 +11,8 @@ import torch
 import math
 from collections import namedtuple
 from torch import nn
-from matplotlib import pyplot as plt
+import wandb
+from tqdm import tqdm
 
 # CONFIG GLOBALS
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
@@ -25,7 +26,7 @@ BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 1000
+EPS_DECAY = 200000
 TAU = 0.005
 LR = 1e-4
 
@@ -36,11 +37,28 @@ MEMORY_SIZE=100000
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
-class Model:
+class Trainer:
     def __init__(self,name):
         self.name=name
         self.env=Game2048Env()
         state, info = self.env.reset()
+
+        wandb.init(
+            project="2048-rl",  # Name of the project where runs are stored
+            name=name,  # Name of this specific run
+            config={  # Log all your hyperparameters
+                "learning_rate": LR,
+                "gamma": GAMMA,
+                "eps_start": EPS_START,
+                "eps_end": EPS_END,
+                "eps_decay": EPS_DECAY,
+                "batch_size": BATCH_SIZE,
+                "memory_size": MEMORY_SIZE,
+                "tau": TAU
+            }
+        )
+
+
         self.policy_net = DQN( len(state),self.env.action_space.n ).to(DEVICE)
         self.target_net = DQN( len(state),self.env.action_space.n).to(DEVICE)
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -111,11 +129,9 @@ class Model:
         self.optimizer.step()
 
     def train_model(self, num_episodes,save_interval=1000):
-        episode_steps = []
-        episode_reward = []
-        episode_max_tile = []
+        self.prefill_memory(10000)
 
-        plt.ion()
+        episode_max_tile = 0
 
         for i_episode in range(num_episodes):
             # Initialize the environment and get its state
@@ -124,6 +140,9 @@ class Model:
                                  device=DEVICE).unsqueeze(0)
 
             total_episode_reward = 0
+
+            UPDATE_FREQUENCY = 4
+
             for t in count():
                 action = self.select_action(state)
                 observation, reward, terminated, _ = self.env.step(action.item())
@@ -146,33 +165,53 @@ class Model:
                 # Move to the next state
                 state = next_state
 
-                # Perform one step of the optimization (on the policy network)
-                self.optimize_model()
+                if self.steps_done % UPDATE_FREQUENCY == 0:
+                    # Perform one step of the optimization (on the policy network)
+                    self.optimize_model()
 
-                # Soft update of the target network's weights
-                # θ′ ← τ θ + (1 −τ )θ′
-                target_net_state_dict = self.target_net.state_dict()
-                policy_net_state_dict = self.policy_net.state_dict()
-                for key in policy_net_state_dict:
-                    target_net_state_dict[key] = policy_net_state_dict[key] * \
-                                                 TAU + target_net_state_dict[key] * (1 - TAU)
-                self.target_net.load_state_dict(target_net_state_dict)
+                    target_net_state_dict = self.target_net.state_dict()
+                    policy_net_state_dict = self.policy_net.state_dict()
+                    for key in policy_net_state_dict:
+                        target_net_state_dict[key] = policy_net_state_dict[key] * \
+                                                     TAU + target_net_state_dict[key] * (1 - TAU)
+                    self.target_net.load_state_dict(target_net_state_dict)
 
                 if done:
-                    episode_max_tile.append(2 ** self.env.game.max_tile)
-                    episode_reward.append(total_episode_reward)
-                    episode_steps.append(t)
-                    self.plot_info(show_result=False, info=(episode_max_tile, episode_reward, episode_steps))
+                    episode_max_tile=max([2 ** self.env.game.max_tile,episode_max_tile])
+                    wandb.log({
+                        "reward": total_episode_reward,
+                        "max_tile": episode_max_tile,
+                        "episode_length": t + 1,
+                        "epsilon": EPS_END + (EPS_START - EPS_END) * \
+                                   math.exp(-1. * self.steps_done / EPS_DECAY)
+                    })
                     if i_episode % save_interval == 0 and i_episode > 0:
                         self.save_model()
                     break
 
         print('Complete')
-        self.plot_info(show_result=True, info=(episode_max_tile, episode_reward, episode_steps))
-        plt.ioff()
-        plt.show()
 
         self.save_model()
+        wandb.finish()
+
+    def prefill_memory(self, prefill_steps):
+        print(f"Prefilling replay buffer with {prefill_steps} random steps...")
+        state, info = self.env.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=DEVICE).unsqueeze(0)
+
+        for _ in tqdm(range(prefill_steps)):
+            action = torch.tensor([[self.env.action_space.sample()]], device=DEVICE, dtype=torch.long)
+            observation, reward, terminated, _ = self.env.step(action.item())
+            reward = torch.tensor([reward], device=DEVICE)
+
+            if terminated:
+                next_state = None
+                observation, info = self.env.reset()  # Reset env if done
+
+            next_state = torch.tensor(observation, dtype=torch.float32, device=DEVICE).unsqueeze(0)
+
+            self.memory.push(state, action, next_state, reward)
+            state = next_state
 
     def debug(self,total_episode_reward,t):
         print("Max Tile:", 2 ** self.env.game.max_tile)
@@ -210,38 +249,3 @@ class Model:
             self.env.render()
             if terminated:
                 break
-
-    def plot_info(self, show_result=False, info=None):
-        episode_max_tile, episode_reward, episode_steps = info
-
-        plt.figure(1)
-        max_tile_t = torch.tensor(episode_max_tile, dtype=torch.float)
-        reward_t = torch.tensor(episode_reward, dtype=torch.float)
-        steps_t = torch.tensor(episode_steps, dtype=torch.float)
-        if show_result:
-            plt.title('Result')
-        else:
-            plt.clf()
-            plt.title('Training...')
-        plt.xlabel('Episode')
-        plt.ylabel('Max Tile')
-
-        plt.plot(max_tile_t.numpy())
-        # 100 avg
-        avg_length = 100
-        if len(max_tile_t) >= avg_length:
-            means_max_tile = max_tile_t.unfold(0, avg_length, 1).mean(1).view(-1)
-            means_max_tile = torch.cat((torch.zeros(avg_length - 1), means_max_tile))
-            plt.plot(means_max_tile.numpy(), color="red")
-
-            means_reward = reward_t.unfold(0, avg_length, 1).mean(1).view(-1)
-            means_reward = torch.cat((torch.zeros(avg_length - 1), means_reward))
-            plt.plot(means_reward.numpy(), color="green")
-
-            plt.twinx()
-            plt.ylabel('Episode Steps')
-            means_steps = steps_t.unfold(0, avg_length, 1).mean(1).view(-1)
-            means_steps = torch.cat((torch.zeros(avg_length - 1), means_steps))
-            plt.plot(means_steps.numpy(), color="blue")
-
-        plt.pause(0.001)  # pause a bit so that plots are updated
