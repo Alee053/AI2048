@@ -3,6 +3,8 @@ import numpy as np
 from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 
+from QNetwork import board_to_tensor
+
 
 class Game2048Env(Env):
     def __init__(self):
@@ -10,22 +12,17 @@ class Game2048Env(Env):
         self.game = Fast2048()
         self.action_space = Discrete(4)
         self.observation_space = Box(
-            low=0, high=18, shape=(19,))
-        self.state = self.get_state()
-
-    def get_state(self):
-        current=np.concatenate([self.flatten(self.game.board),[self.game.max_tile, self.game.empty_cells, self.game.sum_tiles]])
-        return current
+            low=0, high=1, shape=(16, 4, 4), dtype=np.float32)
 
 
     def reset(self):
         self.game.reset()
-        self.state = self.get_state()
+        self.state = board_to_tensor(self.game.board)
         return self.state, {}
 
     def step(self, action):
         reward, done = self.game.move(action)
-        self.state = self.get_state()
+        self.state = board_to_tensor(self.game.board)
         return self.state, reward, done, {}
 
     def render(self, mode='human'):
@@ -33,8 +30,5 @@ class Game2048Env(Env):
 
     def close(self):
         pass
-
-    def flatten(self, board):
-        return np.array(board).flatten()
 
 

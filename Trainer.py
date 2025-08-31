@@ -1,18 +1,18 @@
-﻿from itertools import count
-from multiprocessing.util import debug
-from os import mkdir
-from os.path import split
-from QNetwork import DQN
-from ReplayMemory import ReplayMemory
-from torch import optim
-from Game2048Env import Game2048Env
+﻿import math
 import random
-import torch
-import math
 from collections import namedtuple
+from itertools import count
+from os import mkdir
+
+import torch
 from torch import nn
-import wandb
+from torch import optim
 from tqdm import tqdm
+
+import wandb
+from Game2048Env import Game2048Env
+from QNetwork import ConvDQN
+from ReplayMemory import ReplayMemory
 
 # CONFIG GLOBALS
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
@@ -22,26 +22,28 @@ from tqdm import tqdm
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 128
+BATCH_SIZE = 1024
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 200000
+EPS_DECAY = 1000000
 TAU = 0.005
 LR = 1e-4
+UPDATE_FREQUENCY = 4
 
-DEVICE="cuda"
+DEVICE = "cuda"
 
-MEMORY_SIZE=100000
+MEMORY_SIZE = 100000
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
+
 class Trainer:
-    def __init__(self,name):
-        self.name=name
-        self.env=Game2048Env()
-        state, info = self.env.reset()
+    def __init__(self, name):
+        self.name = name
+        self.env = Game2048Env()
+        self.env.reset()
 
         wandb.init(
             project="2048-rl",  # Name of the project where runs are stored
@@ -54,19 +56,19 @@ class Trainer:
                 "eps_decay": EPS_DECAY,
                 "batch_size": BATCH_SIZE,
                 "memory_size": MEMORY_SIZE,
-                "tau": TAU
+                "tau": TAU,
+                "update_frequency": UPDATE_FREQUENCY,
             }
         )
 
-
-        self.policy_net = DQN( len(state),self.env.action_space.n ).to(DEVICE)
-        self.target_net = DQN( len(state),self.env.action_space.n).to(DEVICE)
+        self.policy_net = ConvDQN(self.env.action_space.n).to(DEVICE)
+        self.target_net = ConvDQN(self.env.action_space.n).to(DEVICE)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR, amsgrad=True)
         self.memory = ReplayMemory(MEMORY_SIZE)
         self.steps_done = 0
 
-    def select_action(self,state):
+    def select_action(self, state):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * \
                         math.exp(-1. * self.steps_done / EPS_DECAY)
@@ -111,8 +113,9 @@ class Trainer:
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE, device=DEVICE)
         with torch.no_grad():
+            next_actions = self.policy_net(non_final_next_states).max(1).indices.unsqueeze(1)
             next_state_values[non_final_mask] = self.target_net(
-                non_final_next_states).max(1).values
+                non_final_next_states).gather(1, next_actions).squeeze(1)
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
@@ -128,20 +131,16 @@ class Trainer:
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
 
-    def train_model(self, num_episodes,save_interval=1000):
+    def train_model(self, num_episodes, save_interval=1000):
         self.prefill_memory(10000)
 
-        episode_max_tile = 0
-
-        for i_episode in range(num_episodes):
+        for i_episode in tqdm(range(num_episodes), desc="Training Episodes"):
             # Initialize the environment and get its state
             state, info = self.env.reset()
             state = torch.tensor(state, dtype=torch.float32,
                                  device=DEVICE).unsqueeze(0)
 
             total_episode_reward = 0
-
-            UPDATE_FREQUENCY = 4
 
             for t in count():
                 action = self.select_action(state)
@@ -152,8 +151,6 @@ class Trainer:
                 total_episode_reward += reward.item()
 
                 if terminated:
-                    print("Episode:", i_episode)
-                    #self.debug(total_episode_reward,t)
                     next_state = None
                 else:
                     next_state = torch.tensor(
@@ -177,10 +174,9 @@ class Trainer:
                     self.target_net.load_state_dict(target_net_state_dict)
 
                 if done:
-                    episode_max_tile=max([2 ** self.env.game.max_tile,episode_max_tile])
                     wandb.log({
                         "reward": total_episode_reward,
-                        "max_tile": episode_max_tile,
+                        "max_tile": 2 ** self.env.game.max_tile,
                         "episode_length": t + 1,
                         "epsilon": EPS_END + (EPS_START - EPS_END) * \
                                    math.exp(-1. * self.steps_done / EPS_DECAY)
@@ -205,7 +201,6 @@ class Trainer:
             reward = torch.tensor([reward], device=DEVICE)
 
             if terminated:
-                next_state = None
                 observation, info = self.env.reset()  # Reset env if done
 
             next_state = torch.tensor(observation, dtype=torch.float32, device=DEVICE).unsqueeze(0)
@@ -213,7 +208,7 @@ class Trainer:
             self.memory.push(state, action, next_state, reward)
             state = next_state
 
-    def debug(self,total_episode_reward,t):
+    def debug(self, total_episode_reward, t):
         print("Max Tile:", 2 ** self.env.game.max_tile)
         print("Reward:", total_episode_reward)
         print("Steps:", t)
@@ -226,22 +221,22 @@ class Trainer:
         except:
             pass
 
-        dir="models/"+self.name+"/"
-        torch.save(self.policy_net.state_dict(), dir+"model.pth", )
-        torch.save(self.target_net.state_dict(), dir+"target_model.pth")
+        directory = "models/" + self.name + "/"
+        torch.save(self.policy_net.state_dict(), directory + "model.pth", )
+        torch.save(self.target_net.state_dict(), directory + "target_model.pth")
         print("Model has been saved")
 
-    def load_model(self,name):
-        dir="models/"+name+"/"
-        self.policy_net.load_state_dict(torch.load(dir+"model.pth",weights_only=True))
-        self.target_net.load_state_dict(torch.load(dir+"target_model.pth",weights_only=True))
+    def load_model(self, name):
+        directory = "models/" + name + "/"
+        self.policy_net.load_state_dict(torch.load(directory + "model.pth", weights_only=True))
+        self.target_net.load_state_dict(torch.load(directory + "target_model.pth", weights_only=True))
 
     def test_model(self):
         self.policy_net.eval()
         state, info = self.env.reset()
         state = torch.tensor(state, dtype=torch.float32,
                              device=DEVICE).unsqueeze(0)
-        for t in count():
+        for _ in count():
             action = self.policy_net(state).max(1).indices.view(1, 1)
             observation, reward, terminated, _ = self.env.step(action.item())
             state = torch.tensor(observation, dtype=torch.float32,

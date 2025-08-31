@@ -1,0 +1,5 @@
+﻿torch~=2.8.0+cu129
+wandb~=0.21.3
+tqdm~=4.67.1
+numpy~=2.3.2
+gymnasium~=0.28.1

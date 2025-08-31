@@ -1,8 +1,8 @@
 from Trainer import Trainer
 
 
-model=Trainer("model_5")
+model=Trainer("1M_episode_model")
 
-#model.load_model("model_5")
-model.train_model(10000,1000)
+#model.load_model("model_7")
+model.train_model(1000000,5000)
 model.test_model()
