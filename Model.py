@@ -133,7 +133,8 @@ class Model:
                 total_episode_reward += reward.item()
 
                 if terminated:
-                    self.debug(i_episode,total_episode_reward,t)
+                    print("Episode:", i_episode)
+                    #self.debug(total_episode_reward,t)
                     next_state = None
                 else:
                     next_state = torch.tensor(
@@ -162,9 +163,10 @@ class Model:
                     episode_reward.append(total_episode_reward)
                     episode_steps.append(t)
                     self.plot_info(show_result=False, info=(episode_max_tile, episode_reward, episode_steps))
+                    if i_episode % save_interval == 0 and i_episode > 0:
+                        self.save_model()
                     break
-            if i_episode%save_interval==0 and i_episode>0:
-                self.save_model()
+
         print('Complete')
         self.plot_info(show_result=True, info=(episode_max_tile, episode_reward, episode_steps))
         plt.ioff()
@@ -172,14 +174,12 @@ class Model:
 
         self.save_model()
 
-    def debug(self,i_episode,total_episode_reward,t):
-        print("--------------------")
-        print("Episode:", i_episode)
-        """print("Max Tile:", 2 ** self.env.game.max_tile)
+    def debug(self,total_episode_reward,t):
+        print("Max Tile:", 2 ** self.env.game.max_tile)
         print("Reward:", total_episode_reward)
-        print("Steps:", t)"""
+        print("Steps:", t)
         self.env.render()
-
+        print("--------------------")
 
     def save_model(self):
         try:
