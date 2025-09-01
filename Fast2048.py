@@ -78,22 +78,22 @@ class Fast2048:
         merge_score=0
         prev=self.board.copy()
 
-        if direction==3:
+        if direction==3: # left
             for i in range(4):
                 index= row_to_number(self.board[i])
                 merge_score+=self.move_reward_LUT[index]
                 self.board[i] = self.move_row_LUT[index]
-        elif direction==1:
+        elif direction==1: # right
             for i in range(4):
                 index= row_to_number(self.board[i][::-1])
                 merge_score+=self.move_reward_LUT[index]
                 self.board[i] = self.move_row_LUT[index][::-1]
-        elif direction==0:
+        elif direction==0: # up
             for i in range(4):
                 index= row_to_number(self.board[:,i])
                 merge_score+=self.move_reward_LUT[index]
                 self.board[:,i] = self.move_row_LUT[index]
-        elif direction==2:
+        elif direction==2: # down
             for i in range(4):
                 index= row_to_number(self.board[:,i][::-1])
                 merge_score+=self.move_reward_LUT[index]

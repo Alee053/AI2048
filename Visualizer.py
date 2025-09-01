@@ -47,10 +47,10 @@ class Visualizer:
                     text_rect = text_surface.get_rect(center=(c * width/4 + width/8, r * width/4 + width/8))
                     screen.blit(text_surface, text_rect)
 
-    def draw_stats(self, score, max_tile, screen):
+    def draw_stats(self, score, action, screen):
             width, height = screen.get_size()
             small_font = pygame.font.Font(None, int(width / 18))
-            text = f"Score: {score}  Max Tile: {2 ** max_tile}"
+            text = f"Score: {score}  Action: {action==0 and 'Up' or action==1 and 'Right' or action==2 and 'Down' or 'Left'}"
             stats_surface = small_font.render(text, True, (255, 255, 255))
             bottom_band = 100
             stats_rect = stats_surface.get_rect(center=(width // 2, int(height - bottom_band / 2)))
@@ -84,7 +84,7 @@ class Visualizer:
             obs, reward, terminated, truncated, info = env.step(action)
 
             self.draw_board(env.game.board,screen,font)
-            self.draw_stats(env.game.score,env.game.max_tile,screen)
+            self.draw_stats(env.game.score,action,screen)
 
             pygame.display.flip()
 
@@ -92,6 +92,6 @@ class Visualizer:
                 print(f"Game Over! Final Score: {env.game.score}, Max Tile: {2 ** env.game.max_tile}")
                 pygame.time.wait(3000)
                 running = False
-            pygame.time.wait(300)
+            pygame.time.wait(200)
 
         pygame.quit()
