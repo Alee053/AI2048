@@ -22,11 +22,11 @@ run = wandb.init(
 model_dir = f"models/{conf.RUN_NAME}/"
 os.makedirs(model_dir, exist_ok=True)
 
-vec_env = make_vec_env(Game2048Env, n_envs=conf.CONFIG["n_envs"])
+vec_env = make_vec_env(Game2048Env, n_envs=conf.N_ENVS)
 
 # Callbacks
 checkpoint_callback = CheckpointCallback(
-    save_freq=max(100_000 // conf.CONFIG["n_envs"], 1),
+    save_freq=max(100_000 // conf.N_ENVS, 1),
     save_path=model_dir,
     name_prefix="rl_model"
 )
