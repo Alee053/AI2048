@@ -2,8 +2,8 @@ import numpy as np
 from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 
-from Fast2048 import Fast2048
-from utility import board_to_tensor
+from .Fast2048 import Fast2048
+from .utility import board_to_tensor
 
 
 class Game2048Env(Env):
@@ -12,7 +12,7 @@ class Game2048Env(Env):
         self.game = Fast2048()
         self.action_space = Discrete(4)
         self.observation_space = Box(
-            low=0, high=1, shape=(16, 4, 4), dtype=np.float32)
+            low=0, high=16, shape=(1, 4, 4), dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
