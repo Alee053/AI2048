@@ -1,22 +1,6 @@
 ﻿import numpy as np
 
-def row_to_number(row):
-    return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12
-def stack_row(row):
-    for k in range(4):
-        for i in range(1, 4):
-            if row[i]!=0 and row[i - 1]==0:
-                row[i-1]=row[i]
-                row[i]=0
-    return row
-def merge_row(row):
-    reward=0
-    for i in range(1,4):
-        if row[i-1]==row[i] and row[i]!=0:
-            row[i-1]+=1
-            row[i]=0
-            reward+=2**row[i-1]
-    return [row,reward]
+from utility import row_to_number, stack_row, merge_row
 
 
 class Fast2048:
@@ -24,7 +8,8 @@ class Fast2048:
     move_reward_LUT = []
 
     def __init__(self):
-        self.init_LUT()
+        if not Fast2048.move_row_LUT:
+            self.init_LUT()
         self.board = None
         self.max_tile = None
         self.empty_cells = None
@@ -32,6 +17,7 @@ class Fast2048:
         self.score = None
         self.done = None
         self.total_reward = None
+        self.useless_move_count = 0
         self.reset()
 
     def init_LUT(self):
@@ -40,8 +26,8 @@ class Fast2048:
             row = stack_row(row)
             row, reward = merge_row(row)
             row = stack_row(row)
-            self.move_row_LUT.append(row)
-            self.move_reward_LUT.append(reward)
+            Fast2048.move_row_LUT.append(row)
+            Fast2048.move_reward_LUT.append(reward)
 
     def reset(self):
         self.board = np.array([[0 for _ in range(4)]for _ in range(4)])
@@ -121,8 +107,11 @@ class Fast2048:
         if moved:
             self.generate_random()
             reward=merge_score
+            self.useless_move_count=0
         else:
-            self.done=True
+            if self.useless_move_count>=1:
+                self.done=True
+            self.useless_move_count += 1
             reward=-1
 
 
@@ -130,10 +119,3 @@ class Fast2048:
         self.done|=self.check_done()
 
         return reward, self.done
-
-    def show_board(self):
-        for row in self.board:
-            for cell in row:
-                print(2**cell if cell!=0 else 0, end=' ')
-            print()
-        print("Score: ", self.score)

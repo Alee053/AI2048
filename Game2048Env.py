@@ -1,9 +1,9 @@
-from game.Fast2048 import Fast2048
 import numpy as np
 from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 
-from architecture.ConvDQN import board_to_tensor
+from Fast2048 import Fast2048
+from utility import board_to_tensor
 
 
 class Game2048Env(Env):
@@ -40,5 +40,3 @@ class Game2048Env(Env):
 
     def close(self):
         pass
-
-

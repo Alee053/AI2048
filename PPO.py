@@ -1,13 +1,12 @@
 ﻿import gymnasium as gym
-from torch import nn
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import torch
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from torch import nn
 
 
 class CustomCNN(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
         super().__init__(observation_space, features_dim)
-        # We assume CxHxW images (channels first)
         n_input_channels = observation_space.shape[0]
 
         self.cnn = nn.Sequential(
