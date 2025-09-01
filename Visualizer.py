@@ -3,7 +3,7 @@
 import pygame
 from stable_baselines3 import PPO
 
-from src.Game2048Env import Game2048Env
+from Game2048Env import Game2048Env
 
 TILE_COLORS = {
     0: (205, 193, 180), 2: (238, 228, 218), 4: (237, 224, 200),
