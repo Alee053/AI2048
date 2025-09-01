@@ -10,8 +10,8 @@ from torch import optim
 from tqdm import tqdm
 
 import wandb
-from Game2048Env import Game2048Env
-from QNetwork import ConvDQN
+from game.Game2048Env import Game2048Env
+from architecture.ConvDQN import ConvDQN
 from ReplayMemory import ReplayMemory
 
 # CONFIG GLOBALS
@@ -233,7 +233,6 @@ class Trainer:
         directory = "models/" + self.name + "/"
         torch.save(self.policy_net.state_dict(), directory + "model.pth", )
         torch.save(self.target_net.state_dict(), directory + "target_model.pth")
-        print("Model has been saved")
 
     def load_model(self, name):
         directory = "models/" + name + "/"

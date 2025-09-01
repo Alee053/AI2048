@@ -1,9 +1,9 @@
-from Fast2048 import Fast2048
+from game.Fast2048 import Fast2048
 import numpy as np
 from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 
-from QNetwork import board_to_tensor
+from architecture.ConvDQN import board_to_tensor
 
 
 class Game2048Env(Env):
@@ -14,16 +14,26 @@ class Game2048Env(Env):
         self.observation_space = Box(
             low=0, high=1, shape=(16, 4, 4), dtype=np.float32)
 
+    def reset(self, *, seed=None, options=None):
+        super().reset(seed=seed)
 
-    def reset(self):
         self.game.reset()
-        self.state = board_to_tensor(self.game.board)
-        return self.state, {}
+        state = board_to_tensor(self.game.board)
+        return state, {}
 
     def step(self, action):
         reward, done = self.game.move(action)
-        self.state = board_to_tensor(self.game.board)
-        return self.state, reward, done, {}
+        state = board_to_tensor(self.game.board)
+
+        info={}
+
+        if done:
+            info['max_tile']=self.game.max_tile
+            info['score']=self.game.score
+
+        truncated=False
+
+        return state, reward, done,truncated, info
 
     def render(self, mode='human'):
         self.game.show_board()

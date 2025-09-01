@@ -19,10 +19,6 @@ def merge_row(row):
     return [row,reward]
 
 
-invalid_penalty=10
-weight_empty=2
-
-
 class Fast2048:
     move_row_LUT = []
     move_reward_LUT = []

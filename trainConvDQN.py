@@ -1,4 +1,4 @@
-from Trainer import Trainer
+from utility.ConvDQNTrainer import Trainer
 
 
 model=Trainer("150k_ConvDQN_model")
