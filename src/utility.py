@@ -25,18 +25,9 @@ class CustomWandbCallback(BaseCallback):
 
 # Game2048Env functions
 def board_to_tensor(board):
-    log_board = np.zeros_like(board, dtype=np.float32)
+    log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
 
-    np.log2(board, out=log_board, where=(board != 0))
-
-    board_int = log_board.astype(np.int64)
-
-    tensor = np.zeros((16, 4, 4), dtype=np.float32)
-
-    for i in range(16):
-        tensor[i][board_int == i] = 1
-
-    return tensor
+    return np.expand_dims(log_board, axis=0)
 
 # Fast 2048 functions
 def row_to_number(row):

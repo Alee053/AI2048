@@ -1,6 +1,6 @@
 ﻿import numpy as np
 
-from utility import row_to_number, stack_row, merge_row
+from .utility import row_to_number, stack_row, merge_row
 
 
 class Fast2048:

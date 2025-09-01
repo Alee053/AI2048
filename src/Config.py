@@ -2,15 +2,17 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = "ppo_run_6_finetune"
+        self.RUN_NAME = "new_ppo_run_2_finetune"
 
-        self.CHECKPOINT_PATH = "models/ppo_run_5_finetune/final_model.zip"
+        self.CHECKPOINT_PATH = "../models/new_ppo_run_1/final_model.zip"
         self.LOAD_MODEL = True
 
-        self.TOTAL_TIMESTEPS = 10000000
+        self.TOTAL_TIMESTEPS = 5000000
         self.POLICY_TYPE = "CnnPolicy"
 
         self.N_ENVS = 16
+
+        self.SAVE_INTERVAL = 500000
 
         self.CONFIG = {
             "n_steps": 512,
