@@ -4,7 +4,7 @@
 
         self.RUN_NAME = "ppo_run_5_finetune"
 
-        self.CHECKPOINT_PATH = "models/ppo_run_4_finetune/final_model.zip"
+        self.CHECKPOINT_PATH = "../models/ppo_run_4_finetune/final_model.zip"
         self.LOAD_MODEL = True
 
         self.TOTAL_TIMESTEPS = 10000000

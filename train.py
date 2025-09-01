@@ -5,10 +5,10 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 
 import wandb
-from Game2048Env import Game2048Env
-from PPO import CustomCNN
-from Config import Config
-from utility import CustomWandbCallback
+from src.Game2048Env import Game2048Env
+from src.PPO import CustomCNN
+from src.Config import Config
+from src.utility import CustomWandbCallback
 
 # Load configuration
 conf=Config()
@@ -26,7 +26,7 @@ vec_env = make_vec_env(Game2048Env, n_envs=conf.CONFIG["n_envs"])
 
 # Callbacks
 checkpoint_callback = CheckpointCallback(
-    save_freq=max(100_000 // conf.CONFIG["n_envs"], 1),
+    save_freq=max(500_000 // conf.CONFIG["n_envs"], 1),
     save_path=model_dir,
     name_prefix="rl_model"
 )
