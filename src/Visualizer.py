@@ -82,6 +82,7 @@ class Visualizer:
             action, _ = model.predict(obs, deterministic=True)
 
             obs, reward, terminated, truncated, info = env.step(action)
+            print(action,reward,env.game.score)
 
             self.draw_board(env.game.board,screen,font)
             self.draw_stats(env.game.score,action,screen)
@@ -92,6 +93,6 @@ class Visualizer:
                 print(f"Game Over! Final Score: {env.game.score}, Max Tile: {2 ** env.game.max_tile}")
                 pygame.time.wait(3000)
                 running = False
-            pygame.time.wait(200)
+            pygame.time.wait(50)
 
         pygame.quit()

@@ -22,10 +22,15 @@ class Game2048Env(Env):
         return state, {}
 
     def step(self, action):
-        merge_score, done = self.game.move(action)
+        merge_score, done,moved= self.game.move(action)
         state = board_to_tensor(self.game.board)
 
-        reward=calculate_reward(self.game.board,merge_score)
+        if not moved:
+            occupied_tiles = 16 - self.game.empty_cells
+            penalty = -2 * (occupied_tiles / 16) ** 2
+            reward = penalty
+        else:
+            reward=calculate_reward(self.game.board,merge_score)
 
         info={}
         if done:

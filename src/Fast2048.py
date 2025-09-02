@@ -106,16 +106,9 @@ class Fast2048:
         moved=not np.array_equal(prev, self.board)
         if moved:
             self.generate_random()
-            reward=merge_score
-            #self.useless_move_count=0
-        else:
-            #if self.useless_move_count>=1:
-                #self.done=True
-            #self.useless_move_count += 1
-            reward=-2
 
 
         self.update_values()
         self.done=self.check_done()
 
-        return reward, self.done
+        return merge_score, self.done, moved
