@@ -10,13 +10,14 @@ class CustomCNN(BaseFeaturesExtractor):
         n_input_channels = observation_space.shape[0]
 
         self.cnn = nn.Sequential(
-            nn.Conv2d(n_input_channels, 128, kernel_size=2, stride=1),
+            nn.Conv2d(n_input_channels, 128, kernel_size=2, stride=1, padding=1),
             nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=2, stride=1),
+            nn.Conv2d(128, 256, kernel_size=2, stride=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=2, stride=1),
             nn.ReLU(),
             nn.Flatten(),
         )
-
         # Compute shape by doing one forward pass
         with torch.no_grad():
             n_flatten = self.cnn(

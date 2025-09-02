@@ -2,10 +2,10 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = "new_ppo_run_2_finetune"
+        self.RUN_NAME = "improved2.0_run_1"
 
-        self.CHECKPOINT_PATH = "../models/new_ppo_run_1/final_model.zip"
-        self.LOAD_MODEL = True
+        self.CHECKPOINT_PATH = "models/improved_run_1/final_model.zip"
+        self.LOAD_MODEL = False
 
         self.TOTAL_TIMESTEPS = 5000000
         self.POLICY_TYPE = "CnnPolicy"

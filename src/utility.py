@@ -19,7 +19,7 @@ class CustomWandbCallback(BaseCallback):
                         "Episode Reward Mean": info['episode']['r'],
                         "Episode Length Mean": info['episode']['l'],
                         "Score": info.get('score', 0),
-                        "Max Tile": info.get('max_tile', 0)
+                        "Max Tile": info.get('max_tile', 0),
                     })
         return True
 
@@ -28,6 +28,60 @@ def board_to_tensor(board):
     log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
 
     return np.expand_dims(log_board, axis=0)
+
+def calculate_reward(board,merge_score):
+    event_reward = 0
+    if merge_score > 0:
+        event_reward = np.log2(merge_score)
+
+    # Monotonicity score
+    mono_score = calculate_monotonicity_score(board)
+
+
+    empty_score = np.sum(board == 0)
+
+    # Reward for having the max tile in a corner
+    max_tile_score = 0
+    max_tile_val = np.max(board)
+    if max_tile_val > 0:
+        corners = [board[0, 0], board[0, 3], board[3, 0], board[3, 3]]
+        if max_tile_val in corners:
+            max_tile_score = np.log2(max_tile_val)
+
+    state_bonus = (
+            mono_score/3.2 +
+            empty_score * 0.2 +
+            max_tile_score * 0.3
+    )
+
+    # The total reward is the log-scaled event reward plus the state bonus
+    final_reward = event_reward + state_bonus
+
+    return final_reward
+
+
+def calculate_monotonicity_score(board):
+    log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
+    log_board = log_board.astype(np.int32)
+
+    def get_score(line):
+        score = 0
+        for i in range(len(line) - 1):
+            if (line[i] == line[i + 1]-1 or line[i] == line[i + 1]) and line[i]!=0:
+                score += 1
+        if score>0:
+            score+=1
+        return score
+    total_score = 0
+
+    for row in log_board:
+        total_score += get_score(row)
+        total_score += get_score(row[::-1])
+    for col in log_board.T:
+        total_score += get_score(col)
+        total_score += get_score(col[::-1])
+    return total_score
+
 
 # Fast 2048 functions
 def row_to_number(row):

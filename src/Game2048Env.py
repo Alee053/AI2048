@@ -3,7 +3,7 @@ from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 
 from .Fast2048 import Fast2048
-from .utility import board_to_tensor
+from .utility import board_to_tensor, calculate_reward
 
 
 class Game2048Env(Env):
@@ -22,11 +22,12 @@ class Game2048Env(Env):
         return state, {}
 
     def step(self, action):
-        reward, done = self.game.move(action)
+        merge_score, done = self.game.move(action)
         state = board_to_tensor(self.game.board)
 
-        info={}
+        reward=calculate_reward(self.game.board,merge_score)
 
+        info={}
         if done:
             info['max_tile']=self.game.max_tile
             info['score']=self.game.score
@@ -36,7 +37,7 @@ class Game2048Env(Env):
         return state, reward, done,truncated, info
 
     def render(self, mode='human'):
-        self.game.show_board()
+        pass
 
     def close(self):
         pass
