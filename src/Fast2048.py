@@ -112,7 +112,7 @@ class Fast2048:
             #if self.useless_move_count>=1:
                 #self.done=True
             #self.useless_move_count += 1
-            reward=-1
+            reward=-2
 
 
         self.update_values()

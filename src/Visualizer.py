@@ -92,6 +92,6 @@ class Visualizer:
                 print(f"Game Over! Final Score: {env.game.score}, Max Tile: {2 ** env.game.max_tile}")
                 pygame.time.wait(3000)
                 running = False
-            #pygame.time.wait(200)
+            pygame.time.wait(200)
 
         pygame.quit()

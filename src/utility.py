@@ -57,7 +57,10 @@ def calculate_reward(board,merge_score):
             max_tile_score * 1
     )
 
-    return final_reward
+    if merge_score > 0:
+        return final_reward
+    else:
+        return merge_score
 
 
 def calculate_monotonicity_score(board):
