@@ -48,14 +48,14 @@ def calculate_reward(board,merge_score):
         if max_tile_val in corners:
             max_tile_score = np.log2(max_tile_val)
 
-    state_bonus = (
-            mono_score/3.2 +
-            empty_score * 0.2 +
-            max_tile_score * 0.3
-    )
 
     # The total reward is the log-scaled event reward plus the state bonus
-    final_reward = event_reward + state_bonus
+    final_reward = (
+            event_reward*1.5 +
+            mono_score/3 +
+            empty_score * 1 +
+            max_tile_score * 1
+    )
 
     return final_reward
 

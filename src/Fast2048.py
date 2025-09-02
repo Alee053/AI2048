@@ -107,15 +107,15 @@ class Fast2048:
         if moved:
             self.generate_random()
             reward=merge_score
-            self.useless_move_count=0
+            #self.useless_move_count=0
         else:
-            if self.useless_move_count>=1:
-                self.done=True
-            self.useless_move_count += 1
+            #if self.useless_move_count>=1:
+                #self.done=True
+            #self.useless_move_count += 1
             reward=-1
 
 
         self.update_values()
-        self.done|=self.check_done()
+        self.done=self.check_done()
 
         return reward, self.done
