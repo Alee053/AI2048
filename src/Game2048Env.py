@@ -26,9 +26,7 @@ class Game2048Env(Env):
         state = board_to_tensor(self.game.board)
 
         if not moved:
-            occupied_tiles = 16 - self.game.empty_cells
-            penalty = -2 * (occupied_tiles / 16) ** 2
-            reward = penalty
+            reward=-1
         else:
             reward=calculate_reward(self.game.board,merge_score)
 

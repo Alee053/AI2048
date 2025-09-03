@@ -51,16 +51,13 @@ def calculate_reward(board,merge_score):
 
     # The total reward is the log-scaled event reward plus the state bonus
     final_reward = (
-            event_reward*1.5 +
-            mono_score/3 +
-            empty_score * 1 +
-            max_tile_score * 1
+            event_reward/11* 3 +
+            mono_score/64 * 2 +
+            empty_score/16 +
+            max_tile_score/11
     )
 
-    if merge_score > 0:
-        return final_reward
-    else:
-        return merge_score
+    return final_reward
 
 
 def calculate_monotonicity_score(board):
