@@ -31,13 +31,13 @@ def board_to_tensor(board):
 
 def calculate_reward(board, merge_score, moved):
     if not moved:
-        return -2
+        return -1
 
     event_reward = 0
     if merge_score > 0:
         event_reward = np.log2(merge_score)
 
-    log_board = np.log2(board, out=np.zeros_like(board, dtype=float), where=(board != 0))
+    log_board = np.log2 (board, out=np.zeros_like(board, dtype=float), where=(board != 0))
 
     mono_score = 0
     for i in range(4):
@@ -51,15 +51,9 @@ def calculate_reward(board, merge_score, moved):
         if len(col_filtered) > 1:
             mono_score += max(np.sum(np.diff(col_filtered) <= 0), np.sum(np.diff(col_filtered) >= 0))
 
-    empty_score = np.sum(board == 0)
-
-    max_tile_score = np.max(board)
-
     final_reward = (
         event_reward * 1.0 +         # The most important signal
-        mono_score * 0.1 +           # A strong nudge for order
-        empty_score * 0.2 +          # A small nudge for open space
-        max_tile_score * 0.05        # A tiny nudge for higher tiles
+        mono_score * 0.1         # A strong nudge for order
     )
 
     return final_reward

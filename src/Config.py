@@ -12,14 +12,14 @@
 
         self.N_ENVS = 16
 
-        self.SAVE_INTERVAL = 500000
+        self.SAVE_INTERVAL = 1000000
 
         self.CONFIG = {
-            "n_steps": 512,
-            "batch_size": 256,
+            "n_steps": 1024,
+            "batch_size": 512,
             "n_epochs": 4,
             "gamma": 0.99,
             "ent_coef": 0.01,
-            "learning_rate": lambda progress_remaining: progress_remaining * 2.5e-4,
+            "learning_rate": lambda progress_remaining: progress_remaining * 3e-4,
             "clip_range": 0.2,
         }
