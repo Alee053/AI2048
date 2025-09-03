@@ -22,22 +22,19 @@ class Game2048Env(Env):
         return state, {}
 
     def step(self, action):
-        merge_score, done,moved= self.game.move(action)
+        merge_score, done, moved = self.game.move(action)
         state = board_to_tensor(self.game.board)
 
-        if not moved:
-            reward=-1
-        else:
-            reward=calculate_reward(self.game.board,merge_score)
+        # The reward is now calculated with the new, robust function
+        reward = calculate_reward(self.game.board, merge_score, moved)
 
-        info={}
+        info = {}
         if done:
-            info['max_tile']=self.game.max_tile
-            info['score']=self.game.score
+            info['max_tile'] = self.game.max_tile
+            info['score'] = self.game.score
 
-        truncated=False
-
-        return state, reward, done,truncated, info
+        truncated = False
+        return state, reward, done, truncated, info
 
     def render(self, mode='human'):
         pass

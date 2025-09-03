@@ -2,7 +2,7 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = "improved6.0_run_1"
+        self.RUN_NAME = "improved7.0_run_1"
 
         self.CHECKPOINT_PATH = "models/improved3.0_run_2_finetune2.0/final_model.zip"
         self.LOAD_MODEL = False
@@ -19,7 +19,7 @@
             "batch_size": 256,
             "n_epochs": 4,
             "gamma": 0.99,
-            "ent_coef": 0.02,
-            "learning_rate": lambda progress_remaining: progress_remaining * 5e-5,
+            "ent_coef": 0.01,
+            "learning_rate": lambda progress_remaining: progress_remaining * 2.5e-4,
             "clip_range": 0.2,
         }

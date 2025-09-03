@@ -29,59 +29,40 @@ def board_to_tensor(board):
 
     return np.expand_dims(log_board, axis=0)
 
-def calculate_reward(board,merge_score):
+def calculate_reward(board, merge_score, moved):
+    if not moved:
+        return -2
+
     event_reward = 0
     if merge_score > 0:
         event_reward = np.log2(merge_score)
 
-    # Monotonicity score
-    mono_score = calculate_monotonicity_score(board)
+    log_board = np.log2(board, out=np.zeros_like(board, dtype=float), where=(board != 0))
 
+    mono_score = 0
+    for i in range(4):
+        row = log_board[i, :]
+        col = log_board[:, i]
+        # Filter out zeros before checking for order
+        row_filtered, col_filtered = row[row > 0], col[col > 0]
+        # Check for decreasing or increasing order and take the best score
+        if len(row_filtered) > 1:
+            mono_score += max(np.sum(np.diff(row_filtered) <= 0), np.sum(np.diff(row_filtered) >= 0))
+        if len(col_filtered) > 1:
+            mono_score += max(np.sum(np.diff(col_filtered) <= 0), np.sum(np.diff(col_filtered) >= 0))
 
     empty_score = np.sum(board == 0)
 
-    # Reward for having the max tile in a corner
-    max_tile_score = 0
-    max_tile_val = np.max(board)
-    if max_tile_val > 0:
-        corners = [board[0, 0], board[0, 3], board[3, 0], board[3, 3]]
-        if max_tile_val in corners:
-            max_tile_score = np.log2(max_tile_val)
+    max_tile_score = np.max(board)
 
-
-    # The total reward is the log-scaled event reward plus the state bonus
     final_reward = (
-            event_reward/11* 3 +
-            mono_score/64 * 2 +
-            empty_score/16 +
-            max_tile_score/11
+        event_reward * 1.0 +         # The most important signal
+        mono_score * 0.1 +           # A strong nudge for order
+        empty_score * 0.2 +          # A small nudge for open space
+        max_tile_score * 0.05        # A tiny nudge for higher tiles
     )
 
     return final_reward
-
-
-def calculate_monotonicity_score(board):
-    log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
-    log_board = log_board.astype(np.int32)
-
-    def get_score(line):
-        score = 0
-        for i in range(len(line) - 1):
-            if (line[i] == line[i + 1]-1 or line[i] == line[i + 1]) and line[i]!=0:
-                score += 1
-        if score>0:
-            score+=1
-        return score
-    total_score = 0
-
-    for row in log_board:
-        total_score += get_score(row)
-        total_score += get_score(row[::-1])
-    for col in log_board.T:
-        total_score += get_score(col)
-        total_score += get_score(col[::-1])
-    return total_score
-
 
 # Fast 2048 functions
 def row_to_number(row):
