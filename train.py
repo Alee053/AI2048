@@ -1,6 +1,6 @@
 ﻿import os
 
-from stable_baselines3 import PPO
+from sb3_contrib import MaskablePPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 
@@ -40,11 +40,11 @@ policy_kwargs = dict(
 load=conf.LOAD_MODEL and os.path.exists(conf.CHECKPOINT_PATH)
 
 if load:
-    model = PPO.load(conf.CHECKPOINT_PATH, env=vec_env)
+    model = MaskablePPO.load(conf.CHECKPOINT_PATH, env=vec_env)
 else:
     if conf.LOAD_MODEL:
         print(f"Couldnt find the model at {conf.CHECKPOINT_PATH}, training from scratch")
-    model = PPO(
+    model = MaskablePPO(
         conf.POLICY_TYPE,
         vec_env,
         policy_kwargs=policy_kwargs,

@@ -52,6 +52,28 @@ class Fast2048:
                 if cell==0:
                     self.empty_cells+=1
 
+    def is_move_valid(self, action):
+        temp_board = self.board.copy()
+
+        if action==3: # left
+            for i in range(4):
+                index= row_to_number(temp_board[i])
+                temp_board[i] = self.move_row_LUT[index]
+        elif action==1: # right
+            for i in range(4):
+                index= row_to_number(temp_board[i][::-1])
+                temp_board[i] = self.move_row_LUT[index][::-1]
+        elif action==0: # up
+            for i in range(4):
+                index= row_to_number(temp_board[:,i])
+                temp_board[:,i] = self.move_row_LUT[index]
+        elif action==2: # down
+            for i in range(4):
+                index= row_to_number(temp_board[:,i][::-1])
+                temp_board[:,i] = self.move_row_LUT[index][::-1]
+        return not np.array_equal(self.board, temp_board)
+
+
     def generate_random(self):
         num = 1 if np.random.random() < 0.9 else 2
         empty_cells = np.argwhere(self.board == 0)

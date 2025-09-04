@@ -21,6 +21,14 @@ class Game2048Env(Env):
         state = board_to_tensor(self.game.board)
         return state, {}
 
+    def get_valid_actions_mask(self):
+        mask = [False] * 4
+        for action in range(4):
+            if self.game.is_move_valid(action):
+                mask[action] = True
+        return np.array(mask)
+
+
     def step(self, action):
         merge_score, done, moved = self.game.move(action)
         state = board_to_tensor(self.game.board)
@@ -35,6 +43,9 @@ class Game2048Env(Env):
 
         truncated = False
         return state, reward, done, truncated, info
+
+    def action_masks(self):
+        return self.get_valid_actions_mask()
 
     def render(self, mode='human'):
         pass
