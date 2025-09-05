@@ -43,17 +43,24 @@ def calculate_reward(board, merge_score, moved):
     for i in range(4):
         row = log_board[i, :]
         col = log_board[:, i]
-        # Filter out zeros before checking for order
         row_filtered, col_filtered = row[row > 0], col[col > 0]
-        # Check for decreasing or increasing order and take the best score
         if len(row_filtered) > 1:
             mono_score += max(np.sum(np.diff(row_filtered) <= 0), np.sum(np.diff(row_filtered) >= 0))
         if len(col_filtered) > 1:
             mono_score += max(np.sum(np.diff(col_filtered) <= 0), np.sum(np.diff(col_filtered) >= 0))
 
+    corner_bonus = 0
+    max_tile_val = np.max(log_board)
+    if max_tile_val > 0 and log_board[0, 0] == max_tile_val:
+        corner_bonus = max_tile_val
+
+    empty_score = np.sum(board == 0)
+
     final_reward = (
-        event_reward * 1.0 +         # The most important signal
-        mono_score * 0.1         # A strong nudge for order
+            event_reward * 1.0 +
+            mono_score * 0.15 +
+            empty_score * 0.1 +
+            corner_bonus * 0.05
     )
 
     return final_reward

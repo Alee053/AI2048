@@ -2,7 +2,6 @@
 
 import pygame
 from sb3_contrib import MaskablePPO
-from stable_baselines3.common.env_util import make_vec_env
 
 from src.Game2048Env import Game2048Env
 
@@ -65,15 +64,14 @@ class Visualizer:
 
         pygame.init()
         pygame.display.set_caption("2048 PPO Agent")
-        vec_env = make_vec_env(Game2048Env, n_envs=16)
-
-
         screen = pygame.display.set_mode((800, 900))
         font = pygame.font.Font(None, int(screen.get_size()[0]/9))
 
+
         env = Game2048Env()
-        model = MaskablePPO.load(self.model_path,vec_env=vec_env)
+        model = MaskablePPO.load(self.model_path)
         obs, info = env.reset()
+
 
         running = True
         while running:
@@ -81,7 +79,9 @@ class Visualizer:
                 if event.type == pygame.QUIT:
                     running = False
 
-            action, _ = model.predict(obs, deterministic=True)
+            action_mask=env.action_masks()
+
+            action, _ = model.predict(obs,action_masks=action_mask, deterministic=True)
 
             obs, reward, terminated, truncated, info = env.step(action)
             print(action,reward,env.game.score)
