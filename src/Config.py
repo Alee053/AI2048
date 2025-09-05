@@ -2,7 +2,7 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = "maskPPO_run_1"
+        self.RUN_NAME = "maskPPO_run_2"
 
         self.CHECKPOINT_PATH = "models/improved3.0_run_2_finetune2.0/final_model.zip"
         self.LOAD_MODEL = False

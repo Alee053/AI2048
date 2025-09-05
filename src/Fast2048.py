@@ -6,6 +6,7 @@ from .utility import row_to_number, stack_row, merge_row
 class Fast2048:
     move_row_LUT = []
     move_reward_LUT = []
+    move_valid_LUT = []
 
     def __init__(self):
         if not Fast2048.move_row_LUT:
@@ -22,12 +23,17 @@ class Fast2048:
 
     def init_LUT(self):
         for i in range(65536):
-            row = [(i >> 0) & 0xf, (i >> 4) & 0xf, (i >> 8) & 0xf, (i >> 12) & 0xf]
+            original_row = [(i >> 0) & 0xf, (i >> 4) & 0xf, (i >> 8) & 0xf, (i >> 12) & 0xf]
+            row = original_row.copy()
+
             row = stack_row(row)
             row, reward = merge_row(row)
             row = stack_row(row)
+
             Fast2048.move_row_LUT.append(row)
             Fast2048.move_reward_LUT.append(reward)
+
+            Fast2048.move_valid_LUT.append(original_row != row)
 
     def reset(self):
         self.board = np.array([[0 for _ in range(4)]for _ in range(4)])
@@ -53,25 +59,19 @@ class Fast2048:
                     self.empty_cells+=1
 
     def is_move_valid(self, action):
-        temp_board = self.board.copy()
-
-        if action==3: # left
+        if action == 3:  # left
             for i in range(4):
-                index= row_to_number(temp_board[i])
-                temp_board[i] = self.move_row_LUT[index]
-        elif action==1: # right
+                if self.move_valid_LUT[row_to_number(self.board[i])]: return True
+        elif action == 1:  # right
             for i in range(4):
-                index= row_to_number(temp_board[i][::-1])
-                temp_board[i] = self.move_row_LUT[index][::-1]
-        elif action==0: # up
+                if self.move_valid_LUT[row_to_number(self.board[i][::-1])]: return True
+        elif action == 0:  # up
             for i in range(4):
-                index= row_to_number(temp_board[:,i])
-                temp_board[:,i] = self.move_row_LUT[index]
-        elif action==2: # down
+                if self.move_valid_LUT[row_to_number(self.board[:, i])]: return True
+        elif action == 2:  # down
             for i in range(4):
-                index= row_to_number(temp_board[:,i][::-1])
-                temp_board[:,i] = self.move_row_LUT[index][::-1]
-        return not np.array_equal(self.board, temp_board)
+                if self.move_valid_LUT[row_to_number(self.board[:, i][::-1])]: return True
+        return False
 
 
     def generate_random(self):

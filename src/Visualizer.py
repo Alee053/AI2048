@@ -1,7 +1,8 @@
 ﻿import os
 
 import pygame
-from stable_baselines3 import PPO
+from sb3_contrib import MaskablePPO
+from stable_baselines3.common.env_util import make_vec_env
 
 from src.Game2048Env import Game2048Env
 
@@ -64,13 +65,14 @@ class Visualizer:
 
         pygame.init()
         pygame.display.set_caption("2048 PPO Agent")
+        vec_env = make_vec_env(Game2048Env, n_envs=16)
 
 
         screen = pygame.display.set_mode((800, 900))
         font = pygame.font.Font(None, int(screen.get_size()[0]/9))
 
         env = Game2048Env()
-        model = PPO.load(self.model_path)
+        model = MaskablePPO.load(self.model_path,vec_env=vec_env)
         obs, info = env.reset()
 
         running = True
@@ -93,6 +95,6 @@ class Visualizer:
                 print(f"Game Over! Final Score: {env.game.score}, Max Tile: {2 ** env.game.max_tile}")
                 pygame.time.wait(3000)
                 running = False
-            pygame.time.wait(50)
+            pygame.time.wait(200)
 
         pygame.quit()
