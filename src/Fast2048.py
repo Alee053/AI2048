@@ -73,13 +73,13 @@ class Fast2048:
         self.board[chosen_position[0], chosen_position[1]] = num
 
     def check_done(self):
+        res=False
         for i in range(4):
-            for j in range(4):
-                if i+1<4 and self.board[i][j]==self.board[i+1][j]:
-                    return False
-                if j+1<4 and self.board[i][j]==self.board[i][j+1]:
-                    return False
-        return True
+            res|=self.is_move_valid(i)
+            if res:
+                break
+        return not res
+
 
     def move(self, direction):
         merge_score=0

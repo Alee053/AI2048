@@ -1,11 +1,12 @@
 ﻿from src.Visualizer import Visualizer
 
-MODEL_PATH = "models/maskPPO_optuna_run_1_continue2.0/rl_model_23100000_steps.zip"
+MODEL_PATH = "models/maskPPO_optuna_snake_run_1/final_model.zip"
+USE_EXPECTIMAX = True
 
 
 if __name__ == '__main__':
     try:
-        vis = Visualizer(model_path=MODEL_PATH)
+        vis = Visualizer(model_path=MODEL_PATH,use_expectimax=USE_EXPECTIMAX)
         vis.run_visualization()
     except FileNotFoundError as e:
         print(e)

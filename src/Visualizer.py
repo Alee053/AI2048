@@ -161,6 +161,6 @@ class Visualizer:
                 print( f"Board State:\n{self.env.game.board}" )
 
             pygame.display.flip()
-            #pygame.time.wait(10)
+            pygame.time.wait(100)
 
         pygame.quit()

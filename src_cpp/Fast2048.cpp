@@ -200,17 +200,12 @@ void Fast2048::generate_random() {
 }
 
 bool Fast2048::check_done() const {
+    bool res=false;
     for (int i=0;i<4;i++) {
-        for (int j=0;j<4;j++) {
-            if (board[i][j]==0)
-                return false;
-            if (j<3 && board[i][j]==board[i][j+1])
-                return false;
-            if (i<3 && board[i][j]==board[i+1][j])
-                return false;
-        }
+        res|=is_move_valid(i);
+        if (res) break;
     }
-    return true;
+    return res;
 }
 
 void Fast2048::update_values() {
