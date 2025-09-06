@@ -27,6 +27,18 @@ def board_to_tensor(board):
 
     return np.expand_dims(log_board, axis=0)
 
+MASTER_SNAKE_PATTERN = np.array([
+    [15, 14, 13, 12], [8, 9, 10, 11], [7, 6, 5, 4], [0, 1, 2, 3]
+], dtype=np.float32)
+SNAKE_PATTERNS = []
+def generate_snake_patterns():
+    if SNAKE_PATTERNS: return
+    board = MASTER_SNAKE_PATTERN
+    for _ in range(4):
+        SNAKE_PATTERNS.append(board)
+        SNAKE_PATTERNS.append(np.fliplr(board))
+        board = np.rot90(board)
+
 def _find_longest_snake(board, start_r, start_c):
     stack = [([(start_r, start_c)], board[start_r, start_c])]
     max_score = 0
@@ -65,26 +77,23 @@ def calculate_reward(board, merge_score, moved):
     event_reward = np.log2(merge_score) if merge_score > 0 else 0.0
     log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
 
-    mono_score = 0
-    for i in range(4):
-        row = log_board[i, :][log_board[i, :] > 0]
-        col = log_board[:, i][log_board[:, i] > 0]
-        if len(row) > 1:
-            mono_score += max(np.sum(np.diff(row) <= 0), np.sum(np.diff(row) >= 0))
-        if len(col) > 1:
-            mono_score += max(np.sum(np.diff(col) <= 0), np.sum(np.diff(col) >= 0))
-
     corners = [(0, 0), (0, 3), (3, 0), (3, 3)]
     dynamic_scores = [_find_longest_snake(log_board, r, c) for r, c in corners]
     dynamic_snake_score = np.max(dynamic_scores)
 
     empty_cell_bonus = np.sum(board == 0)
 
+    if not SNAKE_PATTERNS:
+        generate_snake_patterns()
+
+    pattern_scores = [np.sum(log_board * pattern) for pattern in SNAKE_PATTERNS]
+    max_pattern_score = np.max(pattern_scores)
+
     final_reward = (
             event_reward * 1.0 +
-            mono_score * 0.15 +
-            dynamic_snake_score * 0.3 +
-            empty_cell_bonus * 0.1
+            max_pattern_score * 0.1 +
+            dynamic_snake_score * 0.25 +
+            empty_cell_bonus * 0.3
     )
     return final_reward
 # Fast 2048 functions
