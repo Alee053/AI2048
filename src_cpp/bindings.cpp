@@ -1,6 +1,8 @@
 ﻿#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 #include "Fast2048.h"
+#include "ExpectimaxSearcher.h"
+#include <pybind11/stl.h>           // enable conversions for STL containers
+#include <pybind11/functional.h>
 
 namespace py = pybind11;
 
@@ -17,4 +19,8 @@ PYBIND11_MODULE(fast2048_cpp, m) {
         .def_property_readonly("board", &Fast2048::get_board)
         .def_property_readonly("score", &Fast2048::get_score)
         .def_property_readonly("max_tile", &Fast2048::get_max_tile);
+    py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
+        .def(py::init<>())
+        .def("find_best_move", &ExpectimaxSearcher::find_best_move_with_eval,
+             py::arg("board"), py::arg("depth"), py::arg("eval_func"));
 }

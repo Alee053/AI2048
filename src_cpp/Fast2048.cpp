@@ -117,7 +117,7 @@ std::array<std::array<int, 4>, 4> Fast2048::get_board() const {
     return std::array<std::array<int, 4>, 4>(board);
 }
 
-void Fast2048::set_board(const std::vector<std::vector<int>> &new_board) {
+void Fast2048::set_board(const std::array<std::array<int, 4>, 4> &new_board) {
     board=std::array<std::array<int, 4>, 4>();
     for (int i=0;i<4;i++) {
         for (int j=0;j<4;j++) {

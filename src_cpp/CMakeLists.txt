@@ -1,27 +1,15 @@
-﻿# Set the minimum required version of CMake.
-cmake_minimum_required(VERSION 3.15)
+﻿cmake_minimum_required(VERSION 3.15)
 
-# Set the name of the C++ project.
 project(Fast2048Cpp)
 
-# --- Find Python and pybind11 (The Modern Way) ---
-
-# Explicitly find a Python 3 installation.
-# This is the modern approach recommended by CMake.
-# It ensures we find both the interpreter program and the development
-# libraries needed for linking, and will fail here if they're not found.
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-
-# Now, with Python found, find the pybind11 package.
-# It will use the already-discovered Python environment to locate itself.
 find_package(pybind11 REQUIRED)
 
-# --- Create the Python Module ---
-# This part remains the same.
 pybind11_add_module(fast2048_cpp
         Fast2048.cpp
         bindings.cpp
         RandomUtil.cpp
+        ExpectimaxSearcher.cpp
         main.cpp
 )
 

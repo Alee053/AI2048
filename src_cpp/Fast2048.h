@@ -15,7 +15,7 @@ public:
     bool is_move_valid(int action) const;
     std::array<std::array<int, 4>, 4> get_board() const;
 
-    void set_board(const std::vector<std::vector<int>>& new_board);
+    void set_board(const std::array<std::array<int, 4>, 4>& new_board);
     int get_score() const;
     int get_max_tile() const;
 

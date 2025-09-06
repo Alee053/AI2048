@@ -1,11 +1,14 @@
 ﻿import os
 import pygame
 from sb3_contrib import MaskablePPO
-from src.ExpectimaxSearcher import ExpectimaxSearcher
+from src.fast2048_cpp import ExpectimaxSearcher
+import numpy as np
+from src.utility import board_to_tensor
+import torch
 
 from .Game2048Env import Game2048Env
 
-# --- TILE COLORS AND DRAW FUNCTION (No changes here) ---
+
 TILE_COLORS = {
     0: (205, 193, 180), 2: (238, 228, 218), 4: (237, 224, 200),
     8: (242, 177, 121), 16: (245, 149, 99), 32: (246, 124, 95),
@@ -36,10 +39,19 @@ class Visualizer:
         self.model = MaskablePPO.load(self.model_path)
 
         if self.use_expectimax:
-            self.searcher = ExpectimaxSearcher(model=self.model, device=self.model.device)
+            self.searcher = ExpectimaxSearcher()
             print(f"Visualizer running with ExpectimaxSearcher (depth={self.search_depth}).")
         else:
             print("Visualizer running with raw PPO model.")
+
+    def _evaluate_board(self, board_list):
+        board_np = np.array(board_list)
+        obs = board_to_tensor(board_np)
+        with torch.no_grad():
+            value = self.model.policy.predict_values(
+                torch.as_tensor(obs[None]).to(self.model.device)
+            )
+        return value.item()
 
     def _get_font(self, tile_value):
         if tile_value < 100:
@@ -50,20 +62,17 @@ class Visualizer:
             return pygame.font.Font(None, 32)
 
     def _draw_board(self, board):
+        board_np = np.array(board)
         self.screen.fill(BG_COLOR)
-        tile_size = 100
-        padding = 10
+        tile_size, padding = 100, 10
 
         for r in range(4):
             for c in range(4):
-                tile_value = 2 ** board[r][c] if board[r][c] != 0 else 0
+                tile_value = 2 ** board_np[r, c] if board_np[r, c] != 0 else 0
                 tile_color = TILE_COLORS.get(tile_value, (60, 58, 50))
-
-                rect_x = c * tile_size + padding / 2
-                rect_y = r * tile_size + padding / 2
+                rect_x, rect_y = c * tile_size + padding / 2, r * tile_size + padding / 2
                 rect_w = tile_size - padding
                 pygame.draw.rect(self.screen, tile_color, (rect_x, rect_y, rect_w, rect_w), border_radius=5)
-
                 if tile_value != 0:
                     font = self._get_font(tile_value)
                     text_color = TEXT_COLOR_DARK if tile_value < 8 else TEXT_COLOR_LIGHT
@@ -95,7 +104,7 @@ class Visualizer:
 
     def _draw_game_over(self, score, max_tile):
         overlay = pygame.Surface((400, 500), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))  # Semi-transparent black overlay
+        overlay.fill((0, 0, 0, 180))
 
         big_font = pygame.font.Font(None, 60)
         small_font = pygame.font.Font(None, 32)
@@ -121,8 +130,14 @@ class Visualizer:
                     running = False
 
             if self.use_expectimax:
-                # Use ExpectimaxSearcher to find the best move
-                action = self.searcher.find_best_move(self.env.game.board, search_depth=self.search_depth)
+                # Get the raw board (list of lists) from the C++ game object
+                current_board = self.env.game.board
+                # Call the C++ searcher, passing our Python method as the callback!
+                action = self.searcher.find_best_move(
+                    current_board,
+                    self.search_depth,
+                    self._evaluate_board
+                )
             else:
                 # Use the original PPO model prediction
                 action_mask = self.env.action_masks()
