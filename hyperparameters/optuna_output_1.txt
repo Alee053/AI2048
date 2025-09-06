@@ -1,5 +1,6 @@
 Study statistics: 
   Number of finished trials: 50
+  Time: ~7 hours
 Best trial:
   Value: 2333.447724
   Params: 
