@@ -60,40 +60,33 @@ def _find_longest_snake(board, start_r, start_c):
 
 def calculate_reward(board, merge_score, moved):
     if not moved:
-        return -1
+        return -2.0
 
-    event_reward = 0
-    if merge_score > 0:
-        event_reward = np.log2(merge_score)
-
-    log_board = np.log2 (board, out=np.zeros_like(board, dtype=float), where=(board != 0))
+    event_reward = np.log2(merge_score) if merge_score > 0 else 0.0
+    log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
 
     mono_score = 0
     for i in range(4):
-        row = log_board[i, :]
-        col = log_board[:, i]
-        row_filtered, col_filtered = row[row > 0], col[col > 0]
-        if len(row_filtered) > 1:
-            mono_score += max(np.sum(np.diff(row_filtered) <= 0), np.sum(np.diff(row_filtered) >= 0))
-        if len(col_filtered) > 1:
-            mono_score += max(np.sum(np.diff(col_filtered) <= 0), np.sum(np.diff(col_filtered) >= 0))
+        row = log_board[i, :][log_board[i, :] > 0]
+        col = log_board[:, i][log_board[:, i] > 0]
+        if len(row) > 1:
+            mono_score += max(np.sum(np.diff(row) <= 0), np.sum(np.diff(row) >= 0))
+        if len(col) > 1:
+            mono_score += max(np.sum(np.diff(col) <= 0), np.sum(np.diff(col) >= 0))
 
-    corner_bonus = 0
-    max_tile_val = np.max(log_board)
-    if max_tile_val > 0 and log_board[0, 0] == max_tile_val:
-        corner_bonus = max_tile_val
+    corners = [(0, 0), (0, 3), (3, 0), (3, 3)]
+    dynamic_scores = [_find_longest_snake(log_board, r, c) for r, c in corners]
+    dynamic_snake_score = np.max(dynamic_scores)
 
-    empty_score = np.sum(board == 0)
+    empty_cell_bonus = np.sum(board == 0)
 
     final_reward = (
             event_reward * 1.0 +
             mono_score * 0.15 +
-            empty_score * 0.1 +
-            corner_bonus * 0.05
+            dynamic_snake_score * 0.3 +
+            empty_cell_bonus * 0.1
     )
-
     return final_reward
-
 # Fast 2048 functions
 def row_to_number(row):
     return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12
@@ -112,3 +105,4 @@ def merge_row(row):
             row[i]=0
             reward+=2**row[i-1]
     return [row,reward]
+

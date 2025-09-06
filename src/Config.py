@@ -2,17 +2,17 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = ("maskPPO_optuna_rollback_run_1")
+        self.RUN_NAME = ("maskPPO_optuna_mono_snake_run_2")
 
-        self.CHECKPOINT_PATH = "models/maskPPO_optuna_run_1_continue2.0/rl_model_23100000_steps.zip"
-        self.LOAD_MODEL = False
+        self.CHECKPOINT_PATH = "models/maskPPO_optuna_mono_snake_run_1/rl_model_3000000_steps.zip"
+        self.LOAD_MODEL = True
 
-        self.TOTAL_TIMESTEPS = 50000000
+        self.TOTAL_TIMESTEPS = 6000000
         self.POLICY_TYPE = "CnnPolicy"
 
         self.N_ENVS = 16
 
-        self.SAVE_INTERVAL = 300000
+        self.SAVE_INTERVAL = 500000
 
         # Optuna hyperparameters
         self.CONFIG = {
