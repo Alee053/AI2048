@@ -1,8 +1,7 @@
 ﻿import os
 import pygame
 from sb3_contrib import MaskablePPO
-import numpy as np
-import torch
+from src.ExpectimaxSearcher import ExpectimaxSearcher
 
 from .Game2048Env import Game2048Env
 
@@ -22,10 +21,12 @@ STATS_BG_COLOR = (50, 50, 50)
 
 
 class Visualizer:
-    def __init__(self, model_path):
+    def __init__(self, model_path, use_expectimax=True,search_depth=2):
         if not model_path or not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
         self.model_path = model_path
+        self.use_expectimax = use_expectimax
+        self.search_depth = search_depth
 
         pygame.init()
         self.screen = pygame.display.set_mode((400, 500))
@@ -34,8 +35,13 @@ class Visualizer:
         self.env = Game2048Env()
         self.model = MaskablePPO.load(self.model_path)
 
+        if self.use_expectimax:
+            self.searcher = ExpectimaxSearcher(model=self.model, device=self.model.device)
+            print(f"Visualizer running with ExpectimaxSearcher (depth={self.search_depth}).")
+        else:
+            print("Visualizer running with raw PPO model.")
+
     def _get_font(self, tile_value):
-        """Returns a dynamically sized font."""
         if tile_value < 100:
             return pygame.font.Font(None, 48)
         elif tile_value < 1000:
@@ -114,9 +120,15 @@ class Visualizer:
                 if event.type == pygame.QUIT:
                     running = False
 
-            action_mask = self.env.action_masks()
-            action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
-            last_action = action
+            if self.use_expectimax:
+                # Use ExpectimaxSearcher to find the best move
+                action = self.searcher.find_best_move(self.env.game.board, search_depth=self.search_depth)
+            else:
+                # Use the original PPO model prediction
+                action_mask = self.env.action_masks()
+                action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
+
+            last_action = int(action)
 
             obs, reward, terminated, truncated, info = self.env.step(action)
             step_count += 1
@@ -129,8 +141,11 @@ class Visualizer:
                 pygame.display.flip()
                 pygame.time.wait(5000)
                 running = False
+                print( f"Game Over! Final Score: {self.env.game.score}, Max Tile: {2 ** self.env.game.max_tile}" )
+                print( f"Total Steps: {step_count}" )
+                print( f"Board State:\n{self.env.game.board}" )
 
             pygame.display.flip()
-            pygame.time.wait(150)
+            #pygame.time.wait(10)
 
         pygame.quit()

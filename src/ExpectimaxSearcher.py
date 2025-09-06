@@ -20,7 +20,7 @@ class ExpectimaxSearcher:
             temp_game = Fast2048()
             temp_game.board = board.copy()
 
-            if not temp_game.board.is_valid_move(move):
+            if not temp_game.is_move_valid(move):
                 continue
 
             merge_score, done,_  = temp_game.move(move)
@@ -40,8 +40,6 @@ class ExpectimaxSearcher:
         empty_cells = np.argwhere(board == 0)
         if len(empty_cells) == 0:
             return 0
-
-        total_value = 0
 
         # Consider placing a '2' (log value 1) in each empty cell
         value_sum_2 = 0
@@ -83,7 +81,7 @@ class ExpectimaxSearcher:
         for move in range(4):
             temp_game = Fast2048()
             temp_game.board = board.copy()
-            if not temp_game.board.is_valid_move(move):
+            if not temp_game.is_move_valid(move):
                 continue
             merge_score, done, moved = temp_game.move(move)
 
