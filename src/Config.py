@@ -2,9 +2,9 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = ("maskPPO_optuna_run_1_continue2.0")
+        self.RUN_NAME = ("maskPPO_optuna_run_1_continueCPP")
 
-        self.CHECKPOINT_PATH = "models/maskPPO_optuna_run_1_continue/rl_model_20700000_steps.zip"
+        self.CHECKPOINT_PATH = "models/maskPPO_optuna_run_1_continue2.0/rl_model_23100000_steps.zip"
         self.LOAD_MODEL = True
 
         self.TOTAL_TIMESTEPS = 50000000

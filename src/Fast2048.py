@@ -13,12 +13,8 @@ class Fast2048:
             self.init_LUT()
         self.board = None
         self.max_tile = None
-        self.empty_cells = None
-        self.sum_tiles = None
         self.score = None
         self.done = None
-        self.total_reward = None
-        self.useless_move_count = 0
         self.reset()
 
     def init_LUT(self):
@@ -38,25 +34,16 @@ class Fast2048:
     def reset(self):
         self.board = np.array([[0 for _ in range(4)]for _ in range(4)])
         self.max_tile = 0
-        self.empty_cells = 16
-        self.sum_tiles = 0
         self.score = 0
         self.done = False
-        self.total_reward=0
         self.generate_random()
         self.generate_random()
         self.update_values()
 
     def update_values(self):
-        self.empty_cells = 0
-        self.sum_tiles = 0
-
         for row in self.board:
             for cell in row:
                 self.max_tile = max(self.max_tile, cell)
-                self.sum_tiles += cell
-                if cell==0:
-                    self.empty_cells+=1
 
     def is_move_valid(self, action):
         if action == 3:  # left
@@ -86,15 +73,13 @@ class Fast2048:
         self.board[chosen_position[0], chosen_position[1]] = num
 
     def check_done(self):
-        if self.empty_cells==0:
-            for i in range(4):
-                for j in range(4):
-                    if i+1<4 and self.board[i][j]==self.board[i+1][j]:
-                        return False
-                    if j+1<4 and self.board[i][j]==self.board[i][j+1]:
-                        return False
-            return True
-        return False
+        for i in range(4):
+            for j in range(4):
+                if i+1<4 and self.board[i][j]==self.board[i+1][j]:
+                    return False
+                if j+1<4 and self.board[i][j]==self.board[i][j+1]:
+                    return False
+        return True
 
     def move(self, direction):
         merge_score=0
