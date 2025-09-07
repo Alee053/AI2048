@@ -5,6 +5,8 @@ from src.fast2048_cpp import ExpectimaxSearcher
 import numpy as np
 from src.utility import board_to_tensor
 import torch
+import cProfile
+import pstats
 
 from .Game2048Env import Game2048Env
 
@@ -124,20 +126,43 @@ class Visualizer:
         running = True
         step_count = 0
 
+        profiled_once=False
+
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             if self.use_expectimax:
-                # Get the raw board (list of lists) from the C++ game object
                 current_board = self.env.game.board
-                # Call the C++ searcher, passing our Python method as the callback!
-                action = self.searcher.find_best_move(
-                    current_board,
-                    self.search_depth,
-                    self._evaluate_board
-                )
+
+                # --- PROFILER WRAPPER ---
+                # We will only profile the first "thinking" step to get a clean analysis.
+                if not profiled_once:
+                    print("\n--- RUNNING PROFILER ON EXPECTIMAX SEARCH ---")
+                    profiler = cProfile.Profile()
+                    profiler.enable()
+
+                    # This is the line we are profiling
+                    action = self.searcher.find_best_move(
+                        current_board,
+                        self.search_depth,
+                        self._evaluate_board
+                    )
+
+                    profiler.disable()
+                    print("--- PROFILER RESULTS (TOP 15 by total time) ---")
+                    stats = pstats.Stats(profiler).sort_stats('tottime')
+                    stats.print_stats(15)
+                    print("--- END OF PROFILER REPORT ---\n")
+                    profiled_once = True
+                else:
+                    # Run without profiler for subsequent steps
+                    action = self.searcher.find_best_move(
+                        current_board,
+                        self.search_depth,
+                        self._evaluate_board
+                    )
             else:
                 # Use the original PPO model prediction
                 action_mask = self.env.action_masks()

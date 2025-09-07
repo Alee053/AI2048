@@ -11,9 +11,6 @@ int ExpectimaxSearcher::find_best_move_with_eval(
     float best_score = -1e9;
     int best_move = -1;
 
-    float alpha = -std::numeric_limits<float>::infinity();
-    float beta = std::numeric_limits<float>::infinity();
-
     for (int move = 0; move < 4; ++move) {
         Fast2048 temp_game;
         temp_game.set_board(board);
@@ -24,12 +21,11 @@ int ExpectimaxSearcher::find_best_move_with_eval(
 
         auto [merge_score, done, moved] = temp_game.move(move);
 
-        float score = static_cast<float>(merge_score) + chance_node(temp_game, depth, eval_func,alpha,beta);
+        float score = static_cast<float>(merge_score) + chance_node(temp_game, depth, eval_func);
         if (score > best_score) {
             best_score = score;
             best_move = move;
         }
-        alpha = std::max(alpha, best_score);
     }
 
     if (best_move == -1) {
@@ -43,7 +39,7 @@ int ExpectimaxSearcher::find_best_move_with_eval(
     return best_move;
 }
 
-float ExpectimaxSearcher::chance_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func,float alpha,float beta) {
+float ExpectimaxSearcher::chance_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func) {
     std::vector<std::pair<int, int>> empty_cells;
     auto board = game.get_board();
     for (int r = 0; r < 4; ++r) {
@@ -64,20 +60,20 @@ float ExpectimaxSearcher::chance_node(Fast2048& game, int depth, const std::func
         auto board_with_2 = game_with_2.get_board();
         board_with_2[cell.first][cell.second] = 1;
         game_with_2.set_board(board_with_2);
-        total_value += 0.9f * max_node(game_with_2, depth - 1, eval_func,alpha,beta);
+        total_value += 0.9f * max_node(game_with_2, depth - 1, eval_func);
 
         Fast2048 game_with_4 = game;
         auto board_with_4 = game_with_4.get_board();
         board_with_4[cell.first][cell.second] = 2;
         game_with_4.set_board(board_with_4);
-        total_value += 0.1f * max_node(game_with_4, depth - 1, eval_func,alpha,beta);
+        total_value += 0.1f * max_node(game_with_4, depth - 1, eval_func);
     }
 
     // Return the average expected value
     return total_value / empty_cells.size();
 }
 
-float ExpectimaxSearcher::max_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func,float alpha,float beta) {
+float ExpectimaxSearcher::max_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func) {
     if (depth <= 0) {
         return eval_func(game.get_board());
     }
@@ -97,15 +93,11 @@ float ExpectimaxSearcher::max_node(Fast2048& game, int depth, const std::functio
         if (!moved) {
             continue;
         }
-        
+
         any_move_possible = true;
-        float value = static_cast<float>(merge_score) + chance_node(temp_game, depth, eval_func,alpha,beta);
-        max_value = std::max(max_value, value);
-
-        alpha = std::max(alpha, max_value);
-
-        if (alpha >= beta) {
-            break;
+        float value = static_cast<float>(merge_score) + chance_node(temp_game, depth, eval_func);
+        if (value > max_value) {
+            max_value = value;
         }
     }
 

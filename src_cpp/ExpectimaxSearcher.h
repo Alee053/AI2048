@@ -15,6 +15,6 @@ public:
     );
 
 private:
-    float chance_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func,float alpha,float beta);
-    float max_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func,float alpha,float beta);
+    float chance_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func);
+    float max_node(Fast2048& game, int depth, const std::function<float(const std::array<std::array<int, 4>, 4>&)>& eval_func);
 };
