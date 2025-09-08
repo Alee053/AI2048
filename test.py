@@ -1,6 +1,6 @@
 ﻿from src.Visualizer import Visualizer
 
-MODEL_PATH = "models/maskPPO_optuna_mono_snake_run_2/final_model.zip"
+MODEL_PATH = "models/maskPPO_optuna2.0_newmono_run_1/rl_model_43500000_steps.zip"
 USE_EXPECTIMAX = True
 
 

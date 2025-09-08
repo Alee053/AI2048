@@ -26,7 +26,7 @@ STATS_BG_COLOR = (50, 50, 50)
 
 
 class Visualizer:
-    def __init__(self, model_path, use_expectimax=True,search_depth=2):
+    def __init__(self, model_path, use_expectimax=True,search_depth=1):
         if not model_path or not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
         self.model_path = model_path
@@ -186,6 +186,6 @@ class Visualizer:
                 print( f"Board State:\n{self.env.game.board}" )
 
             pygame.display.flip()
-            pygame.time.wait(100)
+            #pygame.time.wait(100)
 
         pygame.quit()

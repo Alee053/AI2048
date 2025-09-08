@@ -69,33 +69,25 @@ def _find_longest_snake(board, start_r, start_c):
 
     return max_score
 
-
+ROW_GRADIENT = np.arange(16, dtype=np.float32).reshape(4, 4)
+COL_GRADIENT = ROW_GRADIENT.T # Transposed version
 def calculate_reward(board, merge_score, moved):
     if not moved:
-        return -2.0
+        return -1.0
 
-    event_reward = np.log2(merge_score) if merge_score > 0 else 0.0
+    reward = np.log2(merge_score) if merge_score > 0 else 0.0
+
+    free_cells = np.sum(board == 0)
+    reward += free_cells * 0.1
+
     log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
 
-    corners = [(0, 0), (0, 3), (3, 0), (3, 3)]
-    dynamic_scores = [_find_longest_snake(log_board, r, c) for r, c in corners]
-    dynamic_snake_score = np.max(dynamic_scores)
+    s1 = np.sum(log_board * ROW_GRADIENT)
+    s2 = np.sum(log_board * COL_GRADIENT)
 
-    empty_cell_bonus = np.sum(board == 0)
+    reward += np.maximum(s1, s2) * 1e-4
 
-    if not SNAKE_PATTERNS:
-        generate_snake_patterns()
-
-    pattern_scores = [np.sum(log_board * pattern) for pattern in SNAKE_PATTERNS]
-    max_pattern_score = np.max(pattern_scores)
-
-    final_reward = (
-            event_reward * 1.0 +
-            max_pattern_score * 0.1 +
-            dynamic_snake_score * 0.25 +
-            empty_cell_bonus * 0.3
-    )
-    return final_reward
+    return reward
 # Fast 2048 functions
 def row_to_number(row):
     return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12

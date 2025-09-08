@@ -52,7 +52,7 @@ def objective(trial: optuna.Trial) -> float:
         **hyperparams,
         batch_size=512,
         n_epochs=4,
-        verbose=0,  # Set to 0 to keep logs clean
+        verbose=1,  # Set to 0 to keep logs clean
     )
 
     # --- NEW: Use the callback ---
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     study.optimize(objective, n_trials=30, timeout=12 * 3600, show_progress_bar=True)
 
     # Save the results (same as before)
-    with open('hyperparameters/optuna_output_final.txt', 'w') as f:
+    with open('hyperparameters/optuna_output_2.txt', 'w') as f:
         f.write("Study statistics: \n")
         f.write(f"  Number of finished trials: {len(study.trials)}\n")
         f.write("Best trial:\n")
