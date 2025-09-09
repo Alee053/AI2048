@@ -26,7 +26,7 @@ STATS_BG_COLOR = (50, 50, 50)
 
 
 class Visualizer:
-    def __init__(self, model_path, use_expectimax=True,search_depth=1):
+    def __init__(self, model_path, use_expectimax=True,search_depth=3):
         if not model_path or not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
         self.model_path = model_path
@@ -42,9 +42,24 @@ class Visualizer:
 
         if self.use_expectimax:
             self.searcher = ExpectimaxSearcher()
-            print(f"Visualizer running with ExpectimaxSearcher (depth={self.search_depth}).")
+            print(f"Visualizer running with C++ Batching Expectimax (depth={self.search_depth}).")
         else:
             print("Visualizer running with raw PPO model.")
+
+    def _evaluate_batch(self, boards_list):
+        if not boards_list:
+            return []
+
+        batch_np = np.array(boards_list)
+
+        batch_tensor = board_to_tensor(batch_np)
+
+        with torch.no_grad():
+            values = self.model.policy.predict_values(
+                torch.as_tensor(batch_tensor).to(self.model.device)
+            )
+
+        return values.cpu().numpy().flatten().tolist()
 
     def _evaluate_board(self, board_list):
         board_np = np.array(board_list)
@@ -147,7 +162,7 @@ class Visualizer:
                     action = self.searcher.find_best_move(
                         current_board,
                         self.search_depth,
-                        self._evaluate_board
+                        self._evaluate_batch
                     )
 
                     profiler.disable()
@@ -161,7 +176,7 @@ class Visualizer:
                     action = self.searcher.find_best_move(
                         current_board,
                         self.search_depth,
-                        self._evaluate_board
+                        self._evaluate_batch
                     )
             else:
                 # Use the original PPO model prediction

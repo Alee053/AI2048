@@ -24,8 +24,10 @@ class CustomWandbCallback(BaseCallback):
 # Game2048Env functions
 def board_to_tensor(board):
     log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
-
-    return np.expand_dims(log_board, axis=0)
+    if log_board.ndim == 2: # Single board
+        return np.expand_dims(log_board, axis=0)
+    else: # Batch of boards
+        return np.expand_dims(log_board, axis=1) # Add channel dimension
 
 MASTER_SNAKE_PATTERN = np.array([
     [15, 14, 13, 12], [8, 9, 10, 11], [7, 6, 5, 4], [0, 1, 2, 3]

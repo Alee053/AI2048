@@ -7,7 +7,7 @@
 namespace py = pybind11;
 
 PYBIND11_MODULE(fast2048_cpp, m) {
-    m.doc() = "Fast 2048 game logic implemented in C++";
+    m.doc() = "High-performance 2048 game logic and AI searcher in C++";
 
     py::class_<Fast2048>(m, "Fast2048")
         .def(py::init<>())
@@ -21,6 +21,7 @@ PYBIND11_MODULE(fast2048_cpp, m) {
         .def_property_readonly("max_tile", &Fast2048::get_max_tile);
     py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
         .def(py::init<>())
-        .def("find_best_move", &ExpectimaxSearcher::find_best_move_with_eval,
-             py::arg("board"), py::arg("depth"), py::arg("eval_func"));
+        .def("find_best_move", &ExpectimaxSearcher::find_best_move,
+             "Finds the best move using a batched Expectimax search.",
+             py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"));
 }
