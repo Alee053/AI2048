@@ -1,7 +1,7 @@
 ﻿from src.Visualizer import Visualizer
 
-MODEL_PATH = "models/maskPPO_optuna2.0_newmono_run_1/rl_model_43500000_steps.zip"
-USE_EXPECTIMAX = True
+MODEL_PATH = "models/maskPPO_optuna2.0_newmono_run_1_finetune_100M/final_model.zip"
+USE_EXPECTIMAX = False
 
 
 if __name__ == '__main__':

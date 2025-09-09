@@ -2,7 +2,7 @@
 
 #include "Fast2048.h"
 #include <vector>
-#include <functional> // Required for std::function (the callback)
+#include <functional>
 
 class ExpectimaxSearcher {
 public:
