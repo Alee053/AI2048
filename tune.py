@@ -67,7 +67,7 @@ def objective(trial: optuna.Trial) -> float:
 if __name__ == '__main__':
     storage_name = "sqlite:///optuna_study.db"
 
-    study_name = "2048-ppo-final-tuning"
+    study_name = "2048-ppo-hynsnake-tuning"
 
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=500_000)
 
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     )
 
     try:
-        study.optimize(objective, n_trials=40, timeout=14 * 3600, show_progress_bar=True)
+        study.optimize(objective, n_trials=50, timeout=16 * 3600, show_progress_bar=True)
     except KeyboardInterrupt:
         print("Study interrupted. Progress has been saved to the database.")
 
