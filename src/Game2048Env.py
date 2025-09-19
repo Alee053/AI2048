@@ -8,15 +8,31 @@ from .reward_function import calculate_reward
 
 
 class Game2048Env(Env):
-    def __init__(self):
+    def __init__(self, total_timesteps=100_000_000):
         super(Game2048Env, self).__init__()
         self.game = Fast2048()
         self.action_space = Discrete(4)
         self.observation_space = Box(
             low=0, high=16, shape=(1, 4, 4), dtype=np.float32)
 
+        self.total_timesteps = total_timesteps
+        self.current_step = 0
+
+    def _update_curriculum(self):
+        progress = self.current_step / self.total_timesteps
+
+        # --- Dial 1: Probability of spawning a '4' (Continuous) ---
+        self.game.prob_4 = min(0.1, progress * 0.1)
+
+        # --- Dial 2: Probability of a "Helpful" Spawn (Continuous) ---
+        # Linearly decay the chance of a helpful spawn from 100% to 0%.
+        self.game.p_helpful = max(0.0, 1.0 - progress)
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
+
+        self.current_step = 0
+        self._update_curriculum()
 
         self.game.reset()
         state = board_to_tensor(self.game.board)
@@ -31,6 +47,9 @@ class Game2048Env(Env):
 
 
     def step(self, action):
+        self.current_step += 1
+        self._update_curriculum()
+
         merge_score, done, moved = self.game.move(action)
         state = board_to_tensor(self.game.board)
 

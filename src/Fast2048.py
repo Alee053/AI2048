@@ -1,4 +1,5 @@
 ﻿import numpy as np
+from reward_function import ROW_GRADIENT, COL_GRADIENT
 
 class Fast2048:
     move_row_LUT = []
@@ -12,6 +13,11 @@ class Fast2048:
         self.max_tile = None
         self.score = None
         self.done = None
+
+        # Curriculum learning parameters
+        self.prob_4 = 0.1
+        self.p_helpful = 0.0
+
         self.reset()
 
     def init_LUT(self):
@@ -57,15 +63,41 @@ class Fast2048:
                 if self.move_valid_LUT[row_to_number(self.board[:, i][::-1])]: return True
         return False
 
-
     def generate_random(self):
-        num = 1 if np.random.random() < 0.9 else 2
+        # The logic for choosing between a 2 or 4 remains the same
+        num = 1 if np.random.random() > self.prob_4 else 2
+
         empty_cells = np.argwhere(self.board == 0)
 
-        if empty_cells.size==0:
+        if empty_cells.size == 0:
             return
 
-        chosen_position = empty_cells[np.random.choice(len(empty_cells))]
+        # --- REFINED CURRICULUM SPAWN LOGIC ---
+
+        # 1. Rank all empty cells from best to worst
+        log_board = np.log2(self.board, out=np.zeros_like(self.board, dtype=np.float32), where=(self.board != 0))
+        s1 = np.sum(log_board * ROW_GRADIENT)
+        s2 = np.sum(log_board * COL_GRADIENT)
+        gradient_to_use = ROW_GRADIENT if s1 >= s2 else COL_GRADIENT
+
+        # Create a list of (gradient_value, position) for each empty cell
+        ranked_cells = sorted(
+            [(gradient_to_use[r, c], (r, c)) for r, c in empty_cells],
+            key=lambda x: x[0]
+        )
+
+        # 2. Determine the size of the "good" candidate pool based on p_helpful
+        # The pool size shrinks as p_helpful decays from 1.0 to 0.0
+        # The formula is len * (1.0 - p_helpful), ensuring at least 1 candidate
+        num_candidates = int(np.ceil(len(ranked_cells) * (1.0 - self.p_helpful)))
+        num_candidates = max(1, num_candidates)
+
+        # 3. Select the pool of best candidates
+        candidate_pool = ranked_cells[:num_candidates]
+
+        # 4. Choose a random position from within that top-tier pool
+        chosen_index = np.random.choice(len(candidate_pool))
+        chosen_position = candidate_pool[chosen_index][1]
 
         self.board[chosen_position[0], chosen_position[1]] = num
 

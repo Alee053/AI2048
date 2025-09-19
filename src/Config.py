@@ -2,9 +2,9 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = ("maskPPO_optuna2.0_newmono_recover_refactor_run_1")
+        self.RUN_NAME = ("maskPPO_optuna2.0_best_rew_CL_run_1")
 
-        self.CHECKPOINT_PATH = "models/maskPPO_optuna2.0_newmono_run_1_continue/final_model.zip"
+        self.CHECKPOINT_PATH = ""
         self.LOAD_MODEL = False
 
         self.TOTAL_TIMESTEPS = 100_000_000
