@@ -13,6 +13,7 @@ class CustomWandbCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.num_timesteps % self.log_cl_freq == 0:
+            self.training_env.env_method('update_curriculum', self.num_timesteps)
             game_instance = self.training_env.get_attr('game')[0]
 
             p_helpful = game_instance.p_helpful

@@ -16,10 +16,9 @@ class Game2048Env(Env):
             low=0, high=16, shape=(1, 4, 4), dtype=np.float32)
 
         self.total_timesteps = total_timesteps
-        self.current_step = 0
 
-    def _update_curriculum(self):
-        progress = self.current_step / self.total_timesteps
+    def _update_curriculum(self,global_step):
+        progress = global_step / self.total_timesteps
 
         # --- Dial 1: Probability of spawning a '4' (Continuous) ---
         self.game.prob_4 = min(0.1, progress * 0.1)
@@ -30,9 +29,6 @@ class Game2048Env(Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-
-        self.current_step = 0
-        self._update_curriculum()
 
         self.game.reset()
         state = board_to_tensor(self.game.board)
@@ -47,9 +43,6 @@ class Game2048Env(Env):
 
 
     def step(self, action):
-        self.current_step += 1
-        self._update_curriculum()
-
         merge_score, done, moved = self.game.move(action)
         state = board_to_tensor(self.game.board)
 
