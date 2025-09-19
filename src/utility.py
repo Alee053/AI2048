@@ -29,21 +29,6 @@ def board_to_tensor(board):
     else: # Batch of boards
         return np.expand_dims(log_board, axis=1) # Add channel dimension
 
-MASTER_SNAKE_PATTERN = np.array([
-    [15, 14, 13, 12],
-    [8, 9, 10, 11],
-    [7, 6, 5, 4],
-    [0, 1, 2, 3]
-], dtype=np.float32)
-SNAKE_PATTERNS = []
-def generate_snake_patterns():
-    if SNAKE_PATTERNS: return
-    board = MASTER_SNAKE_PATTERN
-    for _ in range(4):
-        SNAKE_PATTERNS.append(board)
-        SNAKE_PATTERNS.append(np.fliplr(board))
-        board = np.rot90(board)
-
 ROW_GRADIENT = np.arange(16, dtype=np.float32).reshape(4, 4)
 COL_GRADIENT = ROW_GRADIENT.T # Transposed version
 def calculate_reward(board, merge_score, moved):
@@ -62,11 +47,8 @@ def calculate_reward(board, merge_score, moved):
 
     reward += np.maximum(s1, s2) * 1e-4
 
-    generate_snake_patterns()
-    max_dot = max(np.sum(log_board * pattern) for pattern in SNAKE_PATTERNS)
-    reward += max_dot * 1e-5
-
     return reward
+
 # Fast 2048 functions
 def row_to_number(row):
     return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12
