@@ -7,7 +7,6 @@ import numpy as np
 from src.Game2048Env import Game2048Env
 from src.PPO import CustomCNN
 
-
 class TrialCallback(BaseCallback):
     def __init__(self, trial: optuna.Trial, report_freq: int = 100000, verbose=0):
         super(TrialCallback, self).__init__(verbose)

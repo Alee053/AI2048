@@ -1,8 +1,5 @@
 ﻿import numpy as np
 
-from .utility import row_to_number, stack_row, merge_row
-
-
 class Fast2048:
     move_row_LUT = []
     move_reward_LUT = []
@@ -119,3 +116,21 @@ class Fast2048:
         self.done=self.check_done()
 
         return merge_score, self.done, moved
+
+def row_to_number(row):
+    return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12
+def stack_row(row):
+    for k in range(4):
+        for i in range(1, 4):
+            if row[i]!=0 and row[i - 1]==0:
+                row[i-1]=row[i]
+                row[i]=0
+    return row
+def merge_row(row):
+    reward=0
+    for i in range(1,4):
+        if row[i-1]==row[i] and row[i]!=0:
+            row[i-1]+=1
+            row[i]=0
+            reward+=2**row[i-1]
+    return [row,reward]

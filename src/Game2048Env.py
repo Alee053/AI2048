@@ -3,7 +3,8 @@ from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 
 from .Fast2048 import Fast2048
-from .utility import board_to_tensor, calculate_reward
+from .utility import board_to_tensor
+from .reward_function import calculate_reward
 
 
 class Game2048Env(Env):
