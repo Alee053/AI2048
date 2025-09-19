@@ -2,7 +2,7 @@
     def __init__(self):
         self.PROJECT_NAME = "2048-ppo"
 
-        self.RUN_NAME = ("maskPPO_optuna2.0_best_rew_CL_run_1")
+        self.RUN_NAME = ("maskPPO_optuna2.0_best_rew_CL_run_2")
 
         self.CHECKPOINT_PATH = ""
         self.LOAD_MODEL = False

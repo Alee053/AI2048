@@ -41,20 +41,17 @@ class CustomWandbCallback(BaseCallback):
 
                 # --- Custom Bar Chart Logging ---
                 if self.episode_count % self.log_chart_freq == 0:
-                    # 1. Get the final board state from the 'new_obs' local variable
-                    # It has shape (1, 4, 4), so we squeeze it to (4, 4)
-                    final_board_obs = self.locals['new_obs'][i].squeeze()
+                    # THE FIX: Check for the true terminal observation in the info dict
+                    if 'terminal_observation' in info:
+                        final_board_obs = info['terminal_observation'].squeeze()
 
-                    # 2. Count the occurrences of each tile exponent (ignore 0s)
-                    tile_exponents, counts = np.unique(final_board_obs[final_board_obs > 0], return_counts=True)
-                    tile_values = [str(int(2 ** exp)) for exp in tile_exponents]
+                        # The rest of the logic is the same
+                        tile_exponents, counts = np.unique(final_board_obs[final_board_obs > 0], return_counts=True)
+                        tile_values = [str(int(2 ** exp)) for exp in tile_exponents]
 
-                    # 3. Create a wandb.Table and a wandb.plot.bar object
-                    table = wandb.Table(data=list(zip(tile_values, counts)), columns=["Tile Value", "Count"])
-                    bar_chart = wandb.plot.bar(table, "Tile Value", "Count", title="Final Tile Distribution")
-
-                    # 4. Log the chart
-                    wandb.log({"Charts/Final Board State": bar_chart})
+                        table = wandb.Table(data=list(zip(tile_values, counts)), columns=["Tile Value", "Count"])
+                        bar_chart = wandb.plot.bar(table, "Tile Value", "Count", title="Final Tile Distribution")
+                        wandb.log({"Charts/Final Board State": bar_chart})
 
         return True
 

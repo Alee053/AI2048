@@ -1,5 +1,5 @@
 ﻿import numpy as np
-from reward_function import ROW_GRADIENT, COL_GRADIENT
+from .reward_function import ROW_GRADIENT, COL_GRADIENT
 
 class Fast2048:
     move_row_LUT = []
@@ -64,40 +64,39 @@ class Fast2048:
         return False
 
     def generate_random(self):
-        # The logic for choosing between a 2 or 4 remains the same
         num = 1 if np.random.random() > self.prob_4 else 2
-
         empty_cells = np.argwhere(self.board == 0)
 
         if empty_cells.size == 0:
             return
 
-        # --- REFINED CURRICULUM SPAWN LOGIC ---
+        # --- OPTIMIZED CURRICULUM SPAWN LOGIC ---
 
-        # 1. Rank all empty cells from best to worst
+        # 1. Determine the gradient to use (no change here)
         log_board = np.log2(self.board, out=np.zeros_like(self.board, dtype=np.float32), where=(self.board != 0))
         s1 = np.sum(log_board * ROW_GRADIENT)
         s2 = np.sum(log_board * COL_GRADIENT)
         gradient_to_use = ROW_GRADIENT if s1 >= s2 else COL_GRADIENT
 
-        # Create a list of (gradient_value, position) for each empty cell
-        ranked_cells = sorted(
-            [(gradient_to_use[r, c], (r, c)) for r, c in empty_cells],
-            key=lambda x: x[0]
-        )
+        # 2. Get gradient values and sort using pure NumPy (this is the optimization)
+        # Use fancy indexing to get all gradient values for empty cells in one go
+        gradient_values = gradient_to_use[empty_cells[:, 0], empty_cells[:, 1]]
 
-        # 2. Determine the size of the "good" candidate pool based on p_helpful
-        # The pool size shrinks as p_helpful decays from 1.0 to 0.0
-        # The formula is len * (1.0 - p_helpful), ensuring at least 1 candidate
-        num_candidates = int(np.ceil(len(ranked_cells) * (1.0 - self.p_helpful)))
+        # np.argsort() gives the indices that would sort the array. It's much faster.
+        sorted_indices = np.argsort(gradient_values)
+
+        # Apply the sorted indices to our original empty_cells array
+        sorted_cells = empty_cells[sorted_indices]
+
+        # 3. Determine the size of the candidate pool (no change here)
+        num_candidates = int(np.ceil(len(sorted_cells) * (1.0 - self.p_helpful)))
         num_candidates = max(1, num_candidates)
 
-        # 3. Select the pool of best candidates
-        candidate_pool = ranked_cells[:num_candidates]
+        # 4. Select the pool of best candidates (no change here)
+        candidate_pool = sorted_cells[:num_candidates]
 
-        # 4. Choose a random position from within that top-tier pool
-        chosen_index = np.random.choice(len(candidate_pool))
-        chosen_position = candidate_pool[chosen_index][1]
+        # 5. Choose a random position from the pool (no change here)
+        chosen_position = candidate_pool[np.random.choice(len(candidate_pool))]
 
         self.board[chosen_position[0], chosen_position[1]] = num
 
