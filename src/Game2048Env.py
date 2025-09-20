@@ -40,7 +40,7 @@ class Game2048Env(Env):
         state = board_to_tensor(self.game.board)
 
         # The reward is now calculated with the new, robust function
-        reward = calculate_reward(self.game.board, merge_score, moved)
+        reward = calculate_reward(self.game.board, merge_score)
 
         info = {}
         if done:

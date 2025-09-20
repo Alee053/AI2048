@@ -1,6 +1,5 @@
 ﻿import numpy as np
 import wandb
-from stable_baselines3.common import base_class
 from stable_baselines3.common.callbacks import BaseCallback
 from collections import deque
 import os
