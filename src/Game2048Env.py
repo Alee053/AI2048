@@ -15,17 +15,10 @@ class Game2048Env(Env):
         self.observation_space = Box(
             low=0, high=16, shape=(1, 4, 4), dtype=np.float32)
 
-        self.total_timesteps = total_timesteps
-
-    def update_curriculum(self,global_step):
-        progress = global_step / self.total_timesteps
-
-        # --- Dial 1: Probability of spawning a '4' (Continuous) ---
-        self.game.prob_4 = min(0.1, progress * 0.1)
-
-        # --- Dial 2: Probability of a "Helpful" Spawn (Continuous) ---
-        # Linearly decay the chance of a helpful spawn from 100% to 0%.
-        self.game.p_helpful = max(0.0, 1.0 - progress)
+    def set_difficulty(self, p_helpful, prob_4):
+        if self.game is not None:
+            self.game.p_helpful = p_helpful
+            self.game.prob_4 = prob_4
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)

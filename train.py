@@ -7,7 +7,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from src.Config import Config
 from src.Game2048Env import Game2048Env
 from src.PPO import CustomCNN
-from src.utility import CustomWandbCallback
+from src.utility import AdaptiveCurriculumCallback,WandbLoggingCallback
 
 conf = Config()
 
@@ -29,7 +29,8 @@ checkpoint_callback = CheckpointCallback(
     save_path=model_dir,
     name_prefix="rl_model"
 )
-wandb_callback = CustomWandbCallback()
+wandb_callback = WandbLoggingCallback()
+acl_callback= AdaptiveCurriculumCallback()
 
 policy_kwargs = dict(
     features_extractor_class=CustomCNN,
@@ -51,7 +52,7 @@ if should_load_model:
         model.learn(
             total_timesteps=remaining_steps,
             reset_num_timesteps=False,
-            callback=[checkpoint_callback, wandb_callback],
+            callback=[checkpoint_callback, wandb_callback,acl_callback],
             progress_bar=True
         )
     else:
