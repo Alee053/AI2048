@@ -20,9 +20,8 @@ run = wandb.init(
 model_dir = f"models/{conf.RUN_NAME}/"
 os.makedirs(model_dir, exist_ok=True)
 
-env_kwargs={"total_timesteps": conf.TOTAL_TIMESTEPS}
 
-vec_env = make_vec_env(Game2048Env, n_envs=conf.N_ENVS, env_kwargs=env_kwargs)
+vec_env = make_vec_env(Game2048Env, n_envs=conf.N_ENVS)
 
 
 wandb_callback = WandbLoggingCallback()

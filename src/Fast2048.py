@@ -146,7 +146,7 @@ class Fast2048:
         self.update_values()
         self.done=self.check_done()
 
-        return merge_score, self.done, moved,prev
+        return merge_score, self.done, moved
 
 def row_to_number(row):
     return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12
