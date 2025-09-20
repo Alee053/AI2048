@@ -19,7 +19,7 @@ class AdaptiveCurriculumCheckpointCallback(BaseCallback):
         self.max_difficulty = 100
         self.reward_buffer = deque(maxlen=100)
         self.reward_threshold = 1600
-        self.threshold_increment_percent=1.04
+        self.threshold_increment_percent=1.05
         self.is_initialized = False
 
     def _init_callback(self) -> None:
@@ -118,10 +118,20 @@ class WandbLoggingCallback(BaseCallback):
 
                 if self.episode_count % self.log_chart_freq == 0 and 'terminal_observation' in info:
                     final_obs = info['terminal_observation'].squeeze()
-                    exps, counts = np.unique(final_obs[final_obs > 0], return_counts=True)
-                    vals = [str(int(2**e)) for e in exps]
-                    table = wandb.Table(data=list(zip(vals, counts)), columns=["Tile", "Count"])
-                    wandb.log({"Charts/Final Board State": wandb.plot.bar(table, "Tile", "Count", title="Final Tile Distribution")})
+
+                    tiles_with_values = final_obs[final_obs > 0]
+
+                    if tiles_with_values.size > 0:
+                        exps, counts = np.unique(tiles_with_values, return_counts=True)
+                        vals = [str(int(2 ** e)) for e in exps]
+                        table = wandb.Table(data=list(zip(vals, counts)), columns=["Tile", "Count"])
+                        wandb.log({"Charts/Final Board State": wandb.plot.bar(table, "Tile", "Count",
+                                                                              title="Final Tile Distribution")})
+                    else:
+                        if self.verbose > 0:
+                            print(
+                                f"\n[WandbLoggingCallback] Skipped bar chart logging at step {self.num_timesteps}: No non-zero tiles found in terminal observation.")
+
         return True
 
 
