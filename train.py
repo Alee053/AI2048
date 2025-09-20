@@ -1,13 +1,13 @@
 ﻿import os
 import wandb
 from sb3_contrib import MaskablePPO
-from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 
 from src.Config import Config
 from src.Game2048Env import Game2048Env
 from src.PPO import CustomCNN
-from src.utility import AdaptiveCurriculumCallback,WandbLoggingCallback
+from src.utility import AdaptiveCurriculumCheckpointCallback,WandbLoggingCallback
+from collections import deque
 
 conf = Config()
 
@@ -24,13 +24,13 @@ env_kwargs={"total_timesteps": conf.TOTAL_TIMESTEPS}
 
 vec_env = make_vec_env(Game2048Env, n_envs=conf.N_ENVS, env_kwargs=env_kwargs)
 
-checkpoint_callback = CheckpointCallback(
-    save_freq=max(conf.SAVE_INTERVAL // conf.N_ENVS, 1),
-    save_path=model_dir,
-    name_prefix="rl_model"
-)
+
 wandb_callback = WandbLoggingCallback()
-acl_callback= AdaptiveCurriculumCallback()
+acl_checkpoint_callback= AdaptiveCurriculumCheckpointCallback(save_freq=max(conf.SAVE_INTERVAL // conf.N_ENVS, 1),
+                                                              save_path=model_dir,
+                                                              name_prefix="rl_model")
+
+callbacks = [wandb_callback, acl_checkpoint_callback]
 
 policy_kwargs = dict(
     features_extractor_class=CustomCNN,
@@ -43,20 +43,30 @@ if should_load_model:
     print(f"Loading model from: {conf.CHECKPOINT_PATH}")
     model = MaskablePPO.load(conf.CHECKPOINT_PATH, env=vec_env, verbose=1)
 
-    current_steps = model.num_timesteps
-    remaining_steps = conf.TOTAL_TIMESTEPS - current_steps
-    print(f"Model has been trained for {current_steps} steps.")
-
-    if remaining_steps > 0:
-        print(f"Training for an additional {remaining_steps} steps to reach {conf.TOTAL_TIMESTEPS}.")
-        model.learn(
-            total_timesteps=remaining_steps,
-            reset_num_timesteps=False,
-            callback=[checkpoint_callback, wandb_callback,acl_callback],
-            progress_bar=True
-        )
+    if hasattr(model, 'extra_data') and "curriculum_state" in model.extra_data:
+        state_data = model.extra_data["curriculum_state"]
+        acl_checkpoint_callback.difficulty_level = state_data["difficulty_level"]
+        acl_checkpoint_callback.reward_threshold = state_data["reward_threshold"]
+        acl_checkpoint_callback.reward_buffer = deque(state_data["reward_buffer"], maxlen=100)
+        acl_checkpoint_callback.is_initialized = state_data["is_initialized"]
+        print("Resumed curriculum state successfully.")
     else:
-        print("Model has already been trained for the total number of timesteps. Exiting.")
+        print("WARNING: Could not find curriculum state in the loaded model. Starting curriculum from scratch.")
+
+    print("Starting a new training run.")
+    model = MaskablePPO(
+        conf.POLICY_TYPE,
+        vec_env,
+        policy_kwargs=policy_kwargs,
+        verbose=1,
+        **conf.CONFIG
+    )
+    model.learn(
+        total_timesteps=conf.TOTAL_TIMESTEPS,
+        reset_num_timesteps=True,
+        callback=callbacks,
+        progress_bar=True
+    )
 
 else:
     if conf.LOAD_MODEL:
@@ -73,7 +83,7 @@ else:
     model.learn(
         total_timesteps=conf.TOTAL_TIMESTEPS,
         reset_num_timesteps=True,
-        callback=[checkpoint_callback, wandb_callback,acl_callback],
+        callback=callbacks,
         progress_bar=True
     )
 

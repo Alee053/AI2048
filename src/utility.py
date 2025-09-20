@@ -2,17 +2,28 @@
 import wandb
 from stable_baselines3.common.callbacks import BaseCallback
 from collections import deque
+import os
 
-class AdaptiveCurriculumCallback(BaseCallback):
-    def __init__(self, verbose=0):
-        super(AdaptiveCurriculumCallback, self).__init__(verbose)
+class AdaptiveCurriculumCheckpointCallback(BaseCallback):
+    def __init__(self, save_freq: int, save_path: str, name_prefix: str = "rl_model", verbose: int = 0):
+        super(AdaptiveCurriculumCheckpointCallback, self).__init__(verbose)
+
+        # --- Checkpoint Parameters ---
+        self.save_freq = save_freq
+        self.save_path = save_path
+        self.name_prefix = name_prefix
+
+        # --- Curriculum State ---
         self.difficulty_level = 0
         self.max_difficulty = 100
-        self.reward_buffer = deque(maxlen=100) # Using a 100-episode window
-        self.reward_threshold = 1600           # Starting threshold (TUNE THIS from your W&B logs)
-        self.threshold_increment = 500        # Increment value (TUNE THIS)
+        self.reward_buffer = deque(maxlen=100)
+        self.reward_threshold = 1600
+        self.threshold_increment = 400
+        self.is_initialized = False
 
-        self.is_initialized=False
+    def _init_callback(self) -> None:
+        if self.save_path is not None:
+            os.makedirs(self.save_path, exist_ok=True)
 
     def _update_env_difficulty(self):
         progress = self.difficulty_level / self.max_difficulty
@@ -26,45 +37,44 @@ class AdaptiveCurriculumCallback(BaseCallback):
             "Curriculum/Current_Reward_Threshold": self.reward_threshold
         })
 
-
     def _on_step(self) -> bool:
+        # Initialize curriculum on the first step
         if not self.is_initialized:
             self._update_env_difficulty()
             self.is_initialized = True
 
+        # --- Adaptive Curriculum Logic ---
         for i, done in enumerate(self.locals['dones']):
             if done:
                 info = self.locals['infos'][i]
                 if 'episode' in info:
                     self.reward_buffer.append(info['episode']['r'])
 
-                # Check for mastery only when the buffer is full
                 if len(self.reward_buffer) == self.reward_buffer.maxlen:
                     mean_reward = np.mean(self.reward_buffer)
-
                     if mean_reward > self.reward_threshold and self.difficulty_level < self.max_difficulty:
                         self.difficulty_level += 1
                         self.reward_threshold += self.threshold_increment
                         self._update_env_difficulty()
-                        self.reward_buffer.clear()  # Clear buffer to start fresh
+                        self.reward_buffer.clear()
+
+        # --- Checkpoint Saving Logic ---
+        if self.n_calls % self.save_freq == 0:
+            # Package the curriculum state into a dictionary
+            extra_data = {
+                "difficulty_level": self.difficulty_level,
+                "reward_threshold": self.reward_threshold,
+                "reward_buffer": list(self.reward_buffer),
+                "is_initialized": self.is_initialized,
+            }
+
+            path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
+            # The extra_data is saved directly into the model's zip file
+            self.model.save(path, extra_data={"curriculum_state": extra_data})
+            if self.verbose > 1:
+                print(f"Saving model checkpoint to {path}")
+
         return True
-
-    def _on_save(self) -> None:
-        self.state_data = {
-            "difficulty_level": self.difficulty_level,
-            "reward_threshold": self.reward_threshold,
-            "reward_buffer": list(self.reward_buffer),
-            "is_initialized": self.is_initialized,
-        }
-        self.locals.update({"adaptive_curriculum_state": self.state_data})
-
-    def _on_load(self) -> None:
-        if "adaptive_curriculum_state" in self.locals:
-            self.state_data = self.locals["adaptive_curriculum_state"]
-            self.difficulty_level = self.state_data["difficulty_level"]
-            self.reward_threshold = self.state_data["reward_threshold"]
-            self.reward_buffer = deque(self.state_data["reward_buffer"], maxlen=100)
-            self.is_initialized = self.state_data["is_initialized"]
 
 
 class WandbLoggingCallback(BaseCallback):

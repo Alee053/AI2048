@@ -4,15 +4,15 @@
 
         self.RUN_NAME = ("maskPPO_optuna2.0_best_rew_ACL_run_1")
 
-        self.CHECKPOINT_PATH = ""
-        self.LOAD_MODEL = False
+        self.CHECKPOINT_PATH = "models/maskPPO_optuna2.0_best_rew_ACL_run_1/rl_model_1000000_steps.zip"
+        self.LOAD_MODEL = True
 
         self.TOTAL_TIMESTEPS = 10_000_000
         self.POLICY_TYPE = "CnnPolicy"
 
         self.N_ENVS = 16
 
-        self.SAVE_INTERVAL = 1000000
+        self.SAVE_INTERVAL = 500000
 
         # Optuna hyperparameters
         self.CONFIG = {
