@@ -8,7 +8,7 @@ from .reward_function import calculate_reward
 
 
 class Game2048Env(Env):
-    def __init__(self, total_timesteps=100_000_000):
+    def __init__(self):
         super(Game2048Env, self).__init__()
         self.game = Fast2048()
         self.action_space = Discrete(4)
@@ -36,11 +36,11 @@ class Game2048Env(Env):
 
 
     def step(self, action):
-        merge_score, done, moved = self.game.move(action)
+        merge_score, done, moved,prev_board = self.game.move(action)
         state = board_to_tensor(self.game.board)
 
         # The reward is now calculated with the new, robust function
-        reward = calculate_reward(self.game.board, merge_score, moved)
+        reward = calculate_reward(self.game.board,prev_board, merge_score, moved)
 
         info = {}
         if done:
