@@ -4,16 +4,15 @@ from stable_baselines3.common.callbacks import BaseCallback
 from collections import deque
 
 class AdaptiveCurriculumCallback(BaseCallback):
-    """
-    A callback that adjusts the environment's difficulty based on the agent's performance.
-    """
     def __init__(self, verbose=0):
         super(AdaptiveCurriculumCallback, self).__init__(verbose)
         self.difficulty_level = 0
         self.max_difficulty = 100
         self.reward_buffer = deque(maxlen=100) # Using a 100-episode window
-        self.reward_threshold = 9000           # Starting threshold (TUNE THIS from your W&B logs)
-        self.threshold_increment = 3000        # Increment value (TUNE THIS)
+        self.reward_threshold = 1600           # Starting threshold (TUNE THIS from your W&B logs)
+        self.threshold_increment = 500        # Increment value (TUNE THIS)
+
+        self.is_initialized=False
 
     def _update_env_difficulty(self):
         progress = self.difficulty_level / self.max_difficulty
@@ -27,11 +26,12 @@ class AdaptiveCurriculumCallback(BaseCallback):
             "Curriculum/Current_Reward_Threshold": self.reward_threshold
         })
 
-    def _on_training_start(self) -> None:
-        # Set initial difficulty on all environments
-        self._update_env_difficulty()
 
     def _on_step(self) -> bool:
+        if not self.is_initialized:
+            self._update_env_difficulty()
+            self.is_initialized = True
+
         for i, done in enumerate(self.locals['dones']):
             if done:
                 info = self.locals['infos'][i]
@@ -49,11 +49,25 @@ class AdaptiveCurriculumCallback(BaseCallback):
                         self.reward_buffer.clear()  # Clear buffer to start fresh
         return True
 
+    def _on_save(self) -> None:
+        self.state_data = {
+            "difficulty_level": self.difficulty_level,
+            "reward_threshold": self.reward_threshold,
+            "reward_buffer": list(self.reward_buffer),
+            "is_initialized": self.is_initialized,
+        }
+        self.locals.update({"adaptive_curriculum_state": self.state_data})
+
+    def _on_load(self) -> None:
+        if "adaptive_curriculum_state" in self.locals:
+            self.state_data = self.locals["adaptive_curriculum_state"]
+            self.difficulty_level = self.state_data["difficulty_level"]
+            self.reward_threshold = self.state_data["reward_threshold"]
+            self.reward_buffer = deque(self.state_data["reward_buffer"], maxlen=100)
+            self.is_initialized = self.state_data["is_initialized"]
+
 
 class WandbLoggingCallback(BaseCallback):
-    """
-    A callback that handles all logging to Weights & Biases.
-    """
     def __init__(self, verbose=0):
         super(WandbLoggingCallback, self).__init__(verbose)
         self.episode_count = 0

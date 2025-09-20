@@ -73,7 +73,7 @@ else:
     model.learn(
         total_timesteps=conf.TOTAL_TIMESTEPS,
         reset_num_timesteps=True,
-        callback=[checkpoint_callback, wandb_callback],
+        callback=[checkpoint_callback, wandb_callback,acl_callback],
         progress_bar=True
     )
 
