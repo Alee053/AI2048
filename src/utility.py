@@ -19,7 +19,7 @@ class AdaptiveCurriculumCheckpointCallback(BaseCallback):
         self.max_difficulty = 100
         self.reward_buffer = deque(maxlen=100)
         self.reward_threshold = 1600
-        self.threshold_increment_percent=1.05
+        self.threshold_increment_percent=1.04
         self.is_initialized = False
 
     def _init_callback(self) -> None:
