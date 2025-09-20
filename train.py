@@ -30,8 +30,6 @@ acl_checkpoint_callback= AdaptiveCurriculumCheckpointCallback(save_freq=max(conf
                                                               save_path=model_dir,
                                                               name_prefix="rl_model")
 
-callbacks = [wandb_callback, acl_checkpoint_callback]
-
 policy_kwargs = dict(
     features_extractor_class=CustomCNN,
     features_extractor_kwargs=dict(features_dim=256),
@@ -40,11 +38,17 @@ policy_kwargs = dict(
 should_load_model = conf.LOAD_MODEL and os.path.exists(conf.CHECKPOINT_PATH)
 
 if should_load_model:
+
     print(f"Loading model from: {conf.CHECKPOINT_PATH}")
     model = MaskablePPO.load(conf.CHECKPOINT_PATH, env=vec_env, verbose=1)
 
-    if hasattr(model, 'extra_data') and "curriculum_state" in model.extra_data:
-        state_data = model.extra_data["curriculum_state"]
+    current_steps = model.num_timesteps
+    remaining_steps = conf.TOTAL_TIMESTEPS - current_steps
+
+    # --- THE FIX: Look for the attribute directly on the loaded model ---
+    if hasattr(model, 'curriculum_state'):
+        state_data = model.curriculum_state
+        # Restore the state of our new callback instance
         acl_checkpoint_callback.difficulty_level = state_data["difficulty_level"]
         acl_checkpoint_callback.reward_threshold = state_data["reward_threshold"]
         acl_checkpoint_callback.reward_buffer = deque(state_data["reward_buffer"], maxlen=100)
@@ -53,18 +57,10 @@ if should_load_model:
     else:
         print("WARNING: Could not find curriculum state in the loaded model. Starting curriculum from scratch.")
 
-    print("Starting a new training run.")
-    model = MaskablePPO(
-        conf.POLICY_TYPE,
-        vec_env,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-        **conf.CONFIG
-    )
     model.learn(
-        total_timesteps=conf.TOTAL_TIMESTEPS,
-        reset_num_timesteps=True,
-        callback=callbacks,
+        total_timesteps=remaining_steps,
+        reset_num_timesteps=False,
+        callback=[wandb_callback, acl_checkpoint_callback],
         progress_bar=True
     )
 
@@ -83,7 +79,7 @@ else:
     model.learn(
         total_timesteps=conf.TOTAL_TIMESTEPS,
         reset_num_timesteps=True,
-        callback=callbacks,
+        callback=[wandb_callback, acl_checkpoint_callback],
         progress_bar=True
     )
 

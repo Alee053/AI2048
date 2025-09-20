@@ -1,5 +1,6 @@
 ﻿import numpy as np
 import wandb
+from stable_baselines3.common import base_class
 from stable_baselines3.common.callbacks import BaseCallback
 from collections import deque
 import os
@@ -24,6 +25,13 @@ class AdaptiveCurriculumCheckpointCallback(BaseCallback):
     def _init_callback(self) -> None:
         if self.save_path is not None:
             os.makedirs(self.save_path, exist_ok=True)
+
+    def init_callback(self, model: "base_class.BaseAlgorithm") -> None:
+        super().init_callback(model)
+        if self.is_initialized:
+            if self.verbose > 0:
+                print("Resumed training detected. Syncing curriculum state with environment.")
+            self._update_env_difficulty()
 
     def _update_env_difficulty(self):
         progress = self.difficulty_level / self.max_difficulty
@@ -61,16 +69,22 @@ class AdaptiveCurriculumCheckpointCallback(BaseCallback):
         # --- Checkpoint Saving Logic ---
         if self.n_calls % self.save_freq == 0:
             # Package the curriculum state into a dictionary
-            extra_data = {
+            state_data = {
                 "difficulty_level": self.difficulty_level,
                 "reward_threshold": self.reward_threshold,
                 "reward_buffer": list(self.reward_buffer),
                 "is_initialized": self.is_initialized,
             }
 
+            # THE FIX: Add the state dictionary as a temporary attribute to the model
+            self.model.curriculum_state = state_data
+
             path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
-            # The extra_data is saved directly into the model's zip file
-            self.model.save(path, extra_data={"curriculum_state": extra_data})
+            self.model.save(path)
+
+            # Optional but good practice: remove the temporary attribute after saving
+            del self.model.curriculum_state
+
             if self.verbose > 1:
                 print(f"Saving model checkpoint to {path}")
 
