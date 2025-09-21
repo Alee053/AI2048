@@ -47,10 +47,12 @@ if should_load_model:
     # --- THE FIX: Look for the attribute directly on the loaded model ---
     if hasattr(model, 'curriculum_state'):
         state_data = model.curriculum_state
-        # Restore the state of our new callback instance
+        # Restore the state of our callback instance
+        acl_checkpoint_callback.state = state_data["state"]  # Restore the state
         acl_checkpoint_callback.difficulty_level = state_data["difficulty_level"]
         acl_checkpoint_callback.reward_threshold = state_data["reward_threshold"]
-        acl_checkpoint_callback.reward_buffer = deque(state_data["reward_buffer"], maxlen=100)
+        acl_checkpoint_callback.reward_buffer = deque(state_data["reward_buffer"],
+                                                      maxlen=acl_checkpoint_callback.reward_buffer.maxlen)
         acl_checkpoint_callback.is_initialized = state_data["is_initialized"]
         print("Resumed curriculum state successfully.")
     else:

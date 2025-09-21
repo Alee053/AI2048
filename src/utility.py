@@ -5,20 +5,24 @@ from collections import deque
 import os
 
 class AdaptiveCurriculumCheckpointCallback(BaseCallback):
-    def __init__(self, save_freq: int, save_path: str, name_prefix: str = "rl_model", verbose: int = 0):
+    def __init__(self, save_freq: int, save_path: str,
+                 reward_buffer_size: int = 100,
+                 threshold_increment_percent: float = 1.05,
+                 name_prefix: str = "rl_model", verbose: int = 0):
         super(AdaptiveCurriculumCheckpointCallback, self).__init__(verbose)
-
-        # --- Checkpoint Parameters ---
         self.save_freq = save_freq
         self.save_path = save_path
         self.name_prefix = name_prefix
 
+        self.state = "CALIBRATING"
+        self.initial_challenge_ratio = 1.10
+
         # --- Curriculum State ---
         self.difficulty_level = 0
         self.max_difficulty = 100
-        self.reward_buffer = deque(maxlen=100)
-        self.reward_threshold = 1600
-        self.threshold_increment_percent=1.05
+        self.reward_buffer = deque(maxlen=reward_buffer_size)
+        self.reward_threshold = float('inf')
+        self.threshold_increment_percent = threshold_increment_percent
         self.is_initialized = False
 
     def _init_callback(self) -> None:
@@ -32,50 +36,70 @@ class AdaptiveCurriculumCheckpointCallback(BaseCallback):
                 print("Resumed training detected. Syncing curriculum state with environment.")
             self._update_env_difficulty()
 
-    def _update_env_difficulty(self):
+    def _update_env_difficulty(self, is_level_up: bool):
         progress = self.difficulty_level / self.max_difficulty
         p_helpful = max(0.0, 1.0 - progress)
         prob_4 = min(0.1, progress * 0.1)
         self.training_env.env_method('set_difficulty', p_helpful, prob_4)
-        print(f"\nLEVEL UP! New Difficulty: {self.difficulty_level}/{self.max_difficulty}. Threshold now: {self.reward_threshold}")
-        # Log the new state, you can also do this in the logging callback
+
+        if is_level_up and self.verbose > 0:
+            print(
+                f"\nLEVEL UP! New Difficulty: {self.difficulty_level}/{self.max_difficulty}. Threshold now: {self.reward_threshold:.0f}")
+
         wandb.log({
             "Curriculum/Difficulty_Level": self.difficulty_level,
             "Curriculum/Current_Reward_Threshold": self.reward_threshold
         })
 
+    def _level_up(self, increment_threshold: bool):
+        if self.difficulty_level < self.max_difficulty:
+            self.difficulty_level += 1
+            if increment_threshold:
+                self.reward_threshold *= self.threshold_increment_percent
+            self._update_env_difficulty(is_level_up=True)
+            self.reward_buffer.clear()
+
     def _on_step(self) -> bool:
-        # Initialize curriculum on the first step
         if not self.is_initialized:
-            self._update_env_difficulty()
+            self._update_env_difficulty(is_level_up=False)  # Initial setup call
             self.is_initialized = True
 
-        # --- Adaptive Curriculum Logic ---
         for i, done in enumerate(self.locals['dones']):
-            if done:
-                info = self.locals['infos'][i]
-                if 'episode' in info:
-                    self.reward_buffer.append(info['episode']['r'])
+            if done and 'episode' in self.locals['infos'][i]:
+                self.reward_buffer.append(self.locals['infos'][i]['episode']['r'])
 
-                if len(self.reward_buffer) == self.reward_buffer.maxlen:
-                    mean_reward = np.mean(self.reward_buffer)
-                    if mean_reward > self.reward_threshold and self.difficulty_level < self.max_difficulty:
-                        self.difficulty_level += 1
-                        self.reward_threshold *= self.threshold_increment_percent
-                        self._update_env_difficulty()
-                        self.reward_buffer.clear()
+                # --- State Machine Logic ---
+                if self.state == "CALIBRATING":
+                    # Wait until the buffer is full to get a stable baseline
+                    if len(self.reward_buffer) == self.reward_buffer.maxlen:
+                        baseline_reward = np.mean(self.reward_buffer)
+                        # Set the first real threshold based on this baseline
+                        self.reward_threshold = baseline_reward * self.initial_challenge_ratio
+                        self.state = "ADAPTING"
+
+                        if self.verbose > 0:
+                            print(f"\n--- CALIBRATION COMPLETE ---")
+                            print(f"Baseline reward at Level 0: {baseline_reward:.0f}")
+
+                        # Immediately level up to start the first real challenge
+                        self._level_up(increment_threshold=False)
+
+                elif self.state == "ADAPTING":
+                    if len(self.reward_buffer) == self.reward_buffer.maxlen:
+                        mean_reward = np.mean(self.reward_buffer)
+                        if mean_reward > self.reward_threshold:
+                            self._level_up(increment_threshold=True)
 
         # --- Checkpoint Saving Logic ---
         if self.n_calls % self.save_freq == 0:
             # Package the curriculum state into a dictionary
             state_data = {
+                "state": self.state,  # Save the current state
                 "difficulty_level": self.difficulty_level,
                 "reward_threshold": self.reward_threshold,
                 "reward_buffer": list(self.reward_buffer),
                 "is_initialized": self.is_initialized,
             }
-
-            # THE FIX: Add the state dictionary as a temporary attribute to the model
             self.model.curriculum_state = state_data
 
             path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
@@ -118,6 +142,8 @@ class WandbLoggingCallback(BaseCallback):
                 if self.episode_count % self.log_chart_freq == 0 and 'terminal_observation' in info:
                     final_obs = info['terminal_observation'].squeeze()
 
+                    final_obs = final_obs[np.isfinite(final_obs)]
+
                     tiles_with_values = final_obs[final_obs > 0]
 
                     if tiles_with_values.size > 0:
@@ -130,6 +156,7 @@ class WandbLoggingCallback(BaseCallback):
                         if self.verbose > 0:
                             print(
                                 f"\n[WandbLoggingCallback] Skipped bar chart logging at step {self.num_timesteps}: No non-zero tiles found in terminal observation.")
+                return True
 
         return True
 
