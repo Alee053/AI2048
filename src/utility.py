@@ -5,24 +5,27 @@ from collections import deque
 import os
 
 class AdaptiveCurriculumCheckpointCallback(BaseCallback):
-    def __init__(self, save_freq: int, save_path: str,
-                 reward_buffer_size: int = 100,
-                 threshold_increment_percent: float = 1.05,
-                 name_prefix: str = "rl_model", verbose: int = 0):
+    def __init__(self, save_freq: int, save_path: str, name_prefix: str = "rl_model", verbose: int = 0):
         super(AdaptiveCurriculumCheckpointCallback, self).__init__(verbose)
         self.save_freq = save_freq
         self.save_path = save_path
         self.name_prefix = name_prefix
 
-        self.state = "CALIBRATING"
-        self.initial_challenge_ratio = 1.10
+        # --- NEW: State machine for your proposed curriculum ---
+        self.state = "LEARNING_STRATEGY"
 
-        # --- Curriculum State ---
+        # --- Phase 1: Learning Strategy Parameters ---
+        self.milestone_target_tile = 11
+        self.max_tile_buffer = deque(maxlen=100)
+
+        # --- Phase 2: Hardening Policy Parameters ---
+        self.difficulty_increase_interval = 500_000
+        self.last_hardening_check = 0
+        self.performance_floor_tile = self.milestone_target_tile
+
+        # --- General Curriculum State ---
         self.difficulty_level = 0
         self.max_difficulty = 100
-        self.reward_buffer = deque(maxlen=reward_buffer_size)
-        self.reward_threshold = float('inf')
-        self.threshold_increment_percent = threshold_increment_percent
         self.is_initialized = False
 
     def _init_callback(self) -> None:
@@ -36,80 +39,80 @@ class AdaptiveCurriculumCheckpointCallback(BaseCallback):
                 print("Resumed training detected. Syncing curriculum state with environment.")
             self._update_env_difficulty()
 
-    def _update_env_difficulty(self, is_level_up: bool):
+    def _update_env_difficulty(self):
         progress = self.difficulty_level / self.max_difficulty
         p_helpful = max(0.0, 1.0 - progress)
         prob_4 = min(0.1, progress * 0.1)
         self.training_env.env_method('set_difficulty', p_helpful, prob_4)
+        if self.verbose > 0:
+            print(f"\nDifficulty set to Level {self.difficulty_level}. p_helpful={p_helpful:.2f}, prob_4={prob_4:.3f}")
+        wandb.log({"Curriculum/Difficulty_Level": self.difficulty_level})
 
-        if is_level_up and self.verbose > 0:
-            print(
-                f"\nLEVEL UP! New Difficulty: {self.difficulty_level}/{self.max_difficulty}. Threshold now: {self.reward_threshold:.0f}")
-
-        wandb.log({
-            "Curriculum/Difficulty_Level": self.difficulty_level,
-            "Curriculum/Current_Reward_Threshold": self.reward_threshold
-        })
-
-    def _level_up(self, increment_threshold: bool):
+    def _level_up(self):
         if self.difficulty_level < self.max_difficulty:
             self.difficulty_level += 1
-            if increment_threshold:
-                self.reward_threshold *= self.threshold_increment_percent
-            self._update_env_difficulty(is_level_up=True)
-            self.reward_buffer.clear()
+            self._update_env_difficulty()
+
+    def _on_save(self) -> None:
+        """Called by the checkpointing logic to save the curriculum's state."""
+        state_data = {
+            "state": self.state,
+            "difficulty_level": self.difficulty_level,
+            "max_tile_buffer": list(self.max_tile_buffer),
+            "last_hardening_check": self.last_hardening_check,
+            "is_initialized": self.is_initialized,
+        }
+        self.model.curriculum_state = state_data
+
+        path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
+        self.model.save(path)
+        del self.model.curriculum_state
+        if self.verbose > 1:
+            print(f"Saving model checkpoint with curriculum state to {path}")
 
     def _on_step(self) -> bool:
         if not self.is_initialized:
-            self._update_env_difficulty(is_level_up=False)  # Initial setup call
+            self._update_env_difficulty()  # This sets the initial Level 0 difficulty
             self.is_initialized = True
 
         for i, done in enumerate(self.locals['dones']):
             if done and 'episode' in self.locals['infos'][i]:
-                self.reward_buffer.append(self.locals['infos'][i]['episode']['r'])
+                # Always fill the max tile buffer with the latest data
+                if 'max_tile' in self.locals['infos'][i]:
+                    self.max_tile_buffer.append(self.locals['infos'][i]['max_tile'])
 
                 # --- State Machine Logic ---
-                if self.state == "CALIBRATING":
-                    # Wait until the buffer is full to get a stable baseline
-                    if len(self.reward_buffer) == self.reward_buffer.maxlen:
-                        baseline_reward = np.mean(self.reward_buffer)
-                        # Set the first real threshold based on this baseline
-                        self.reward_threshold = baseline_reward * self.initial_challenge_ratio
-                        self.state = "ADAPTING"
+                if self.state == "LEARNING_STRATEGY":
+                    # In this phase, difficulty is LOCKED at Level 0
+                    if len(self.max_tile_buffer) == self.max_tile_buffer.maxlen:
+                        avg_max_tile = np.mean(self.max_tile_buffer)
+                        wandb.log({"Curriculum/Avg_Max_Tile_Exponent": avg_max_tile})
 
-                        if self.verbose > 0:
-                            print(f"\n--- CALIBRATION COMPLETE ---")
-                            print(f"Baseline reward at Level 0: {baseline_reward:.0f}")
+                        if avg_max_tile >= self.milestone_target_tile:
+                            self.state = "HARDENING_POLICY"
+                            if self.verbose > 0:
+                                print(f"\n--- STRATEGY MASTERED (Avg Max Tile >= 2048) ---")
+                                print(f"Beginning policy hardening phase.")
+                            self._level_up()  # Immediately level up to start the first real challenge
 
-                        # Immediately level up to start the first real challenge
-                        self._level_up(increment_threshold=False)
+                elif self.state == "HARDENING_POLICY":
+                    # In this phase, difficulty increases over time if performance holds
+                    if self.num_timesteps - self.last_hardening_check > self.difficulty_increase_interval:
+                        self.last_hardening_check = self.num_timesteps
+                        if len(self.max_tile_buffer) == self.max_tile_buffer.maxlen:
+                            avg_max_tile = np.mean(self.max_tile_buffer)
+                            wandb.log({"Curriculum/Avg_Max_Tile_Exponent": avg_max_tile})
 
-                elif self.state == "ADAPTING":
-                    if len(self.reward_buffer) == self.reward_buffer.maxlen:
-                        mean_reward = np.mean(self.reward_buffer)
-                        if mean_reward > self.reward_threshold:
-                            self._level_up(increment_threshold=True)
+                            if avg_max_tile >= self.performance_floor_tile:
+                                self._level_up()  # Performance is good, increase env difficulty
+                            else:
+                                if self.verbose > 0:
+                                    print(
+                                        f"\nPERFORMANCE DIP! Avg max tile {2 ** avg_max_tile:.0f} is below floor of 2048. Pausing difficulty increase.")
 
         # --- Checkpoint Saving Logic ---
         if self.n_calls % self.save_freq == 0:
-            # Package the curriculum state into a dictionary
-            state_data = {
-                "state": self.state,  # Save the current state
-                "difficulty_level": self.difficulty_level,
-                "reward_threshold": self.reward_threshold,
-                "reward_buffer": list(self.reward_buffer),
-                "is_initialized": self.is_initialized,
-            }
-            self.model.curriculum_state = state_data
-
-            path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
-            self.model.save(path)
-
-            # Optional but good practice: remove the temporary attribute after saving
-            del self.model.curriculum_state
-
-            if self.verbose > 1:
-                print(f"Saving model checkpoint to {path}")
+            self._on_save()  # Call the save method
 
         return True
 
@@ -142,8 +145,6 @@ class WandbLoggingCallback(BaseCallback):
                 if self.episode_count % self.log_chart_freq == 0 and 'terminal_observation' in info:
                     final_obs = info['terminal_observation'].squeeze()
 
-                    final_obs = final_obs[np.isfinite(final_obs)]
-
                     tiles_with_values = final_obs[final_obs > 0]
 
                     if tiles_with_values.size > 0:
@@ -156,7 +157,6 @@ class WandbLoggingCallback(BaseCallback):
                         if self.verbose > 0:
                             print(
                                 f"\n[WandbLoggingCallback] Skipped bar chart logging at step {self.num_timesteps}: No non-zero tiles found in terminal observation.")
-                return True
 
         return True
 

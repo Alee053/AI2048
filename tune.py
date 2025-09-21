@@ -2,7 +2,6 @@
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
-from src.utility import AdaptiveCurriculumCheckpointCallback
 import numpy as np
 
 from src.Game2048Env import Game2048Env
@@ -29,7 +28,7 @@ class TrialCallback(BaseCallback):
 
 
 def objective(trial: optuna.Trial) -> float:
-    ppo_hyperparams = {
+    hyperparams = {
         "n_steps": trial.suggest_categorical("n_steps", [512, 1024, 2048, 4096]),
         "gamma": trial.suggest_float("gamma", 0.95, 0.999, log=True),
         "ent_coef": trial.suggest_float("ent_coef", 1e-5, 0.05, log=True),
@@ -37,37 +36,27 @@ def objective(trial: optuna.Trial) -> float:
         "clip_range": trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3]),
     }
 
-    acl_hyperparams = {
-        "reward_buffer_size": trial.suggest_categorical("reward_buffer_size", [50, 100, 200]),
-        "threshold_increment_percent": trial.suggest_float("threshold_increment_percent", 1.02, 1.15),
-    }
-
+    policy_kwargs = dict(features_extractor_class=CustomCNN, features_extractor_kwargs=dict(features_dim=256))
     vec_env = make_vec_env(Game2048Env, n_envs=16)
 
-    pruning_callback = TrialCallback(trial, report_freq=100000)
-    acl_callback = AdaptiveCurriculumCheckpointCallback(
-        save_freq=999_999_999,
-        save_path="tuning_models/",
-        **acl_hyperparams
-    )
-
-    policy_kwargs = dict(features_extractor_class=CustomCNN, features_extractor_kwargs=dict(features_dim=256))
     model = MaskablePPO(
         'CnnPolicy',
         vec_env,
         policy_kwargs=policy_kwargs,
-        **ppo_hyperparams,
+        **hyperparams,
         batch_size=512,
         n_epochs=4,
         verbose=0,
     )
 
+    callback = TrialCallback(trial, report_freq=100000)
+
     try:
-        model.learn(total_timesteps=5_000_000, callback=[acl_callback, pruning_callback])
+        model.learn(total_timesteps=2_000_000, callback=callback)
     except AssertionError:
         raise optuna.exceptions.TrialPruned()
 
-    if pruning_callback.is_pruned:
+    if callback.is_pruned:
         raise optuna.exceptions.TrialPruned()
 
     final_mean_reward = np.mean([ep_info["r"] for ep_info in model.ep_info_buffer if "r" in ep_info])
@@ -77,7 +66,7 @@ def objective(trial: optuna.Trial) -> float:
 if __name__ == '__main__':
     storage_name = "sqlite:///optuna_study.db"
 
-    study_name = "2048-maskppo-new_arch_best_rew_acl"
+    study_name = "2048-maskppo-new arch_rew-tuning"
 
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=500_000)
 
