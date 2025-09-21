@@ -36,11 +36,11 @@ class Game2048Env(Env):
 
 
     def step(self, action):
-        merge_score, done, moved,prev_board = self.game.move(action)
+        merge_score, done, moved = self.game.move(action)
         state = board_to_tensor(self.game.board)
 
         # The reward is now calculated with the new, robust function
-        reward = calculate_reward(self.game.board, prev_board, merge_score)
+        reward = calculate_reward(self.game.board, merge_score)
 
         info = {}
         if done:

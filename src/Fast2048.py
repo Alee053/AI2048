@@ -1,4 +1,5 @@
 ﻿import numpy as np
+from .reward_function import ROW_GRADIENT, COL_GRADIENT
 
 class Fast2048:
     move_row_LUT = []
@@ -69,7 +70,33 @@ class Fast2048:
         if empty_cells.size == 0:
             return
 
-        chosen_position = empty_cells[np.random.choice(len(empty_cells))]
+        # --- OPTIMIZED CURRICULUM SPAWN LOGIC ---
+
+        # 1. Determine the gradient to use (no change here)
+        log_board = np.log2(self.board, out=np.zeros_like(self.board, dtype=np.float32), where=(self.board != 0))
+        s1 = np.sum(log_board * ROW_GRADIENT)
+        s2 = np.sum(log_board * COL_GRADIENT)
+        gradient_to_use = ROW_GRADIENT if s1 >= s2 else COL_GRADIENT
+
+        # 2. Get gradient values and sort using pure NumPy (this is the optimization)
+        # Use fancy indexing to get all gradient values for empty cells in one go
+        gradient_values = gradient_to_use[empty_cells[:, 0], empty_cells[:, 1]]
+
+        # np.argsort() gives the indices that would sort the array. It's much faster.
+        sorted_indices = np.argsort(gradient_values)
+
+        # Apply the sorted indices to our original empty_cells array
+        sorted_cells = empty_cells[sorted_indices]
+
+        # 3. Determine the size of the candidate pool (no change here)
+        num_candidates = int(np.ceil(len(sorted_cells) * (1.0 - self.p_helpful)))
+        num_candidates = max(1, num_candidates)
+
+        # 4. Select the pool of best candidates (no change here)
+        candidate_pool = sorted_cells[:num_candidates]
+
+        # 5. Choose a random position from the pool (no change here)
+        chosen_position = candidate_pool[np.random.choice(len(candidate_pool))]
 
         self.board[chosen_position[0], chosen_position[1]] = num
 
@@ -119,7 +146,7 @@ class Fast2048:
         self.update_values()
         self.done=self.check_done()
 
-        return merge_score, self.done, moved, prev
+        return merge_score, self.done, moved
 
 def row_to_number(row):
     return row[0] | row[1]<<4 | row[2]<<8 | row[3]<<12
