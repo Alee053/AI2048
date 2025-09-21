@@ -1,21 +1,27 @@
 ﻿import numpy as np
-ROW_GRADIENT = np.arange(16, dtype=np.float32).reshape(4, 4)
-COL_GRADIENT = ROW_GRADIENT.T
-def calculate_reward(board, merge_score):
-    merge_reward = np.log2(merge_score) if merge_score > 0 else 0.0
+from numba import njit
 
-    free_cells = np.sum(board == 0)
-    free_cells_reward = free_cells
+@njit
+def _calculate_potential(board: np.ndarray) -> float:
+    factor = 64.0
 
-    log_board = np.log2(board, out=np.zeros_like(board, dtype=np.float32), where=(board != 0))
+    top_left_exponent = board[0, 0]
 
-    s1 = np.sum(log_board * ROW_GRADIENT)
-    s2 = np.sum(log_board * COL_GRADIENT)
+    if top_left_exponent == 0:
+        return 0.0
 
-    gradient_reward = np.maximum(s1, s2)
+    top_left_value = 2.0 ** top_left_exponent
 
-    reward = merge_reward * 1 + \
-              free_cells_reward * 0.1 + \
-              gradient_reward * 1e-4
+    return factor * top_left_value
 
-    return reward
+
+@njit
+def calculate_reward(board: np.ndarray, prev_board: np.ndarray, merge_score: int) -> float:
+
+    merge_reward = float(merge_score)
+
+    potential_new = _calculate_potential(board)
+    potential_old = _calculate_potential(prev_board)
+    potential_reward = potential_new - potential_old
+
+    return merge_reward + potential_reward

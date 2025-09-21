@@ -66,7 +66,7 @@ def objective(trial: optuna.Trial) -> float:
 if __name__ == '__main__':
     storage_name = "sqlite:///optuna_study.db"
 
-    study_name = "2048-ppo-hynsnake-tuning"
+    study_name = "2048-maskppo-new arch_rew-tuning"
 
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=500_000)
 
