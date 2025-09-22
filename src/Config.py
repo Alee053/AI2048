@@ -12,7 +12,7 @@
 
         self.N_ENVS = 16
 
-        self.SAVE_INTERVAL = 500000
+        self.SAVE_INTERVAL = 1000000
 
         self.INITIAL_LR = 0.0007726875334549466
 
