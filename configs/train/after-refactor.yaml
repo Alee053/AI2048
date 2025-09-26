@@ -1,8 +1,6 @@
-﻿# Configuration for the final, long training run.
-
 # --- Run & Path Settings ---
 project_name: "2048-ppo-final"
-run_name: "NewArch_SnakeReward_300M_Run"
+run_name: "refactor-test"
 output_dir: "data/" # Base directory for models and studies
 
 # --- Resume Settings ---
@@ -10,9 +8,9 @@ load_model: false
 checkpoint_path: null # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model_100000000_steps.zip"
 
 # --- Training Parameters ---
-total_timesteps: 300_000_000
+total_timesteps: 5_000_000
 n_envs: 16
-save_interval: 1_000_000
+save_interval: 500_000
 
 # --- PPO Hyperparameters---
 ppo_params:

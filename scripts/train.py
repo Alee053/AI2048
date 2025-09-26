@@ -43,14 +43,14 @@ def train(config: dict):
     # --- Initialize Callbacks ---
     wandb_callback = WandbLoggingCallback()
     checkpoint_callback = CheckpointCallback(
-        save_freq=max(config['training']['save_interval'] // config['training']['n_envs'], 1),
+        save_freq=max(config['save_interval'] // config['n_envs'], 1),
         save_path=model_dir,
         name_prefix="rl_model"
     )
     callbacks = [wandb_callback, checkpoint_callback]
 
     # --- Initialize Environment and Model ---
-    vec_env = make_vec_env(Game2048Env, n_envs=config['training']['n_envs'])
+    vec_env = make_vec_env(Game2048Env, n_envs=config['n_envs'])
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=config['features_dim']),
@@ -68,7 +68,7 @@ def train(config: dict):
 
         # Calculate remaining steps
         current_steps = model.num_timesteps
-        total_steps = config['training']['total_timesteps']
+        total_steps = config['total_timesteps']
         remaining_steps = total_steps - current_steps
 
         # --- Learning Rate Schedule for Resumed Run ---
@@ -106,7 +106,7 @@ def train(config: dict):
             verbose=1, **ppo_params
         )
         model.learn(
-            total_timesteps=config['training']['total_timesteps'],
+            total_timesteps=config['total_timesteps'],
             reset_num_timesteps=True,
             callback=callbacks,
             progress_bar=True
