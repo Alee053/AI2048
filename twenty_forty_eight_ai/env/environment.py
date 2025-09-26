@@ -23,7 +23,7 @@ class Game2048Env(Env):
         self.action_space = Discrete(4)
 
         # Observation space: 1x4x4 grid with log2 values of the tiles.
-        self.observation_space = Box(low=0, high=17, shape=(1, 4, 4), dtype=np.int64)
+        self.observation_space = Box(low=0, high=16, shape=(1, 4, 4), dtype=np.int64)
 
 
     def reset(self, *, seed: int = None, options: Dict[str, Any] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
