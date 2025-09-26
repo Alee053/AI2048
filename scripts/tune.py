@@ -1,11 +1,12 @@
 ﻿import optuna
+import yaml
+import numpy as np
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
-import numpy as np
 
-from src.Game2048Env import Game2048Env
-from src.PPO import CustomCNN
+from twenty_forty_eight_ai.env.environment import Game2048Env
+from twenty_forty_eight_ai.agent.architecture import CustomCNN
 
 class TrialCallback(BaseCallback):
     def __init__(self, trial: optuna.Trial, report_freq: int = 100000, verbose=0):
@@ -26,37 +27,43 @@ class TrialCallback(BaseCallback):
                     return False # Stop training
         return True
 
+def _get_trial_suggester(trial: optuna.Trial, param_config: dict):
+    """Helper function to parse the search space from the YAML config."""
+    if param_config['type'] == 'categorical':
+        return trial.suggest_categorical(param_config['name'], param_config['choices'])
+    elif param_config['type'] == 'float':
+        return trial.suggest_float(
+            param_config['name'], param_config['low'], param_config['high'], log=param_config.get('log', False)
+        )
+    raise ValueError(f"Unsupported parameter type: {param_config['type']}")
 
-def objective(trial: optuna.Trial) -> float:
-    hyperparams = {
-        "n_steps": trial.suggest_categorical("n_steps", [512, 1024, 2048, 4096]),
-        "gamma": trial.suggest_float("gamma", 0.95, 0.999, log=True),
-        "ent_coef": trial.suggest_float("ent_coef", 1e-5, 0.05, log=True),
-        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
-        "clip_range": trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3]),
-    }
 
+def objective(trial: optuna.Trial, config: dict) -> float:
+    # --- Suggest Hyperparameters from YAML Config ---
+    ppo_params = {}
+    for name, param_conf in config['ppo_search_space'].items():
+        ppo_params[name] = _get_trial_suggester(trial, {'name': name, **param_conf})
+
+    # --- Setup Environment and Callbacks ---
+    trial_config = config['trial']
+    env_kwargs = {'total_timesteps': trial_config['total_timesteps']}
+    vec_env = make_vec_env(Game2048Env, n_envs=trial_config['n_envs'], env_kwargs=env_kwargs)
+
+    pruning_callback = TrialCallback(trial, report_freq=trial_config['report_freq'])
+
+    # --- Create and Train Model ---
     policy_kwargs = dict(features_extractor_class=CustomCNN, features_extractor_kwargs=dict(features_dim=256))
-    vec_env = make_vec_env(Game2048Env, n_envs=16)
-
     model = MaskablePPO(
-        'CnnPolicy',
-        vec_env,
-        policy_kwargs=policy_kwargs,
-        **hyperparams,
-        batch_size=512,
-        n_epochs=4,
-        verbose=0,
+        'CnnPolicy', vec_env, policy_kwargs=policy_kwargs,
+        **ppo_params, batch_size=512, n_epochs=4, verbose=0
     )
 
-    callback = TrialCallback(trial, report_freq=100000)
-
     try:
-        model.learn(total_timesteps=2_000_000, callback=callback)
+        model.learn(total_timesteps=trial_config['total_timesteps'], callback=[pruning_callback])
     except AssertionError:
         raise optuna.exceptions.TrialPruned()
 
-    if callback.is_pruned:
+    if pruning_callback.is_pruned:
         raise optuna.exceptions.TrialPruned()
 
     final_mean_reward = np.mean([ep_info["r"] for ep_info in model.ep_info_buffer if "r" in ep_info])
@@ -64,24 +71,33 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == '__main__':
-    storage_name = "sqlite:///optuna_study.db"
+    with open("configs/tune_config.yaml", "r") as f:
+        config = yaml.safe_load(f)
 
-    study_name = "2048-maskppo-new arch_rew-tuning"
+    study_config = config['study']
+    pruner_config = config['pruner']
 
-    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=500_000)
+    storage = f"sqlite:///{study_config['db_path']}"
+    pruner = optuna.pruners.MedianPruner(
+        n_startup_trials=pruner_config['n_startup_trials'],
+        n_warmup_steps=pruner_config['n_warmup_steps']
+    )
 
     study = optuna.create_study(
-        storage=storage_name,
-        study_name=study_name,
-        load_if_exists=True,
-        direction="maximize",
-        pruner=pruner
+        storage=storage, study_name=study_config['study_name'],
+        load_if_exists=True, direction="maximize", pruner=pruner
     )
 
     try:
-        study.optimize(objective, n_trials=50, timeout=16 * 3600, show_progress_bar=True)
+        # Pass the config dictionary to the objective function
+        study.optimize(
+            lambda trial: objective(trial, config),
+            n_trials=study_config['n_trials'],
+            timeout=study_config['timeout_hours'] * 3600,
+            show_progress_bar=True
+        )
     except KeyboardInterrupt:
-        print("Study interrupted. Progress has been saved to the database.")
+        print("\n--- OPTUNA STUDY INTERRUPTED ---")
 
     print("\n--- OPTUNA STUDY COMPLETE ---")
     print(f"Study statistics: ")
