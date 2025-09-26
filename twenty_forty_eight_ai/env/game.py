@@ -1,17 +1,16 @@
 ﻿import numpy as np
 from numba import njit
 
-
-SPAWNER_ROW_GRADIENT = np.arange(16, dtype=np.float32).reshape(4, 4)
-SPAWNER_COL_GRADIENT = SPAWNER_ROW_GRADIENT.T
+# --- Constants for improved readability ---
+UP, RIGHT, DOWN, LEFT = 0, 1, 2, 3
 
 class Fast2048:
     """
         A highly optimized, Look-Up Table (LUT) based implementation of the 2048 game logic.
     """
-    move_row_LUT = []
-    move_reward_LUT = []
-    move_valid_LUT = []
+    move_row_LUT: list = []
+    move_reward_LUT: list = []
+    move_valid_LUT: list = []
 
     def __init__(self):
         """Initializes the game instance, creating the LUTs if they don't exist."""
@@ -19,13 +18,9 @@ class Fast2048:
             self.init_LUT()
 
         self.board = np.zeros((4, 4), dtype=np.int32)
-        self.max_tile = 0
-        self.score = 0
-        self.done = False
-
-        # Curriculum learning parameters
-        self.prob_4 = 0.1
-        self.p_helpful = 0.0
+        self.max_tile: int = 0
+        self.score: int = 0
+        self.done: bool = False
 
         self.reset()
 
@@ -45,7 +40,7 @@ class Fast2048:
 
     def reset(self):
         """Resets the game to a starting state with two random tiles."""
-        self.board = np.zeros((4, 4), dtype=np.int32)
+        self.board.fill(0)
         self.max_tile = 0
         self.score = 0
         self.done = False
@@ -59,44 +54,29 @@ class Fast2048:
 
     def is_move_valid(self, action):
         """Checks if a move is possible in the given direction."""
-        if action == 3:  # left
+        if action == LEFT:
             for i in range(4):
                 if self.move_valid_LUT[row_to_number(self.board[i])]: return True
-        elif action == 1:  # right
+        elif action == RIGHT:
             for i in range(4):
-                if self.move_valid_LUT[row_to_number(self.board[i][::-1])]: return True
-        elif action == 0:  # up
+                if self.move_valid_LUT[row_to_number(self.board[i, ::-1])]: return True
+        elif action == UP:
             for i in range(4):
                 if self.move_valid_LUT[row_to_number(self.board[:, i])]: return True
-        elif action == 2:  # down
+        elif action == DOWN:
             for i in range(4):
-                if self.move_valid_LUT[row_to_number(self.board[:, i][::-1])]: return True
+                if self.move_valid_LUT[row_to_number(self.board[::-1, i])]: return True
         return False
 
     def generate_random(self):
         """Generates a new tile on the board, potentially using the helpful spawner."""
-        num = 1 if np.random.random() > self.prob_4 else 2
+        num = 1 if np.random.random() < 0.9 else 2
         empty_cells = np.argwhere(self.board == 0)
 
         if empty_cells.size == 0:
             return
 
-        if self.p_helpful > 0:
-            log_board = np.log2(self.board, out=np.zeros_like(self.board, dtype=np.float32), where=(self.board != 0))
-            s1 = np.sum(log_board * SPAWNER_ROW_GRADIENT)
-            s2 = np.sum(log_board * SPAWNER_COL_GRADIENT)
-            gradient_to_use = SPAWNER_ROW_GRADIENT if s1 >= s2 else SPAWNER_COL_GRADIENT
-
-            gradient_values = gradient_to_use[empty_cells[:, 0], empty_cells[:, 1]]
-            sorted_indices = np.argsort(gradient_values)
-            sorted_cells = empty_cells[sorted_indices]
-
-            num_candidates = int(np.ceil(len(sorted_cells) * (1.0 - self.p_helpful)))
-            num_candidates = max(1, num_candidates)
-            candidate_pool = sorted_cells[:num_candidates]
-            chosen_position = candidate_pool[np.random.choice(len(candidate_pool))]
-        else:
-            chosen_position = empty_cells[np.random.choice(len(empty_cells))]
+        chosen_position = empty_cells[np.random.choice(len(empty_cells))]
 
         self.board[chosen_position[0], chosen_position[1]] = num
 
@@ -113,37 +93,37 @@ class Fast2048:
             Performs a move in a given direction and returns the results.
             Returns: (merge_score, is_done, was_moved)
         """
-        merge_score=0
-        prev=self.board.copy()
+        board_before_move = self.board.copy()
+        merge_score = 0
 
-        if direction==3: # left
+        if direction == LEFT:
             for i in range(4):
-                index= row_to_number(self.board[i])
-                merge_score+=self.move_reward_LUT[index]
+                index = row_to_number(self.board[i])
+                merge_score += self.move_reward_LUT[index]
                 self.board[i] = self.move_row_LUT[index]
-        elif direction == 1:  # right
+        elif direction == RIGHT:
             for i in range(4):
                 index = row_to_number(self.board[i, ::-1])
                 merge_score += self.move_reward_LUT[index]
                 self.board[i, ::-1] = self.move_row_LUT[index]
-        elif direction == 0:  # up
+        elif direction == UP:
             for i in range(4):
                 index = row_to_number(self.board[:, i])
                 merge_score += self.move_reward_LUT[index]
                 self.board[:, i] = self.move_row_LUT[index]
-        elif direction == 2:  # down
+        elif direction == DOWN:
             for i in range(4):
                 index = row_to_number(self.board[::-1, i])
                 merge_score += self.move_reward_LUT[index]
                 self.board[::-1, i] = self.move_row_LUT[index]
 
-        self.score+=merge_score
-        moved=not np.array_equal(prev, self.board)
+        self.score += merge_score
+        moved = not np.array_equal(board_before_move, self.board)
         if moved:
             self.generate_random()
 
         self.update_max_tile()
-        self.done=self.check_done()
+        self.done = self.check_done()
 
         return merge_score, self.done, moved
 
