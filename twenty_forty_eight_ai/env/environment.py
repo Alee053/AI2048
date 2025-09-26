@@ -1,46 +1,55 @@
 import numpy as np
 from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
+from typing import Tuple, Dict, Any
 
-from .Fast2048 import Fast2048
-from .utility import board_to_tensor
-from .reward_function import calculate_reward
+from .game import Fast2048
+from ..utils.tensor_utils import board_to_tensor
+from .reward import calculate_reward
 
 
 class Game2048Env(Env):
+    """
+    A custom Gymnasium environment for the 2048 game, designed to work
+    with Stable Baselines 3 and MaskablePPO. It wraps the optimized Fast2048 game engine.
+    """
+
     def __init__(self):
-        super(Game2048Env, self).__init__()
+        """Initializes the environment, action space, and observation space."""
+        super().__init__()
         self.game = Fast2048()
+
+        # Action space: 0: Up, 1: Right, 2: Down, 3: Left
         self.action_space = Discrete(4)
-        self.observation_space = Box(
-            low=0, high=16, shape=(1, 4, 4), dtype=np.float32)
 
-    def set_difficulty(self, p_helpful, prob_4):
-        if self.game is not None:
-            self.game.p_helpful = p_helpful
-            self.game.prob_4 = prob_4
+        # Observation space: 1x4x4 grid with log2 values of the tiles.
+        self.observation_space = Box(low=0, high=17, shape=(1, 4, 4), dtype=np.int64)
 
-    def reset(self, *, seed=None, options=None):
+
+    def reset(self, *, seed: int = None, options: Dict[str, Any] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Resets the environment to a starting state as per the Gymnasium API.
+
+        Returns:
+            A tuple containing the initial observation and an empty info dictionary.
+        """
         super().reset(seed=seed)
-
         self.game.reset()
-        state = board_to_tensor(self.game.board)
-        return state, {}
+        observation = board_to_tensor(self.game.board)
+        info = {}
+        return observation, info
 
-    def get_valid_actions_mask(self):
-        mask = [False] * 4
-        for action in range(4):
-            if self.game.is_move_valid(action):
-                mask[action] = True
-        return np.array(mask)
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        """
+        Executes one time step within the environment as per the Gymnasium API.
 
-
-    def step(self, action):
+        Returns:
+            A tuple of (observation, reward, terminated, truncated, info).
+        """
         merge_score, done, moved = self.game.move(action)
-        state = board_to_tensor(self.game.board)
+        observation = board_to_tensor(self.game.board)
 
-        # The reward is now calculated with the new, robust function
-        reward = calculate_reward(self.game.board, merge_score)
+        reward = calculate_reward(self.game.board, merge_score, moved)
 
         info = {}
         if done:
@@ -48,13 +57,16 @@ class Game2048Env(Env):
             info['score'] = self.game.score
 
         truncated = False
-        return state, reward, done, truncated, info
+        return observation, reward, done, truncated, info
 
-    def action_masks(self):
-        return self.get_valid_actions_mask()
+    def action_masks(self) -> np.ndarray:
+        """Generates a mask of valid actions for the current state for MaskablePPO."""
+        return np.array([self.game.is_move_valid(act) for act in range(self.action_space.n)], dtype=bool)
 
     def render(self, mode='human'):
+        """Rendering is handled by a separate visualizer."""
         pass
 
     def close(self):
+        """Called when the environment is closed."""
         pass
