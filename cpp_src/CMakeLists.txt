@@ -5,24 +5,16 @@ project(Fast2048Cpp)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 REQUIRED)
 
-pybind11_add_module(fast2048_cpp
+pybind11_add_module(searcher
         Fast2048.cpp
         bindings.cpp
         RandomUtil.cpp
         ExpectimaxSearcher.cpp
-        main.cpp
 )
 
-if(CMAKE_COMPILER_IS_GNUCXX)
-    target_link_libraries(fast2048_cpp PRIVATE -static-libgcc -static-libstdc++)
-endif()
+target_compile_features(searcher PRIVATE cxx_std_17)
 
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../twenty_forty_eight_ai/utils)
 
-# --- Configure the Build ---
-# (The rest of your file stays the same)
-target_compile_features(fast2048_cpp PRIVATE cxx_std_17)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../src)
-
-# (Your add_executable for the game_tester also stays the same)
 add_executable(game_tester main.cpp Fast2048.cpp RandomUtil.cpp)
 target_compile_features(game_tester PRIVATE cxx_std_17)

@@ -22,7 +22,7 @@ public:
 private:
     void init_LUT();
     void generate_random();
-    bool check_done() const;
+    bool is_playable() const;
     void update_values();
     int row_to_number(const std::array<int, 4>& row) const;
 

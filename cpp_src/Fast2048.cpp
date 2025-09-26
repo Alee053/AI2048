@@ -73,7 +73,7 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
 
     generate_random();
     update_values();
-    done = check_done();
+    done = !is_playable();
 
     return {merge_score, done, moved};
 }
@@ -118,14 +118,10 @@ std::array<std::array<int, 4>, 4> Fast2048::get_board() const {
 }
 
 void Fast2048::set_board(const std::array<std::array<int, 4>, 4> &new_board) {
-    board=std::array<std::array<int, 4>, 4>();
-    for (int i=0;i<4;i++) {
-        for (int j=0;j<4;j++) {
-            board[i][j] = new_board[i][j];
-        }
-    }
+    board = new_board;
+
     score = 0;
-    done = check_done();
+    done = !is_playable();
     update_values();
 }
 
@@ -199,7 +195,7 @@ void Fast2048::generate_random() {
     board[chosen_cell.first][chosen_cell.second] = new_tile_value;
 }
 
-bool Fast2048::check_done() const {
+bool Fast2048::is_playable() const {
     bool res=false;
     for (int i=0;i<4;i++) {
         res|=is_move_valid(i);

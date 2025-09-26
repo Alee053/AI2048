@@ -27,11 +27,12 @@ void ExpectimaxSearcher::gather_leaves(const Board& board, int depth, std::vecto
 
         if (empty_cells.empty()) continue;
 
-        const auto& cell = empty_cells[0];
-
-        Board next_board = post_move_board;
-        next_board[cell.first][cell.second] = 1;
-        gather_leaves(next_board, depth - 1, leaves_queue, visited);
+        for (const auto& cell : empty_cells) {
+            Board next_board = post_move_board;
+            // We only need to check one tile type (e.g., a '2') to gather the unique board states.
+            next_board[cell.first][cell.second] = 1;
+            gather_leaves(next_board, depth - 1, leaves_queue, visited);
+        }
     }
 }
 
@@ -47,7 +48,7 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
         Board next_board4 = board; next_board4[cell.first][cell.second] = 2;
         total_value += 0.1f * max_node_substitute(next_board4, depth - 1, eval_cache);
     }
-    return total_value / (empty_cells.size() * 2); // Correct averaging
+    return total_value / empty_cells.size();
 }
 
 float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, const std::map<Board, float>& eval_cache) {
