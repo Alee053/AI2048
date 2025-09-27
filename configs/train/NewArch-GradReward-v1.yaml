@@ -1,6 +1,6 @@
 # --- Run & Path Settings ---
-project_name: "2048-ppo-final"
-run_name: "optuna-test"
+project_name: "2048-ppo-training"
+run_name: "NewArch-GradReward-v1"
 output_dir: "data/" # Base directory for models and studies
 
 # --- Resume Settings ---

@@ -1,8 +1,8 @@
 # Configuration for an Optuna hyperparameter tuning study
 
 # --- Study Settings ---
-project_name: "2048-ppo-final-hyperparam-tuning"
-study_name: "refactor_test_study"
+project_name: "2048-ppo-tuning"
+study_name: "NewArch-GradReward-v1"
 db_path: "data/studies.db" # A single database file for all studies
 timeout_hours: 12
 
