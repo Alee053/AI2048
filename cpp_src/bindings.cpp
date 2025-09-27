@@ -6,7 +6,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(fast2048_cpp, m) {
+PYBIND11_MODULE(searcher, m) {
     m.doc() = "High-performance 2048 game logic and AI searcher in C++";
 
     py::class_<Fast2048>(m, "Fast2048")

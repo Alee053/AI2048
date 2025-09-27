@@ -2,8 +2,7 @@
 import pygame
 import numpy as np
 import torch
-from typing import List, Dict, Any, Tuple
-
+from typing import List
 from sb3_contrib import MaskablePPO
 from .searcher import ExpectimaxSearcher
 from ..utils.tensor_utils import board_to_tensor
