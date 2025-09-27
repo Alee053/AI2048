@@ -89,7 +89,7 @@ def train(config: dict):
             total_timesteps=remaining_steps,
             reset_num_timesteps=False,
             callback=callbacks,
-            progress_bar=True
+            progress_bar=False
         )
 
     else:
@@ -109,7 +109,7 @@ def train(config: dict):
             total_timesteps=config['total_timesteps'],
             reset_num_timesteps=True,
             callback=callbacks,
-            progress_bar=True
+            progress_bar=False
         )
 
     # --- Save Final Model ---

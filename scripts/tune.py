@@ -4,6 +4,7 @@ import numpy as np
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
+from optuna_integration import WeightsAndBiasesCallback
 
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
@@ -46,8 +47,7 @@ def objective(trial: optuna.Trial, config: dict) -> float:
 
     # --- Setup Environment and Callbacks ---
     trial_config = config['trial']
-    env_kwargs = {'total_timesteps': trial_config['total_timesteps']}
-    vec_env = make_vec_env(Game2048Env, n_envs=trial_config['n_envs'], env_kwargs=env_kwargs)
+    vec_env = make_vec_env(Game2048Env, n_envs=trial_config['n_envs'])
 
     pruning_callback = TrialCallback(trial, report_freq=trial_config['report_freq'])
 
@@ -74,17 +74,25 @@ if __name__ == '__main__':
     with open("configs/tune_config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
-    study_config = config['study']
     pruner_config = config['pruner']
 
-    storage = f"sqlite:///{study_config['db_path']}"
+    storage = f"sqlite:///{config['db_path']}"
     pruner = optuna.pruners.MedianPruner(
         n_startup_trials=pruner_config['n_startup_trials'],
         n_warmup_steps=pruner_config['n_warmup_steps']
     )
 
+    wandb_kwargs = {
+        "project": config['project_name'],
+        "group": config['study_name']
+    }
+    wandb_callback = WeightsAndBiasesCallback(
+        metric_name="final_mean_reward",
+        wandb_kwargs=wandb_kwargs
+    )
+
     study = optuna.create_study(
-        storage=storage, study_name=study_config['study_name'],
+        storage=storage, study_name=config['study_name'],
         load_if_exists=True, direction="maximize", pruner=pruner
     )
 
@@ -92,9 +100,8 @@ if __name__ == '__main__':
         # Pass the config dictionary to the objective function
         study.optimize(
             lambda trial: objective(trial, config),
-            n_trials=study_config['n_trials'],
-            timeout=study_config['timeout_hours'] * 3600,
-            show_progress_bar=True
+            timeout=config['timeout_hours'] * 3600,
+            show_progress_bar=False
         )
     except KeyboardInterrupt:
         print("\n--- OPTUNA STUDY INTERRUPTED ---")
