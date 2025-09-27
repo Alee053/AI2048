@@ -175,4 +175,3 @@ class Visualizer:
             self.clock.tick(10)
 
         pygame.quit()
-

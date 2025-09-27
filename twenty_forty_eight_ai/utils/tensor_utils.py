@@ -1,20 +1,31 @@
 ﻿import numpy as np
 from numba import njit
 
+
 @njit
 def _njit_log2_where_zero(board: np.ndarray) -> np.ndarray:
     """
-    A Numba-compatible version of np.log2(board, where=board!=0).
+    A Numba-compatible and batch-aware version of np.log2(board, where=board!=0).
     It calculates the log2 for non-zero elements and leaves zero for zero elements.
     """
     result = np.zeros_like(board, dtype=np.float32)
-    # This loop is compiled to fast machine code by Numba
-    for i in range(board.shape[0]):
-        for j in range(board.shape[1]):
-            val = board[i, j]
-            if val != 0:
-                result[i, j] = np.log2(val)
+
+    if board.ndim == 2:  # Case for a single (4, 4) board
+        for r in range(board.shape[0]):
+            for c in range(board.shape[1]):
+                val = board[r, c]
+                if val != 0:
+                    result[r, c] = np.log2(val)
+    elif board.ndim == 3:  # Case for a batch of (N, 4, 4) boards
+        for i in range(board.shape[0]):
+            for r in range(board.shape[1]):
+                for c in range(board.shape[2]):
+                    val = board[i, r, c]
+                    if val != 0:
+                        result[i, r, c] = np.log2(val)
+
     return result
+
 
 def board_to_tensor(board: np.ndarray) -> np.ndarray:
     """
