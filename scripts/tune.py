@@ -101,7 +101,8 @@ if __name__ == '__main__':
         study.optimize(
             lambda trial: objective(trial, config),
             timeout=config['timeout_hours'] * 3600,
-            show_progress_bar=False
+            show_progress_bar=False,
+            callbacks=[wandb_callback]
         )
     except KeyboardInterrupt:
         print("\n--- OPTUNA STUDY INTERRUPTED ---")
