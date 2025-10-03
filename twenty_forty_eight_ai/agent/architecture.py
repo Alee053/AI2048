@@ -5,11 +5,25 @@ from torch import nn
 from typing import Tuple
 
 class DepthwiseSeparableConv(nn.Module):
-    """
-    A module for a single depthwise separable convolution layer.
-    It's more parameter-efficient than a standard convolution.
+    """A module for a single depthwise separable convolution layer.
+
+    This type of convolution is more parameter-efficient than a standard
+    convolution by splitting the operation into a depthwise convolution
+    (which acts on each input channel separately) and a pointwise convolution
+    (a 1x1 convolution that combines the outputs).
+
+    Attributes:
+        depthwise (nn.Conv2d): The depthwise convolution layer.
+        pointwise (nn.Conv2d): The pointwise convolution layer.
     """
     def __init__(self, in_channels: int, out_channels: int, kernel_size: Tuple[int, int]):
+        """Initializes the DepthwiseSeparableConv module.
+
+        Args:
+            in_channels (int): The number of channels in the input image.
+            out_channels (int): The number of channels produced by the convolution.
+            kernel_size (Tuple[int, int]): The size of the convolving kernel.
+        """
         super().__init__()
         self.depthwise = nn.Conv2d(
             in_channels,
@@ -24,20 +38,45 @@ class DepthwiseSeparableConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Defines the forward pass of the module.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The output tensor after applying depthwise and
+            pointwise convolutions.
+        """
         return self.pointwise(self.depthwise(x))
 
 
 class CustomCNN(BaseFeaturesExtractor):
-    """
-    A "2048-Aware" CNN.
+    """A custom CNN feature extractor for the 2048 game.
 
-    This architecture uses three key concepts:
-    1.  An Embedding layer to create a rich vector representation for each tile.
+    This architecture is designed to be "2048-Aware" by using three key concepts:
+    1.  An Embedding layer to create a rich vector representation for each tile value.
     2.  Depthwise Separable Convolutions for efficient feature extraction.
-    3.  Multiple pathways to analyze rows, columns, and local grid patterns simultaneously.
+    3.  Multiple parallel pathways to analyze rows, columns, and local 2x2 grid
+        patterns simultaneously.
+
+    The features from these three pathways are then concatenated and passed through
+    a final linear layer to produce the ultimate feature representation.
+
+    Attributes:
+        embedding (nn.Embedding): Layer to embed tile values.
+        row_pathway (nn.Sequential): Pathway to extract features from rows.
+        col_pathway (nn.Sequential): Pathway to extract features from columns.
+        grid_pathway (nn.Sequential): Pathway to extract features from 2x2 grids.
+        linear (nn.Sequential): Final linear layer to combine pathway features.
     """
 
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
+        """Initializes the CustomCNN feature extractor.
+
+        Args:
+            observation_space (gym.spaces.Box): The observation space of the environment.
+            features_dim (int): The number of features to extract.
+        """
         super().__init__(observation_space, features_dim)
 
         embedding_dim = 128
@@ -78,7 +117,16 @@ class CustomCNN(BaseFeaturesExtractor):
         )
 
     def _embed_observations(self, observations: torch.Tensor) -> torch.Tensor:
-        """Helper function to perform the embedding step."""
+        """Helper function to perform the embedding and reshaping step.
+
+        Args:
+            observations (torch.Tensor): The input observations from the
+                environment, of shape (N, 1, 4, 4).
+
+        Returns:
+            torch.Tensor: The embedded and reshaped tensor, ready for the
+            convolutional pathways, of shape (N, embedding_dim, 4, 4).
+        """
         # Input observations are (N, 1, 4, 4) with integer log2 values.
         indices = observations.long()
         # Reshape to (N, 16) to pass to the embedding layer
@@ -87,7 +135,17 @@ class CustomCNN(BaseFeaturesExtractor):
         return embedded.permute(0, 2, 1).reshape(-1, self.embedding.embedding_dim, 4, 4)
 
     def _get_combined_features_size(self, sample_obs: torch.Tensor) -> int:
-        """Performs a dummy forward pass to calculate the flattened feature size."""
+        """Performs a dummy forward pass to calculate the flattened feature size.
+
+        This is necessary to determine the input size of the final linear layer
+        dynamically based on the output of the convolutional pathways.
+
+        Args:
+            sample_obs (torch.Tensor): A sample observation tensor.
+
+        Returns:
+            int: The total number of flattened features from all pathways.
+        """
         embedded_obs = self._embed_observations(sample_obs)
         n_flatten_row = self.row_pathway(embedded_obs).shape[1]
         n_flatten_col = self.col_pathway(embedded_obs).shape[1]
@@ -95,7 +153,15 @@ class CustomCNN(BaseFeaturesExtractor):
         return n_flatten_row + n_flatten_col + n_flatten_grid
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        """The forward pass of the network."""
+        """Defines the forward pass of the feature extractor.
+
+        Args:
+            observations (torch.Tensor): The input observations from the
+                environment.
+
+        Returns:
+            torch.Tensor: The extracted features tensor.
+        """
         # Step 1: Convert tile indices to rich vectors
         embedded = self._embed_observations(observations)
 

@@ -27,8 +27,23 @@ from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
 
 
 def train(config: dict):
-    """
-    Initializes and runs the training loop based on the provided configuration.
+    """Initializes and runs the training loop based on the provided configuration.
+
+    This function orchestrates the entire training process. It sets up Weights
+    & Biases for logging, creates directories for saving models, and initializes
+    the necessary callbacks for checkpointing and logging.
+
+    It handles two primary scenarios:
+    1.  **New Run**: Creates a new PPO model from scratch with the specified
+        hyperparameters.
+    2.  **Resumed Run**: Loads a model from a checkpoint and continues training.
+        It intelligently calculates the remaining timesteps and adjusts the
+        learning rate schedule to ensure a smooth continuation.
+
+    Args:
+        config (dict): A dictionary containing all configuration parameters,
+            loaded from the provided YAML file. This includes settings for the
+            environment, model, and training process.
     """
     run = wandb.init(
         project=config['project_name'],

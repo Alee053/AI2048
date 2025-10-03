@@ -3,31 +3,47 @@ import wandb
 from stable_baselines3.common.callbacks import BaseCallback
 
 class WandbLoggingCallback(BaseCallback):
-    """
-    A custom callback for logging detailed training information to Weights & Biases.
+    """A custom callback for logging detailed training information to Weights & Biases.
 
-    This callback logs:
-    - Mean reward and episode length at the end of each episode.
-    - Raw final score and max tile for creating histograms in W&B.
-    - A bar chart of the final tile distribution, logged periodically.
+    This callback integrates with Stable Baselines 3 to provide enhanced logging
+    during the training process. At the end of each episode, it logs various
+    metrics to W&B, providing a comprehensive overview of the agent's performance.
+
+    Logs include:
+    - Smoothed mean reward and episode length (from the SB3 Monitor wrapper).
+    - Raw final score and max tile value for each episode, which W&B uses to
+      generate histograms.
+    - A bar chart of the final tile distribution, logged at a specified frequency.
+
+    Attributes:
+        episode_count (int): A counter for the number of episodes completed.
+        log_chart_freq (int): The frequency (in episodes) at which to log the
+            final board state bar chart.
     """
 
     def __init__(self, log_chart_freq: int = 100, verbose: int = 0):
-        """
-        Initializes the callback.
+        """Initializes the WandbLoggingCallback.
 
         Args:
-            log_chart_freq (int): Log the final board state bar chart every N episodes.
-            verbose (int): The verbosity level.
+            log_chart_freq (int, optional): The frequency (in episodes) for
+                logging the final board state as a bar chart. Defaults to 100.
+            verbose (int, optional): The verbosity level (0 for no output).
+                Defaults to 0.
         """
         super().__init__(verbose)
         self.episode_count = 0
         self.log_chart_freq = log_chart_freq
 
     def _on_step(self) -> bool:
-        """
-        This method is called after each step in the environment.
-        It checks for completed episodes and logs relevant data to W&B.
+        """Called by Stable Baselines 3 after each step in the environment.
+
+        This method checks for the completion of any episodes within the
+        vectorized environment. If an episode is done, it extracts relevant
+        information from the `info` dictionary and logs it to Weights & Biases.
+
+        Returns:
+            bool: True to continue training, False to stop. This implementation
+            always returns True.
         """
         # The `dones` local variable is a boolean array indicating which environments
         # in the VecEnv have finished an episode.

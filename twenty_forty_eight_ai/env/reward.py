@@ -14,9 +14,18 @@ COL_GRADIENT = ROW_GRADIENT.T
 
 @njit
 def _njit_log2_where_zero(board: np.ndarray) -> np.ndarray:
-    """
-    A Numba-compatible version of np.log2(board, where=board!=0).
-    It calculates the log2 for non-zero elements and leaves zero for zero elements.
+    """Calculates log2 for non-zero elements in a Numba-compatible way.
+
+    This function serves as a Numba-jitted replacement for `np.log2(board, where=board!=0)`,
+    which is not directly supported by Numba. It iterates through the board and
+    computes the base-2 logarithm for any tile that is not zero.
+
+    Args:
+        board (np.ndarray): The game board, represented as a 2D numpy array.
+
+    Returns:
+        np.ndarray: A new 2D numpy array of the same shape as the input board,
+        containing the log2 of each non-zero element.
     """
     result = np.zeros_like(board, dtype=np.float32)
     # Numba will heavily optimize this loop into fast machine code.
@@ -30,18 +39,21 @@ def _njit_log2_where_zero(board: np.ndarray) -> np.ndarray:
 
 @njit
 def calculate_reward(board: np.ndarray, merge_score: int, moved: bool) -> float:
-    """
-    Calculates a reward signal for a given board state and move outcome.
+    """Calculates a comprehensive reward for a given game state.
 
-    This function is JIT-compiled with Numba for maximum performance.
+    This function computes a reward signal based on several factors: the score
+    from merging tiles, the number of free cells, and a heuristic that
+    encourages a monotonic gradient of tile values. The function is JIT-compiled
+    with Numba for performance. A penalty is applied for invalid moves.
 
     Args:
-        board (np.ndarray): The board state *after* the move.
-        merge_score (int): The sum of values of tiles merged in the move.
-        moved (bool): A flag indicating if the move changed the board state.
+        board (np.ndarray): The game board state *after* the move.
+        merge_score (int): The score obtained from merging tiles in the move.
+        moved (bool): A flag indicating whether the move resulted in a change
+            to the board state.
 
     Returns:
-        float: The calculated reward.
+        float: The calculated reward value. Returns -1.0 for an invalid move.
     """
     if not moved:
         return -1.0

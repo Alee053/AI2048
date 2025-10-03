@@ -29,10 +29,40 @@ THEME = {
 
 
 class Visualizer:
-    """A Pygame-based visualizer to watch a trained PPO agent play 2048,
-    optionally enhanced with an Expectimax searcher."""
+    """A Pygame-based visualizer for watching a trained PPO agent play 2048.
+
+    This class provides a graphical interface to observe the performance of a
+    trained agent. It can run the agent in two modes:
+    1.  **Raw PPO Mode**: The agent makes decisions based directly on the
+        policy network's output.
+    2.  **PPO + Expectimax**: The agent's decisions are enhanced by a C++
+        Expectimax searcher, which uses the PPO's value function (critic)
+        to evaluate future states.
+
+    Attributes:
+        use_expectimax (bool): Flag to determine if the Expectimax searcher is used.
+        search_depth (int): The depth for the Expectimax search.
+        screen (pygame.Surface): The main display surface.
+        clock (pygame.time.Clock): Pygame clock for controlling the frame rate.
+        fonts (dict): A dictionary of pre-loaded fonts for rendering text.
+        env (Game2048Env): The game environment.
+        model (MaskablePPO): The loaded Stable Baselines 3 PPO model.
+        searcher (ExpectimaxSearcher or None): The C++ Expectimax searcher instance.
+    """
 
     def __init__(self, model_path: str, use_expectimax: bool = True, search_depth: int = 3):
+        """Initializes the Visualizer.
+
+        Args:
+            model_path (str): The file path to the saved PPO model (.zip).
+            use_expectimax (bool, optional): Whether to use the Expectimax
+                searcher. Defaults to True.
+            search_depth (int, optional): The search depth for the Expectimax
+                algorithm. Defaults to 3.
+
+        Raises:
+            FileNotFoundError: If the model file does not exist at the given path.
+        """
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
 
@@ -60,7 +90,18 @@ class Visualizer:
         print(f"Visualizer running with: {mode}")
 
     def _evaluate_batch(self, boards_list: List[np.ndarray]) -> List[float]:
-        """Callback for the C++ searcher to evaluate a batch of boards using the PPO critic."""
+        """Evaluates a batch of boards using the PPO critic.
+
+        This method serves as a callback for the C++ Expectimax searcher. The
+        searcher generates potential future board states and passes them to this
+        function to get a value estimate from the trained PPO model's critic.
+
+        Args:
+            boards_list (List[np.ndarray]): A list of 4x4 game boards to evaluate.
+
+        Returns:
+            List[float]: A list of value estimates corresponding to each board.
+        """
         if not boards_list:
             return []
         batch_tensor = board_to_tensor(np.array(boards_list))
@@ -71,13 +112,29 @@ class Visualizer:
         return values.cpu().numpy().flatten().tolist()
 
     def _get_font_for_tile(self, value: int) -> pygame.font.Font:
-        """Selects the correct pre-loaded font based on tile value."""
+        """Selects an appropriate pre-loaded font based on the tile's value.
+
+        Larger numbers get smaller fonts to fit within the tile.
+
+        Args:
+            value (int): The numerical value of the tile.
+
+        Returns:
+            pygame.font.Font: The pre-loaded Pygame font object.
+        """
         if value < 100: return self.fonts["xlarge"]
         if value < 1000: return self.fonts["large"]
         return self.fonts["medium"]
 
     def _draw_board(self, board: np.ndarray):
-        """Draws the 4x4 game grid and tiles."""
+        """Draws the 4x4 game grid and all the tiles onto the screen.
+
+        Each tile is colored according to the theme, and its value is rendered
+        on top.
+
+        Args:
+            board (np.ndarray): The 4x4 game board with log2-encoded tile values.
+        """
         self.screen.fill(THEME["bg_color"])
         tile_size, padding = 100, 10
         for r, c in np.ndindex(board.shape):
@@ -97,7 +154,17 @@ class Visualizer:
                 self.screen.blit(text_surf, text_rect)
 
     def _draw_stats(self, score: int, max_tile_exp: int, step: int, action: int):
-        """Draws the statistics panel below the game board."""
+        """Draws the statistics panel at the bottom of the screen.
+
+        This panel displays the current score, max tile, step count, and the
+        last action taken.
+
+        Args:
+            score (int): The current game score.
+            max_tile_exp (int): The log2 value of the highest tile on the board.
+            step (int): The current step count in the episode.
+            action (int): The last action taken by the agent.
+        """
         stats_rect = pygame.Rect(0, 400, THEME["window_size"][0], 100)
         pygame.draw.rect(self.screen, THEME["stats_bg_color"], stats_rect)
 
@@ -113,7 +180,18 @@ class Visualizer:
             self.screen.blit(surf, pos)
 
     def _get_next_action(self, obs: np.ndarray) -> int:
-        """Determines the next action using either PPO or PPO+Expectimax."""
+        """Determines the next action using either raw PPO or PPO + Expectimax.
+
+        If the Expectimax searcher is enabled, it calls the C++ extension to
+        find the best move. Otherwise, it uses the standard prediction method
+        of the PPO model.
+
+        Args:
+            obs (np.ndarray): The current observation from the environment.
+
+        Returns:
+            int: The integer representing the chosen action.
+        """
         if self.searcher:
             # Use the C++ searcher, providing the _evaluate_batch method as a callback
             return self.searcher.find_best_move(
@@ -127,7 +205,13 @@ class Visualizer:
             action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
             return int(action)
 
-    def _draw_game_over(self, score, max_tile):
+    def _draw_game_over(self, score: int, max_tile: int):
+        """Displays a "Game Over" screen with the final score and max tile.
+
+        Args:
+            score (int): The final score of the game.
+            max_tile (int): The log2 value of the highest tile achieved.
+        """
         overlay = pygame.Surface((400, 500), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
 
@@ -144,7 +228,12 @@ class Visualizer:
         self.screen.blit(tile_surf, tile_surf.get_rect(center=(200, 290)))
 
     def run(self):
-        """Runs the main visualization game loop."""
+        """Runs the main visualization game loop.
+
+        This loop handles Pygame events, gets actions from the agent, steps the
+        environment, and orchestrates the drawing of all visual components.
+        The loop continues until the user closes the window.
+        """
         obs, _ = self.env.reset()
         running = True
         terminated = False

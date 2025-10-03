@@ -21,16 +21,42 @@ from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 
 class TrialCallback(BaseCallback):
-    """
-    A custom callback for Optuna to report intermediate values and handle pruning.
+    """A custom callback for Optuna to report intermediate values and handle pruning.
+
+    This callback is used within a Stable Baselines 3 training loop. It
+    periodically reports the mean reward to the Optuna trial. Based on this
+    reported value, Optuna's pruner can decide to stop an unpromising trial
+    early.
+
+    Attributes:
+        trial (optuna.Trial): The Optuna trial associated with this callback.
+        is_pruned (bool): A flag that is set to True if the trial should be pruned.
+        report_freq (int): The frequency (in timesteps) at which to report
+            the mean reward to the trial.
     """
     def __init__(self, trial: optuna.Trial, report_freq: int, verbose: int = 0):
+        """Initializes the TrialCallback.
+
+        Args:
+            trial (optuna.Trial): The Optuna trial to report to.
+            report_freq (int): The frequency for reporting intermediate values.
+            verbose (int, optional): The verbosity level. Defaults to 0.
+        """
         super().__init__(verbose)
         self.trial = trial
         self.is_pruned = False
         self.report_freq = report_freq
 
     def _on_step(self) -> bool:
+        """Called by Stable Baselines 3 after each step.
+
+        Checks if it's time to report the mean reward. If so, it reports to
+        the trial and checks if the trial should be pruned.
+
+        Returns:
+            bool: False if the training should be stopped (i.e., pruned),
+            True otherwise.
+        """
         if self.num_timesteps % self.report_freq == 0:
             if self.model.ep_info_buffer:
                 # Use the mean reward from the episode buffer for reporting
@@ -42,7 +68,23 @@ class TrialCallback(BaseCallback):
         return True
 
 def _get_trial_suggester(trial: optuna.Trial, name: str, param_config: dict):
-    """Helper function to parse the search space from the YAML config."""
+    """Parses the search space from the YAML config and suggests a value.
+
+    This helper function reads a parameter's configuration (type, range, etc.)
+    from the dictionary loaded from the YAML file and calls the appropriate
+    `trial.suggest_*` method from Optuna.
+
+    Args:
+        trial (optuna.Trial): The current Optuna trial.
+        name (str): The name of the hyperparameter.
+        param_config (dict): The configuration for this parameter.
+
+    Raises:
+        ValueError: If an unsupported parameter type is specified in the config.
+
+    Returns:
+        The suggested value for the hyperparameter for the current trial.
+    """
     if param_config['type'] == 'categorical':
         return trial.suggest_categorical(name, param_config['choices'])
     elif param_config['type'] == 'float':
@@ -52,9 +94,25 @@ def _get_trial_suggester(trial: optuna.Trial, name: str, param_config: dict):
     raise ValueError(f"Unsupported parameter type: {param_config['type']}")
 
 def objective(trial: optuna.Trial, config: dict) -> float:
-    """
-    The main objective function that Optuna will optimize.
-    Each call to this function is one "trial".
+    """The main objective function that Optuna will optimize.
+
+    Each call to this function constitutes one "trial" in the Optuna study.
+    It performs the following steps:
+    1.  Suggests a set of hyperparameters based on the search space defined
+        in the configuration file.
+    2.  Sets up the environment and a `TrialCallback` for pruning.
+    3.  Creates and trains a MaskablePPO model with the suggested hyperparameters.
+    4.  Returns the final mean reward achieved by the model, which Optuna
+        uses as the objective value to maximize.
+
+    Args:
+        trial (optuna.Trial): The Optuna trial object, used for suggesting
+            parameters and reporting results.
+        config (dict): The full configuration dictionary loaded from the YAML file.
+
+    Returns:
+        float: The final mean reward of the trained model, which is the
+        objective value for this trial.
     """
     # --- Suggest Hyperparameters from YAML Config ---
     ppo_params = {
