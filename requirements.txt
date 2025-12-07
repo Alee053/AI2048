@@ -1,7 +1,9 @@
 ﻿gymnasium==1.2.0
-torch==2.8.0
 stable-baselines3==2.7.0
 numpy==2.3.2
 wandb==0.21.3
 pygame==2.6.1
 optuna==4.5.0
+pyyaml~=6.0.3
+numba~=0.62.1
+torch~=2.9.1+cu130
