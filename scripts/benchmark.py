@@ -4,13 +4,24 @@ import torch
 import json
 import sys
 import os
+import time
 from typing import List, Dict, Any
 from tqdm import tqdm
+from pathlib import Path
+
+# Attempt to import Matplotlib for plotting
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Warning: matplotlib not found. Plotting functionality will be disabled.")
 
 from sb3_contrib import MaskablePPO
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
+# Attempt to import the ExpectimaxSearcher extension
 try:
     from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
 except ImportError:
@@ -85,7 +96,32 @@ class Benchmarker:
             "steps": steps
         }
 
-    def benchmark(self, n_runs: int, output_file: str):
+    def _create_plot(self, scores: List[int], avg_score: float, output_path: str, config: Dict):
+        """Generates and saves a histogram of the scores."""
+        if not MATPLOTLIB_AVAILABLE:
+            return
+
+        plt.figure(figsize=(10, 6))
+        
+        # Determine bins dynamically
+        bins = min(20, max(5, len(set(scores))))
+        
+        plt.hist(scores, bins=bins, edgecolor='black', alpha=0.7, color='#776e65')
+        plt.axvline(avg_score, color='#edc22e', linestyle='--', linewidth=2,
+                    label=f"Mean: {avg_score:.0f}")
+        
+        title_mode = f"Search Depth {config['search_depth']}" if config['use_expectimax'] else "Raw PPO Policy"
+        plt.title(f'Score Distribution - {title_mode} ({config["n_runs"]} games)')
+        plt.xlabel('Final Score')
+        plt.ylabel('Frequency')
+        plt.legend()
+        plt.grid(axis='y', alpha=0.3)
+        
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"Plot saved to: {output_path}")
+
+    def benchmark(self, n_runs: int, run_name: str):
         """Runs the benchmark loop."""
         stats = []
         print(f"\nStarting benchmark for {n_runs} runs...")
@@ -130,6 +166,17 @@ class Benchmarker:
             "raw_data": stats
         }
         
+        # --- Prepare Output Directory ---
+        base_dir = Path("data/benchmarks")
+        if not run_name:
+            run_name = f"run_{int(time.time())}"
+        
+        output_dir = base_dir / run_name
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        json_path = output_dir / "results.json"
+        plot_path = output_dir / "score_distribution.png"
+
         # --- Reporting ---
         print("\n" + "="*30)
         print("       BENCHMARK RESULTS       ")
@@ -144,21 +191,27 @@ class Benchmarker:
             print(f"  {tile}: {count} ({percentage:.1f}%)")
         print("="*30)
         
-        # --- Save to File ---
-        if output_file:
+        # --- Save JSON ---
+        try:
+            with open(json_path, 'w') as f:
+                json.dump(summary, f, indent=4)
+            print(f"\nDetailed results saved to: {json_path}")
+        except Exception as e:
+            print(f"Error saving JSON results: {e}")
+            
+        # --- Generate Plot ---
+        if MATPLOTLIB_AVAILABLE:
             try:
-                with open(output_file, 'w') as f:
-                    json.dump(summary, f, indent=4)
-                print(f"\nDetailed results saved to: {output_file}")
+                self._create_plot(scores, summary['metrics']['avg_score'], str(plot_path), summary['config'])
             except Exception as e:
-                print(f"Error saving results: {e}")
+                print(f"Error creating plot: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Headless Benchmark for 2048 AI Agent.")
     parser.add_argument("model_path", type=str, help="Path to the trained model .zip file")
     parser.add_argument("--n_runs", type=int, default=10, help="Number of games to simulate (default: 10)")
     parser.add_argument("--depth", type=int, default=0, help="Expectimax search depth. 0 = Raw Policy (default: 0)")
-    parser.add_argument("--output", type=str, default="benchmark_results.json", help="Path to save JSON results (default: benchmark_results.json)")
+    parser.add_argument("--output", type=str, default=None, help="Name of the run (folder name). Defaults to 'run_<timestamp>'")
     parser.add_argument("--device", type=str, default="auto", help="Device to run model on (cpu, cuda, auto)")
     
     args = parser.parse_args()
