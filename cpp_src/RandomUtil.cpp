@@ -1,5 +1,5 @@
 ﻿#include "RandomUtil.h"
-#include <type_traits> // For std::is_integral and std::is_floating_point
+#include <type_traits>
 
 RandomUtil& RandomUtil::get() {
     static RandomUtil instance;
@@ -23,7 +23,7 @@ T RandomUtil::getRandom(T min, T max) {
     }
 }
 
-// --- Explicit Template Instantiation ---
+// Template instantiations
 template int RandomUtil::getRandom<int>(int min, int max);
 template double RandomUtil::getRandom<double>(double min, double max);
 template float RandomUtil::getRandom<float>(float min, float max);

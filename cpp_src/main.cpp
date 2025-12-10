@@ -1,11 +1,11 @@
 ﻿#include <iostream>
-#include <iomanip> // For std::setw
+#include <iomanip>
 #include <string>
-#include <cmath>   // For std::pow
+#include <cmath>
 
-#include "Fast2048.h" // Your game class
+#include "Fast2048.h"
 
-// Helper function to print the board to the console
+// Print board
 void print_board(const std::array<std::array<int, 4>, 4>& board) {
     std::cout << "-----------------------------" << std::endl;
     for (int r = 0; r < 4; ++r) {
@@ -14,7 +14,7 @@ void print_board(const std::array<std::array<int, 4>, 4>& board) {
             if (board[r][c] == 0) {
                 std::cout << std::setw(6) << " .";
             } else {
-                // Convert log2 value back to the actual tile value (2, 4, 8...)
+                // Convert log2 to value
                 int tile_value = static_cast<int>(std::pow(2, board[r][c]));
                 std::cout << std::setw(6) << tile_value;
             }
@@ -25,7 +25,7 @@ void print_board(const std::array<std::array<int, 4>, 4>& board) {
 }
 
 int main() {
-    Fast2048 game; // Create an instance of your game
+    Fast2048 game;
     int score = 0;
 
     std::cout << "2048 C++ Console Tester" << std::endl;
@@ -45,16 +45,16 @@ int main() {
 
         int direction = -1;
         switch (input) {
-            case 'w': direction = 0; break; // Up
-            case 'd': direction = 1; break; // Right
-            case 's': direction = 2; break; // Down
-            case 'a': direction = 3; break; // Left
+            case 'w': direction = 0; break;
+            case 'd': direction = 1; break;
+            case 's': direction = 2; break;
+            case 'a': direction = 3; break;
             default:
                 std::cout << "Invalid input. Please use w, a, s, or d." << std::endl;
-                continue; // Skip the rest of the loop
+                continue;
         }
 
-        // Use C++17 structured bindings to unpack the returned tuple
+        // Unpack results
         auto [merge_score, done, moved] = game.move(direction);
         score += merge_score;
 

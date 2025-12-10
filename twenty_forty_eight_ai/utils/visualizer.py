@@ -9,9 +9,9 @@ from ..utils.searcher import ExpectimaxSearcher
 from ..utils.tensor_utils import board_to_tensor
 from ..env.environment import Game2048Env
 
-# --- Configuration & Theming ---
+# Config
 THEME = {
-    "window_size": (400, 550), # Increased height slightly for status text
+    "window_size": (400, 550), # Height includes status text
     "bg_color": (187, 173, 160),
     "tile_colors": {
         0: (205, 193, 180), 2: (238, 228, 218), 4: (237, 224, 200),
@@ -28,8 +28,7 @@ THEME = {
 }
 
 class Visualizer:
-    """A Pygame-based visualizer to watch a trained PPO agent play 2048,
-    enhanced with threaded Expectimax search to prevent UI freezing."""
+    """Pygame visualizer for PPO agent with threaded Expectimax support."""
 
     def __init__(self, model_path: str, use_expectimax: bool = True, search_depth: int = 3):
         if not os.path.exists(model_path):
@@ -38,26 +37,26 @@ class Visualizer:
         self.use_expectimax = use_expectimax
         self.search_depth = search_depth
 
-        # --- Setup Pygame and display ---
+        # Setup Pygame
         pygame.init()
         self.screen = pygame.display.set_mode(THEME["window_size"])
         pygame.display.set_caption("2048 AI Agent (Alejandro's Setup)")
         self.clock = pygame.time.Clock()
 
-        # --- Load Fonts Once for Efficiency ---
+        # Load fonts
         self.fonts = {
             size_name: pygame.font.Font(None, size_val)
             for size_name, size_val in THEME["font_sizes"].items()
         }
 
-        # --- Setup RL components ---
+        # Setup RL
         self.env = Game2048Env()
         self.model = MaskablePPO.load(model_path)
 
-        # We only init searcher if needed
+        # Init searcher if needed
         self.searcher = ExpectimaxSearcher() if use_expectimax else None
 
-        # --- Threading State ---
+        # Threading state
         self.is_thinking = False
         self.next_action: Optional[int] = None
         self.search_thread: Optional[threading.Thread] = None
@@ -66,11 +65,11 @@ class Visualizer:
         print(f"Visualizer running with: {mode}")
 
     def _evaluate_batch(self, boards_list: List[np.ndarray]) -> List[float]:
-        """Callback for the C++ searcher to evaluate a batch of boards."""
+        """Callback for C++ searcher to evaluate batch of boards."""
         if not boards_list:
             return []
 
-        # Convert list of boards (N, 4, 4) to tensor (N, 1, 4, 4)
+        # Convert boards (N, 4, 4) to tensor (N, 1, 4, 4)
         batch_array = np.array(boards_list)
         batch_tensor = board_to_tensor(batch_array)
 
@@ -86,16 +85,13 @@ class Visualizer:
         return self.fonts["medium"]
 
     def _draw_board(self, board: np.ndarray):
-        """Draws the 4x4 game grid and tiles."""
+        """Draws the 4x4 game grid."""
         self.screen.fill(THEME["bg_color"])
         tile_size, padding = 100, 10
 
-        # The C++ board might be raw integers (2, 4, 8) or exponents depending on your getter
-        # Assuming your C++ getter returns raw values (0, 2, 4, 8...) based on Fast2048.cpp
-
         for r in range(4):
             for c in range(4):
-                tile_value = int(board[r, c]) # Should be 0, 2, 4, 8...
+                tile_value = int(board[r, c])
 
                 if tile_value > 0: tile_value = 2**tile_value
 
@@ -111,7 +107,7 @@ class Visualizer:
 
                 if tile_value != 0:
                     font = self._get_font_for_tile(tile_value)
-                    # Dark text for light tiles (2, 4), Light text for dark tiles (8+)
+                    # Adjust text color for contrast
                     text_color = THEME["text_color_dark"] if tile_value < 8 else THEME["text_color_light"]
                     text_surf = font.render(str(tile_value), True, text_color)
                     text_rect = text_surf.get_rect(center=rect.center)
@@ -138,9 +134,9 @@ class Visualizer:
             self.screen.blit(surf, pos)
 
     def _search_worker(self):
-        """Background thread function to run the search."""
+        """Background thread for search."""
         try:
-            # We must COPY the board so the thread doesn't read it while the main loop writes it (rare but safer)
+            # Copy board for thread safety
             current_board = self.env.game.board.copy()
 
             action = self.searcher.find_best_move(
@@ -163,14 +159,14 @@ class Visualizer:
         last_action = -1
 
         while running:
-            # Event Handling
+            # Events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             if not terminated:
                 if self.use_expectimax:
-                    # --- Expectimax Mode (Threaded) ---
+                    # Threaded Expectimax
                     if not self.is_thinking and self.next_action is None:
                         # Start thinking
                         self.is_thinking = True
@@ -178,17 +174,17 @@ class Visualizer:
                         self.search_thread.start()
 
                     elif not self.is_thinking and self.next_action is not None:
-                        # Thinking done, execute move
+                        # Execute move
                         action = self.next_action
-                        self.next_action = None # Reset for next turn
+                        self.next_action = None
 
                         last_action = action
                         obs, _, terminated, _, info = self.env.step(action)
                         step_count += 1
 
                 else:
-                    # --- Raw PPO Mode (Instant) ---
-                    # Add a small delay so we can actually see the moves
+                    # Standard PPO
+                    # Delay for visibility
                     pygame.time.delay(100)
                     action_mask = self.env.action_masks()
                     action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
@@ -197,18 +193,17 @@ class Visualizer:
                     obs, _, terminated, _, info = self.env.step(last_action)
                     step_count += 1
 
-            # --- Drawing ---
+            # Draw
             self._draw_board(self.env.game.board)
             self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
 
             if terminated:
-                # Retrieve final info safely
                 final_score = self.env.game.score
                 final_max = self.env.game.max_tile
                 self._draw_game_over(final_score, final_max)
 
             pygame.display.flip()
-            self.clock.tick(60) # Higher FPS for smoother UI (logic is decoupled)
+            self.clock.tick(60) # Maintain UI FPS
 
         if self.search_thread and self.search_thread.is_alive():
             self.search_thread.join()

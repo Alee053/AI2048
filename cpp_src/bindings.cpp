@@ -1,7 +1,7 @@
 ﻿#include <pybind11/pybind11.h>
 #include "Fast2048.h"
 #include "ExpectimaxSearcher.h"
-#include <pybind11/stl.h>           // enable conversions for STL containers
+#include <pybind11/stl.h>
 #include <pybind11/functional.h>
 
 namespace py = pybind11;

@@ -1,16 +1,5 @@
 ﻿"""
-Main training script for the 2048 AI agent.
-
-This script is configuration-driven. It loads all parameters from a YAML file,
-initializes the environment and agent, and starts the training process.
-It handles both starting new runs and resuming from checkpoints.
-
-Usage:
-    # Start a new training run
-    python scripts/train.py --config configs/train_config.yaml
-
-    # Resume a run (after updating the config file)
-    python scripts/train.py --config configs/train_config.yaml
+Training script for 2048 AI.
 """
 
 import os
@@ -27,12 +16,10 @@ from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
 
 
 def train(config: dict):
-    """
-    Initializes and runs the training loop based on the provided configuration.
-    """
+    """Run training loop."""
     run = wandb.init(
         project=config['project_name'],
-        config=config,  # Log the entire config to W&B
+        config=config,
         name=config['run_name'],
         save_code=True,
     )
@@ -40,7 +27,7 @@ def train(config: dict):
     model_dir = os.path.join(config['output_dir'], "models", config['run_name'])
     os.makedirs(model_dir, exist_ok=True)
 
-    # --- Initialize Callbacks ---
+    # Callbacks
     wandb_callback = WandbLoggingCallback()
     checkpoint_callback = CheckpointCallback(
         save_freq=max(config['save_interval'] // config['n_envs'], 1),
@@ -49,7 +36,7 @@ def train(config: dict):
     )
     callbacks = [wandb_callback, checkpoint_callback]
 
-    # --- Initialize Environment and Model ---
+    # Environment & Model
     vec_env = make_vec_env(Game2048Env, n_envs=config['n_envs'])
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
@@ -71,8 +58,7 @@ def train(config: dict):
         total_steps = config['total_timesteps']
         remaining_steps = total_steps - current_steps
 
-        # --- Learning Rate Schedule for Resumed Run ---
-        # This ensures the LR continues to decay correctly
+        # Resumed LR schedule
         lr_config = config['ppo_params']['learning_rate']
         if lr_config['type'] == 'linear_decay':
             def resumed_lr_schedule(progress_remaining: float) -> float:
@@ -96,7 +82,7 @@ def train(config: dict):
         print("Starting a new training run from scratch.")
         ppo_params = config['ppo_params'].copy()
 
-        # --- Learning Rate Schedule for New Run ---
+        # New LR schedule
         lr_config = ppo_params.pop('learning_rate')
         if lr_config['type'] == 'linear_decay':
             ppo_params['learning_rate'] = lambda p: p * lr_config['initial_value']
@@ -112,7 +98,7 @@ def train(config: dict):
             progress_bar=False
         )
 
-    # --- Save Final Model ---
+    # Save model
     final_model_path = os.path.join(model_dir, "final_model.zip")
     model.save(final_model_path)
     print(f"Final model saved to: {final_model_path}")

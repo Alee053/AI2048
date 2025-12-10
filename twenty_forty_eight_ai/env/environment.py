@@ -9,13 +9,10 @@ from .reward import calculate_reward
 
 
 class Game2048Env(Env):
-    """
-    A custom Gymnasium environment for the 2048 game, designed to work
-    with Stable Baselines 3 and MaskablePPO. It wraps the optimized Fast2048 game engine.
-    """
+    """Gymnasium environment for 2048, compatible with MaskablePPO."""
 
     def __init__(self):
-        """Initializes the environment, action space, and observation space."""
+        """Initialize environment."""
         super().__init__()
         self.game = Fast2048()
 
@@ -27,12 +24,7 @@ class Game2048Env(Env):
 
 
     def reset(self, *, seed: int = None, options: Dict[str, Any] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """
-        Resets the environment to a starting state as per the Gymnasium API.
-
-        Returns:
-            A tuple containing the initial observation and an empty info dictionary.
-        """
+        """Reset environment."""
         super().reset(seed=seed)
         self.game.reset()
         observation = board_to_tensor(self.game.board)
@@ -40,12 +32,7 @@ class Game2048Env(Env):
         return observation, info
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """
-        Executes one time step within the environment as per the Gymnasium API.
-
-        Returns:
-            A tuple of (observation, reward, terminated, truncated, info).
-        """
+        """Execute step. Returns (obs, reward, done, truncated, info)."""
         merge_score, done, moved = self.game.move(action)
         observation = board_to_tensor(self.game.board)
 
@@ -60,13 +47,13 @@ class Game2048Env(Env):
         return observation, reward, done, truncated, info
 
     def action_masks(self) -> np.ndarray:
-        """Generates a mask of valid actions for the current state for MaskablePPO."""
+        """Get valid action mask."""
         return np.array([self.game.is_move_valid(act) for act in range(self.action_space.n)], dtype=bool)
 
     def render(self, mode='human'):
-        """Rendering is handled by a separate visualizer."""
+        """Render (unused)."""
         pass
 
     def close(self):
-        """Called when the environment is closed."""
+        """Close environment."""
         pass

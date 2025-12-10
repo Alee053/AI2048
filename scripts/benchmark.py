@@ -1,3 +1,7 @@
+"""
+Headless benchmark for 2048 AI.
+"""
+
 import argparse
 import numpy as np
 import torch
@@ -52,7 +56,7 @@ class Benchmarker:
             print("Using Raw PPO Policy (No Search)")
 
     def _evaluate_batch(self, boards_list: List[np.ndarray]) -> List[float]:
-        """Callback for C++ searcher to evaluate a batch of boards using the PPO critic."""
+        """Critic evaluation callback."""
         if not boards_list:
             return []
         
@@ -68,7 +72,7 @@ class Benchmarker:
         return values.cpu().numpy().flatten().tolist()
 
     def run_episode(self) -> Dict[str, Any]:
-        """Runs a single episode of the game."""
+        """Run single episode."""
         obs, _ = self.env.reset()
         done = False
         steps = 0
@@ -97,7 +101,7 @@ class Benchmarker:
         }
 
     def _create_plot(self, scores: List[int], avg_score: float, output_path: str, config: Dict):
-        """Generates and saves a histogram of the scores."""
+        """Generate score histogram."""
         if not MATPLOTLIB_AVAILABLE:
             return
 
@@ -122,7 +126,7 @@ class Benchmarker:
         print(f"Plot saved to: {output_path}")
 
     def benchmark(self, n_runs: int, run_name: str):
-        """Runs the benchmark loop."""
+        """Run benchmark loop."""
         stats = []
         print(f"\nStarting benchmark for {n_runs} runs...")
         
@@ -141,12 +145,12 @@ class Benchmarker:
             print("No runs completed.")
             return
 
-        # --- Aggregation ---
+        # Aggregate stats
         scores = [s['score'] for s in stats]
         max_tiles = [s['max_tile'] for s in stats]
         steps = [s['steps'] for s in stats]
         
-        # Helper to safely handle numpy types for JSON serialization
+        # Numpy safety
         def to_py(val): return val.item() if isinstance(val, np.generic) else val
 
         summary = {
@@ -166,7 +170,7 @@ class Benchmarker:
             "raw_data": stats
         }
         
-        # --- Prepare Output Directory ---
+        # Output setup
         base_dir = Path("data/benchmarks")
         if not run_name:
             run_name = f"run_{int(time.time())}"
@@ -177,7 +181,7 @@ class Benchmarker:
         json_path = output_dir / "results.json"
         plot_path = output_dir / "score_distribution.png"
 
-        # --- Reporting ---
+        # Report
         print("\n" + "="*30)
         print("       BENCHMARK RESULTS       ")
         print("="*30)
@@ -191,7 +195,7 @@ class Benchmarker:
             print(f"  {tile}: {count} ({percentage:.1f}%)")
         print("="*30)
         
-        # --- Save JSON ---
+        # Save JSON
         try:
             with open(json_path, 'w') as f:
                 json.dump(summary, f, indent=4)
@@ -199,7 +203,7 @@ class Benchmarker:
         except Exception as e:
             print(f"Error saving JSON results: {e}")
             
-        # --- Generate Plot ---
+        # Save Plot
         if MATPLOTLIB_AVAILABLE:
             try:
                 self._create_plot(scores, summary['metrics']['avg_score'], str(plot_path), summary['config'])

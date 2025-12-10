@@ -78,15 +78,15 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
     return {merge_score, done, moved};
 }
 
-std::pair<int, bool> Fast2048::move_simulated(int direction) {
+    std::pair<int, bool> Fast2048::move_simulated(int direction) {
     int merge_score = 0;
 
-    // 1. Check if move is valid first to save time
+    // Check validity first
     if (!is_move_valid(direction)) {
         return {0, false};
     }
 
-    // 2. Perform the Move Logic (Slide & Merge)
+    // Move logic
     if (direction == 3) { // Left
         for (auto &row : board) {
             int index = row_to_number(row);
@@ -126,7 +126,6 @@ std::pair<int, bool> Fast2048::move_simulated(int direction) {
 
     return {merge_score, true};
 }
-
 bool Fast2048::is_move_valid(int direction) const {
     if (direction == 3) {
         for (auto &row : board) {

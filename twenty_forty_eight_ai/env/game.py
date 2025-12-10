@@ -1,19 +1,17 @@
 ﻿import numpy as np
 from numba import njit
 
-# --- Constants for improved readability ---
+# Constants
 UP, RIGHT, DOWN, LEFT = 0, 1, 2, 3
 
 class Fast2048:
-    """
-        A highly optimized, Look-Up Table (LUT) based implementation of the 2048 game logic.
-    """
+    """Optimized LUT-based 2048 game logic."""
     move_row_LUT: list = []
     move_reward_LUT: list = []
     move_valid_LUT: list = []
 
     def __init__(self):
-        """Initializes the game instance, creating the LUTs if they don't exist."""
+        """Initialize game and LUTs."""
         if not Fast2048.move_row_LUT:
             self.init_LUT()
 
@@ -25,7 +23,7 @@ class Fast2048:
         self.reset()
 
     def init_LUT(self):
-        """Pre-computes the results of all 65,536 possible row moves."""
+        """Pre-compute row move LUTs."""
         for i in range(65536):
             original_row = np.array([(i >> (j * 4)) & 0xF for j in range(4)], dtype=np.int32)
             row = original_row.copy()
@@ -39,7 +37,7 @@ class Fast2048:
             Fast2048.move_valid_LUT.append(not np.array_equal(original_row, row))
 
     def reset(self):
-        """Resets the game to a starting state with two random tiles."""
+        """Reset game state."""
         self.board.fill(0)
         self.max_tile = 0
         self.score = 0
@@ -49,11 +47,11 @@ class Fast2048:
         self.update_max_tile()
 
     def update_max_tile(self) -> bool:
-        """Updates the max_tile attribute."""
+        """Update max_tile."""
         self.max_tile = np.max(self.board)
 
     def is_move_valid(self, action):
-        """Checks if a move is possible in the given direction."""
+        """Check move validity."""
         if action == LEFT:
             for i in range(4):
                 if self.move_valid_LUT[row_to_number(self.board[i])]: return True
@@ -69,7 +67,7 @@ class Fast2048:
         return False
 
     def generate_random(self):
-        """Generates a new tile on the board, potentially using the helpful spawner."""
+        """Spawn random tile."""
         num = 1 if np.random.random() < 0.9 else 2
         empty_cells = np.argwhere(self.board == 0)
 
@@ -81,7 +79,7 @@ class Fast2048:
         self.board[chosen_position[0], chosen_position[1]] = num
 
     def check_done(self) -> bool:
-        """Checks if there are any valid moves left on the board."""
+        """Check if game over."""
         for i in range(4):
             if self.is_move_valid(i):
                 return False
@@ -89,10 +87,7 @@ class Fast2048:
 
 
     def move(self, direction) -> tuple[int, bool, bool]:
-        """
-            Performs a move in a given direction and returns the results.
-            Returns: (merge_score, is_done, was_moved)
-        """
+        """Execute move. Returns (score, done, moved)."""
         board_before_move = self.board.copy()
         merge_score = 0
 
@@ -129,12 +124,12 @@ class Fast2048:
 
 @njit
 def row_to_number(row):
-    """Converts a 4-element row into a 16-bit integer for LUT indexing."""
+    """Row to 16-bit integer."""
     return row[0] | (row[1] << 4) | (row[2] << 8) | (row[3] << 12)
 
 @njit
 def stack_row(row):
-    """Stacks tiles to one side of a row (part of LUT creation)."""
+    """Stack row tiles."""
     for k in range(4):
         for i in range(1, 4):
             if row[i] != 0 and row[i - 1] == 0:
@@ -144,7 +139,7 @@ def stack_row(row):
 
 @njit
 def merge_row(row):
-    """Merges adjacent identical tiles in a row (part of LUT creation)."""
+    """Merge row tiles."""
     reward = 0
     for i in range(1, 4):
         if row[i-1] == row[i] and row[i] != 0:

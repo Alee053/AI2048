@@ -1,11 +1,5 @@
 ﻿"""
-Main hyperparameter tuning script for the 2048 AI agent using Optuna.
-
-This script is configuration-driven. It loads a YAML file that defines the
-study parameters, pruner settings, and the hyperparameter search space.
-
-Usage:
-    python scripts/tune.py --config configs/tune/NewArch-GradReward-v1.yaml
+Hyperparameter tuning with Optuna.
 """
 
 import argparse
@@ -21,9 +15,7 @@ from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 
 class TrialCallback(BaseCallback):
-    """
-    A custom callback for Optuna to report intermediate values and handle pruning.
-    """
+    """Callback for intermediate reporting and pruning."""
     def __init__(self, trial: optuna.Trial, report_freq: int, verbose: int = 0):
         super().__init__(verbose)
         self.trial = trial
@@ -42,7 +34,7 @@ class TrialCallback(BaseCallback):
         return True
 
 def _get_trial_suggester(trial: optuna.Trial, name: str, param_config: dict):
-    """Helper function to parse the search space from the YAML config."""
+    """Parse search space from config."""
     if param_config['type'] == 'categorical':
         return trial.suggest_categorical(name, param_config['choices'])
     elif param_config['type'] == 'float':
@@ -52,22 +44,19 @@ def _get_trial_suggester(trial: optuna.Trial, name: str, param_config: dict):
     raise ValueError(f"Unsupported parameter type: {param_config['type']}")
 
 def objective(trial: optuna.Trial, config: dict) -> float:
-    """
-    The main objective function that Optuna will optimize.
-    Each call to this function is one "trial".
-    """
-    # --- Suggest Hyperparameters from YAML Config ---
+    """Optuna objective function."""
+    # Suggest Hyperparameters
     ppo_params = {
         name: _get_trial_suggester(trial, name, param_conf)
         for name, param_conf in config['ppo_search_space'].items()
     }
 
-    # --- Setup Environment and Callbacks ---
+    # Setup Environment
     trial_config = config['trial']
     vec_env = make_vec_env(Game2048Env, n_envs=trial_config['n_envs'])
     pruning_callback = TrialCallback(trial, report_freq=trial_config['report_freq'])
 
-    # --- Create and Train Model ---
+    # Train Model
     policy_kwargs = dict(features_extractor_class=CustomCNN, features_extractor_kwargs=dict(features_dim=256))
     model = MaskablePPO(
         'CnnPolicy', vec_env, policy_kwargs=policy_kwargs,
@@ -82,14 +71,14 @@ def objective(trial: optuna.Trial, config: dict) -> float:
     if pruning_callback.is_pruned:
         raise optuna.exceptions.TrialPruned()
 
-    # Use the final mean reward from the buffer as the trial's value
+    # Final value
     if not model.ep_info_buffer:
-        return -1e9 # Return a very low value if no episodes finished
+        return -1e9
     final_mean_reward = np.mean([ep_info["r"] for ep_info in model.ep_info_buffer])
     return final_mean_reward
 
 def main(config_path: str):
-    """Loads configuration, sets up, and runs the Optuna study."""
+    """Run Optuna study."""
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
