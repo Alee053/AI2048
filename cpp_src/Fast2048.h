@@ -12,6 +12,7 @@ public:
 
     void reset();
     std::tuple<int, bool, bool> move(int direction);
+    std::pair<int, bool> move_simulated(int direction);
     bool is_move_valid(int action) const;
     std::array<std::array<int, 4>, 4> get_board() const;
 

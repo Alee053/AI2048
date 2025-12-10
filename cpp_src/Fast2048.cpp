@@ -78,6 +78,55 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
     return {merge_score, done, moved};
 }
 
+std::pair<int, bool> Fast2048::move_simulated(int direction) {
+    int merge_score = 0;
+
+    // 1. Check if move is valid first to save time
+    if (!is_move_valid(direction)) {
+        return {0, false};
+    }
+
+    // 2. Perform the Move Logic (Slide & Merge)
+    if (direction == 3) { // Left
+        for (auto &row : board) {
+            int index = row_to_number(row);
+            merge_score += move_reward_LUT[index];
+            row = move_row_LUT[index];
+        }
+    }
+    else if (direction == 1) { // Right
+        for (auto &row : board) {
+            std::reverse(row.begin(), row.end());
+            int index = row_to_number(row);
+            merge_score += move_reward_LUT[index];
+            row = move_row_LUT[index];
+            std::reverse(row.begin(), row.end());
+        }
+    }
+    else if (direction == 0) { // Up
+        for (int col = 0; col < 4; col++) {
+            std::array<int, 4> column;
+            for (int row = 0; row < 4; row++) column[row] = board[row][col];
+            int index = row_to_number(column);
+            merge_score += move_reward_LUT[index];
+            column = move_row_LUT[index];
+            for (int row = 0; row < 4; row++) board[row][col] = column[row];
+        }
+    }
+    else if (direction == 2) { // Down
+        for (int col = 0; col < 4; col++) {
+            std::array<int, 4> column;
+            for (int row = 0; row < 4; row++) column[row] = board[3-row][col];
+            int index = row_to_number(column);
+            merge_score += move_reward_LUT[index];
+            column = move_row_LUT[index];
+            for (int row = 0; row < 4; row++) board[3-row][col] = column[row];
+        }
+    }
+
+    return {merge_score, true};
+}
+
 bool Fast2048::is_move_valid(int direction) const {
     if (direction == 3) {
         for (auto &row : board) {
