@@ -40,7 +40,7 @@ class Visualizer:
         # Setup Pygame
         pygame.init()
         self.screen = pygame.display.set_mode(THEME["window_size"])
-        pygame.display.set_caption("2048 AI Agent (Alejandro's Setup)")
+        pygame.display.set_caption("2048 AI Agent")
         self.clock = pygame.time.Clock()
 
         # Load fonts
