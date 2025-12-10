@@ -2,16 +2,16 @@
 import pygame
 import numpy as np
 import torch
-from typing import List
+import threading
+from typing import List, Optional
 from sb3_contrib import MaskablePPO
-from .searcher import ExpectimaxSearcher
+from ..utils.searcher import ExpectimaxSearcher
 from ..utils.tensor_utils import board_to_tensor
 from ..env.environment import Game2048Env
 
-
 # --- Configuration & Theming ---
 THEME = {
-    "window_size": (400, 500),
+    "window_size": (400, 550), # Increased height slightly for status text
     "bg_color": (187, 173, 160),
     "tile_colors": {
         0: (205, 193, 180), 2: (238, 228, 218), 4: (237, 224, 200),
@@ -27,10 +27,9 @@ THEME = {
     "font_sizes": {"small": 24, "medium": 32, "large": 40, "xlarge": 48},
 }
 
-
 class Visualizer:
     """A Pygame-based visualizer to watch a trained PPO agent play 2048,
-    optionally enhanced with an Expectimax searcher."""
+    enhanced with threaded Expectimax search to prevent UI freezing."""
 
     def __init__(self, model_path: str, use_expectimax: bool = True, search_depth: int = 3):
         if not os.path.exists(model_path):
@@ -42,7 +41,7 @@ class Visualizer:
         # --- Setup Pygame and display ---
         pygame.init()
         self.screen = pygame.display.set_mode(THEME["window_size"])
-        pygame.display.set_caption("2048 AI Agent")
+        pygame.display.set_caption("2048 AI Agent (Alejandro's Setup)")
         self.clock = pygame.time.Clock()
 
         # --- Load Fonts Once for Efficiency ---
@@ -54,16 +53,27 @@ class Visualizer:
         # --- Setup RL components ---
         self.env = Game2048Env()
         self.model = MaskablePPO.load(model_path)
+
+        # We only init searcher if needed
         self.searcher = ExpectimaxSearcher() if use_expectimax else None
 
-        mode = f"PPO + C++ Expectimax (depth={search_depth})" if use_expectimax else "Raw PPO Model"
+        # --- Threading State ---
+        self.is_thinking = False
+        self.next_action: Optional[int] = None
+        self.search_thread: Optional[threading.Thread] = None
+
+        mode = f"PPO + Expectimax (depth={search_depth})" if use_expectimax else "Raw PPO Model"
         print(f"Visualizer running with: {mode}")
 
     def _evaluate_batch(self, boards_list: List[np.ndarray]) -> List[float]:
-        """Callback for the C++ searcher to evaluate a batch of boards using the PPO critic."""
+        """Callback for the C++ searcher to evaluate a batch of boards."""
         if not boards_list:
             return []
-        batch_tensor = board_to_tensor(np.array(boards_list))
+
+        # Convert list of boards (N, 4, 4) to tensor (N, 1, 4, 4)
+        batch_array = np.array(boards_list)
+        batch_tensor = board_to_tensor(batch_array)
+
         with torch.no_grad():
             values = self.model.policy.predict_values(
                 torch.as_tensor(batch_tensor).to(self.model.device)
@@ -71,7 +81,6 @@ class Visualizer:
         return values.cpu().numpy().flatten().tolist()
 
     def _get_font_for_tile(self, value: int) -> pygame.font.Font:
-        """Selects the correct pre-loaded font based on tile value."""
         if value < 100: return self.fonts["xlarge"]
         if value < 1000: return self.fonts["large"]
         return self.fonts["medium"]
@@ -80,71 +89,73 @@ class Visualizer:
         """Draws the 4x4 game grid and tiles."""
         self.screen.fill(THEME["bg_color"])
         tile_size, padding = 100, 10
-        for r, c in np.ndindex(board.shape):
-            tile_exponent = board[r, c]
-            tile_value = 2 ** tile_exponent if tile_exponent != 0 else 0
 
-            color = THEME["tile_colors"].get(tile_value, THEME["tile_colors"]["default"])
-            rect = pygame.Rect(c * tile_size + padding / 2, r * tile_size + padding / 2, tile_size - padding,
-                               tile_size - padding)
-            pygame.draw.rect(self.screen, color, rect, border_radius=5)
+        # The C++ board might be raw integers (2, 4, 8) or exponents depending on your getter
+        # Assuming your C++ getter returns raw values (0, 2, 4, 8...) based on Fast2048.cpp
 
-            if tile_value != 0:
-                font = self._get_font_for_tile(tile_value)
-                text_color = THEME["text_color_dark"] if tile_value < 8 else THEME["text_color_light"]
-                text_surf = font.render(str(tile_value), True, text_color)
-                text_rect = text_surf.get_rect(center=rect.center)
-                self.screen.blit(text_surf, text_rect)
+        for r in range(4):
+            for c in range(4):
+                tile_value = int(board[r, c]) # Should be 0, 2, 4, 8...
 
-    def _draw_stats(self, score: int, max_tile_exp: int, step: int, action: int):
-        """Draws the statistics panel below the game board."""
-        stats_rect = pygame.Rect(0, 400, THEME["window_size"][0], 100)
+                if tile_value > 0: tile_value = 2**tile_value
+
+                color = THEME["tile_colors"].get(tile_value, THEME["tile_colors"]["default"])
+
+                rect = pygame.Rect(
+                    c * tile_size + padding / 2,
+                    r * tile_size + padding / 2,
+                    tile_size - padding,
+                    tile_size - padding
+                )
+                pygame.draw.rect(self.screen, color, rect, border_radius=5)
+
+                if tile_value != 0:
+                    font = self._get_font_for_tile(tile_value)
+                    # Dark text for light tiles (2, 4), Light text for dark tiles (8+)
+                    text_color = THEME["text_color_dark"] if tile_value < 8 else THEME["text_color_light"]
+                    text_surf = font.render(str(tile_value), True, text_color)
+                    text_rect = text_surf.get_rect(center=rect.center)
+                    self.screen.blit(text_surf, text_rect)
+
+    def _draw_stats(self, score: int, max_tile: int, step: int, action: int):
+        """Draws the statistics panel."""
+        stats_rect = pygame.Rect(0, 400, THEME["window_size"][0], 150)
         pygame.draw.rect(self.screen, THEME["stats_bg_color"], stats_rect)
 
-        action_map = {0: 'Up', 1: 'Right', 2: 'Down', 3: 'Left', -1: 'N/A'}
+        action_map = {0: 'Up', 1: 'Right', 2: 'Down', 3: 'Left', -1: '...'}
+        status_text = "Thinking..." if self.is_thinking else "Ready"
+
         stats = {
             f"Score: {score}": (20, 415),
-            f"Max Tile: {2**max_tile_exp if max_tile_exp > 0 else 0}": (20, 455),
-            f"Step: {step}": (250, 415),
-            f"Action: {action_map.get(action, 'N/A')}": (250, 455)
+            f"Max: {max_tile}": (20, 455),
+            f"Step: {step}": (200, 415),
+            f"Act: {action_map.get(action, 'N/A')}": (200, 455),
+            f"Status: {status_text}": (20, 495)
         }
+
         for text, pos in stats.items():
             surf = self.fonts["small"].render(text, True, THEME["font_color"])
             self.screen.blit(surf, pos)
 
-    def _get_next_action(self, obs: np.ndarray) -> int:
-        """Determines the next action using either PPO or PPO+Expectimax."""
-        if self.searcher:
-            # Use the C++ searcher, providing the _evaluate_batch method as a callback
-            return self.searcher.find_best_move(
-                self.env.game.board,
+    def _search_worker(self):
+        """Background thread function to run the search."""
+        try:
+            # We must COPY the board so the thread doesn't read it while the main loop writes it (rare but safer)
+            current_board = self.env.game.board.copy()
+
+            action = self.searcher.find_best_move(
+                current_board,
                 self.search_depth,
                 self._evaluate_batch
             )
-        else:
-            # Use the raw PPO model
-            action_mask = self.env.action_masks()
-            action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
-            return int(action)
-
-    def _draw_game_over(self, score, max_tile):
-        overlay = pygame.Surface((400, 500), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-
-        big_font = pygame.font.Font(None, 60)
-        small_font = pygame.font.Font(None, 32)
-
-        game_over_surf = big_font.render("Game Over", True, THEME["font_color"])
-        score_surf = small_font.render(f"Final Score: {score}", True, THEME["font_color"])
-        tile_surf = small_font.render(f"Max Tile: {2 ** max_tile}", True, THEME["font_color"])
-
-        self.screen.blit(overlay, (0, 0))
-        self.screen.blit(game_over_surf, game_over_surf.get_rect(center=(200, 180)))
-        self.screen.blit(score_surf, score_surf.get_rect(center=(200, 250)))
-        self.screen.blit(tile_surf, tile_surf.get_rect(center=(200, 290)))
+            self.next_action = int(action)
+        except Exception as e:
+            print(f"Search thread error: {e}")
+            self.next_action = 0 # Fallback
+        finally:
+            self.is_thinking = False
 
     def run(self):
-        """Runs the main visualization game loop."""
         obs, _ = self.env.reset()
         running = True
         terminated = False
@@ -152,26 +163,69 @@ class Visualizer:
         last_action = -1
 
         while running:
+            # Event Handling
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             if not terminated:
-                # --- Get Action ---
-                action = self._get_next_action(obs)
-                last_action = action
+                if self.use_expectimax:
+                    # --- Expectimax Mode (Threaded) ---
+                    if not self.is_thinking and self.next_action is None:
+                        # Start thinking
+                        self.is_thinking = True
+                        self.search_thread = threading.Thread(target=self._search_worker)
+                        self.search_thread.start()
 
-                # --- Step Environment ---
-                obs, _, terminated, _, info = self.env.step(action)
-                step_count += 1
+                    elif not self.is_thinking and self.next_action is not None:
+                        # Thinking done, execute move
+                        action = self.next_action
+                        self.next_action = None # Reset for next turn
+
+                        last_action = action
+                        obs, _, terminated, _, info = self.env.step(action)
+                        step_count += 1
+
+                else:
+                    # --- Raw PPO Mode (Instant) ---
+                    # Add a small delay so we can actually see the moves
+                    pygame.time.delay(100)
+                    action_mask = self.env.action_masks()
+                    action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
+
+                    last_action = int(action)
+                    obs, _, terminated, _, info = self.env.step(last_action)
+                    step_count += 1
 
             # --- Drawing ---
             self._draw_board(self.env.game.board)
             self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
+
             if terminated:
-                self._draw_game_over(info['score'], info['max_tile'])
+                # Retrieve final info safely
+                final_score = self.env.game.score
+                final_max = self.env.game.max_tile
+                self._draw_game_over(final_score, final_max)
 
             pygame.display.flip()
-            self.clock.tick(10)
+            self.clock.tick(60) # Higher FPS for smoother UI (logic is decoupled)
 
+        if self.search_thread and self.search_thread.is_alive():
+            self.search_thread.join()
         pygame.quit()
+
+    def _draw_game_over(self, score, max_tile):
+        overlay = pygame.Surface(THEME["window_size"], pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+
+        big_font = pygame.font.Font(None, 60)
+        small_font = pygame.font.Font(None, 32)
+
+        game_over_surf = big_font.render("Game Over", True, THEME["font_color"])
+        score_surf = small_font.render(f"Final Score: {score}", True, THEME["font_color"])
+        tile_surf = small_font.render(f"Max Tile: {max_tile}", True, THEME["font_color"])
+
+        self.screen.blit(overlay, (0, 0))
+        self.screen.blit(game_over_surf, game_over_surf.get_rect(center=(200, 200)))
+        self.screen.blit(score_surf, score_surf.get_rect(center=(200, 270)))
+        self.screen.blit(tile_surf, tile_surf.get_rect(center=(200, 310)))
