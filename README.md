@@ -51,6 +51,7 @@ All benchmarks conducted over **100 episodes**.
 | **+ Expectimax (d=1)** | 5,127 | 0% | 1024 (4%) | 372 |
 | **+ Expectimax (d=2)** | 14,014 | 13% | 2048 (13%) | 822 |
 | **+ Expectimax (d=3)** | **26,523** | **58%** | **4096 (8%)** | 1,393 |
+
 While the raw policy struggles to reach terminal states (2048) due to the dense reward structure and horizon effects, it learns a highly robust value function that enables the search to succeed.
 <p align="center">
   <img src="data/benchmarks/depth3_expectimax/score_distribution.png" width="600" alt="Score Distribution"/>
