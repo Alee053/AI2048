@@ -1,4 +1,4 @@
-# **AI 2048: Hybrid RL + Monte Carlo Tree Search**
+# **AI 2048: Hybrid RL + Expectimax Search**
 
 **A Production-Grade System Bridging Deep Reinforcement Learning and Classical Search**
 
@@ -47,12 +47,14 @@ All benchmarks conducted over **100 episodes**.
 | **+ Expectimax (d=1)** | 5,127 | 0% | 1024 (4%) | 372 |
 | **+ Expectimax (d=2)** | 14,014 | 13% | 2048 (13%) | 822 |
 | **+ Expectimax (d=3)** | **26,523** | **58%** | **4096 (8%)** | 1,393 |
-
+While the raw policy struggles to reach terminal states (2048) due to the dense reward structure and horizon effects, it learns a highly robust value function that enables the search to succeed.
 <p align="center">
   <img src="data/benchmarks/depth3_expectimax/score_distribution.png" width="600" alt="Score Distribution"/>
   <br/>
   <em>Score distribution at depth 3: Bimodal peaks at 2048 (50%) and 4096 (8%) tiles</em>
 </p>
+
+
 
 ---
 
@@ -183,7 +185,7 @@ for (size_t i = 0; i < leaves_to_evaluate.size(); ++i)
 - Depth 2: ~500-1,000 leaves
 - Depth 3: ~3,000-8,000 leaves
 
-Inference Efficiency: Batched evaluation amortizes the Python Interpreter overhead and CUDA kernel launch costs across thousands of states, significantly reducing per-state inference latency.
+Inference Efficiency: On GPU-enabled systems, batched evaluation amortizes the Python Interpreter overhead and CUDA kernel launch costs across thousands of states, significantly reducing per-state inference latency.
 
 ---
 
@@ -400,12 +402,12 @@ python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_mo
 If you use this code in your research, please cite:
 
 ```bibtex
-@misc{castro2024-2048hybrid,
+@misc{castro2025-2048hybrid,
   author = {Castro, Alejandro},
   title = {AI 2048: Hybrid Reinforcement Learning with Expectimax Search},
-  year = {2024},
+  year = {2025},
   publisher = {GitHub},
-  url = {https://github.com/yourusername/ai-2048-hybrid}
+  url = {https://github.com/Alee053/AI2048}
 }
 ```
 
