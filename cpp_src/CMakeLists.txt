@@ -14,7 +14,22 @@ pybind11_add_module(searcher
 
 target_compile_features(searcher PRIVATE cxx_std_17)
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../twenty_forty_eight_ai/utils)
 
-add_executable(game_tester main.cpp Fast2048.cpp RandomUtil.cpp)
-target_compile_features(game_tester PRIVATE cxx_std_17)
+if(CMAKE_CONFIGURATION_TYPES)
+    foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
+        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG}
+            ${CMAKE_SOURCE_DIR}/../twenty_forty_eight_ai/utils)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG}
+            ${CMAKE_SOURCE_DIR}/../twenty_forty_eight_ai/utils)
+    endforeach()
+else()
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../twenty_forty_eight_ai/utils)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../twenty_forty_eight_ai/utils)
+endif()
+
+install(
+    TARGETS searcher
+    LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/../twenty_forty_eight_ai/utils/
+    RUNTIME DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/../twenty_forty_eight_ai/utils/
+)

@@ -544,6 +544,8 @@ python scripts/train.py --config configs/train/my_experiment.yaml
 - **Storage:** 5GB (models, logs, benchmark data)
 
 ### **Installation**
+> **Shell note:** Commands below use a POSIX-style shell syntax. On Windows, you can run them from Git Bash, WSL, or adapt the `$(...)` substitution to PowerShell.
+
 
 1. **Clone repository:**
    ```bash
@@ -560,11 +562,16 @@ python scripts/train.py --config configs/train/my_experiment.yaml
 3. Build C++ engine:
    ```bash
     cd cpp_src
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
-    cmake --build build
-    mv build/searcher* ../twenty_forty_eight_ai/utils/
+    cmake -B build -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
+    cmake --build build --config Release
+    cmake --install build --config Release
     cd ..
    ```
+   
+**Platform Notes:**
+- **Windows:** Requires `--config Release` flag
+- **Linux/macOS:** `--config` flag is optional (can omit)
+- **CMake 3.15+:** Required for multi-config generator support
 
 ### **Quick Start**
 
