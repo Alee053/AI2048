@@ -314,23 +314,25 @@ The **transposition table** in Expectimax acts as a **safety mechanism**:
 
 ### **Installation**
 
-1. Clone repository:
+1. **Clone repository:**
    ```bash
    git clone https://github.com/Alee053/AI2048.git
    cd AI2048
    ```
 
-2. Build C++ engine:
+2. Install Python dependencies:
    ```bash
-   cd cpp_src
-   cmake -B build -DCMAKE_BUILD_TYPE=Release
-   cmake --build build
-   cd ..
+    pip install -r requirements.txt
+    pip install -e .
    ```
-
-3. Install Python dependencies:
+   
+3. Build C++ engine:
    ```bash
-   pip install -r requirements.txt
+    cd cpp_src
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
+    cmake --build build
+    mv build/searcher* ../twenty_forty_eight_ai/utils/
+    cd ..
    ```
 
 ### **Quick Start**
@@ -348,9 +350,7 @@ python scripts/evaluate.py data/models/NewArch-GradReward-v2-LightningRun/rl_mod
 Run full benchmark suite:
 ```bash
 python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_model_200000000_steps.zip \
-  --depths 0 1 2 3 \
-  --n_runs 100 \
-  --output data/benchmarks/full_ablation
+  --n_runs 100 --depth 3 --output depth3_expectimax
 ```
 
 ---
