@@ -1,3 +1,4 @@
 wandb
 .idea
 wandb-key
+__pycache__/
