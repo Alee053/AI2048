@@ -30,7 +30,7 @@ The core insight: **learned value functions can replace hand-crafted heuristics*
 
 **Try it yourself:**
 ```bash
-python scripts/evaluate.py data/models/NewArch-GradReward-v2-LightningRun/rl_model_200000000_steps.zip --depth 3
+python scripts/evaluate.py data/models/NewArch-GradReward-v2-LightningRun/Hybrid-PPO-Expectimax-v1.zip --depth 3
 ```
 
 ---
@@ -339,18 +339,18 @@ The **transposition table** in Expectimax acts as a **safety mechanism**:
 
 Train a new agent (200M steps, 44 hours on a T4 GPU):
 ```bash
-python scripts/train.py --config configs/train/NewArch-GradReward-v2-LightningRun.yaml
+python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 ```
 
 Evaluate with visualization:
 ```bash
-python scripts/evaluate.py data/models/NewArch-GradReward-v2-LightningRun/rl_model_200000000_steps.zip --depth 3
+python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
 ```
 
 Run full benchmark suite:
 ```bash
-python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_model_200000000_steps.zip \
-  --n_runs 100 --depth 3 --output depth3_expectimax
+python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+  --n_runs 100 --depth 3 --output depth3_expectimax_test
 ```
 
 ---
@@ -361,7 +361,7 @@ python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_mo
 ├── cpp_src/                 # C++17 engine (pybind11 bindings)
 │   ├── Fast2048.cpp         # LUT-based game logic
 │   ├── ExpectimaxSearcher.cpp # Batched search with transposition table
-│   ├── bindings.cpp         # Python↔C++ interface
+│   ├── bindings.cpp         # Python ↔ C++ interface
 │   └── CMakeLists.txt
 ├── twenty_forty_eight_ai/   # Python package
 │   ├── agent/
@@ -377,13 +377,14 @@ python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_mo
 │   ├── train.py             # PPO training loop
 │   ├── tune.py              # Optuna hyperparameter search
 │   ├── benchmark.py         # Headless evaluation
-│   └── evaluate.py        # Interactive pygame demo
+│   └── evaluate.py          # Visual evaluation
 ├── data/
-│   ├── models/              # Checkpoints (e.g., NewArch-GradReward-v2-LightningRun/...)
+│   ├── models/              
+│   │   └── release/         # Finalized/Production models
 │   └── benchmarks/          # JSON results + plots
 └── configs/
     └── train/
-        └── NewArch-GradReward-v2.yaml # Training hyperparameters
+        └── hybrid_ppo_v1.yaml # Standard training configuration
 ```
 
 ---

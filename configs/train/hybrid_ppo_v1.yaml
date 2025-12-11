@@ -1,6 +1,6 @@
 # s--- Run & Path Settings ---
 project_name: "2048-ppo-training"
-run_name: "NewArch-GradReward-v2-LightningRun"
+run_name: "bayesian_opt_search"
 output_dir: "data" # Base directory for models and studies
 
 # --- Resume Settings ---
