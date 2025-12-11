@@ -131,10 +131,6 @@ void Fast2048::move(int direction) {
 - **LUT Size:** 3 tables × 65,536 entries = **~800KB memory**
 - **Precomputation:** Happens once at startup via `init_LUT()`
 
-**Performance Impact:**
-- Naive Python/NumPy: ~2,000 moves/sec
-- LUT-optimized C++: ~50,000 moves/sec (**25x faster**)
-
 This optimization is critical for Expectimax search, which evaluates **10,000+ board states per move** at depth 3.
 
 ---
@@ -356,7 +352,7 @@ python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 
 Resume from checkpoint
 ```bash
-python scripts/train.py --config configs/train/resume_training.yaml
+python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml #--load_model true --checkpoint_path data/models/release/Hybrid-PPO-Expectimax-v1.zip
 ```
 
 ---
@@ -521,13 +517,11 @@ wandb login
 
 ### **Config File Templates**
 
-Example configs are provided in `configs/train/`:
+Example config is provided in `configs/train/`:
 
 ```text
 configs/train/
-├── hybrid_ppo_v1.yaml # Standard training (200M steps, tested)
-├── quick_test.yaml # Fast convergence test (10M steps)
-└── resume_training.yaml # Template for resuming from checkpoint
+└─ hybrid_ppo_v1.yaml # Standard training (200M steps, tested)
 ```
 
 To create a custom config:
@@ -542,7 +536,7 @@ python scripts/train.py --config configs/train/my_experiment.yaml
 
 ### **System Requirements**
 - **CPU:** x86-64 with AVX2 support (for fast bitboard operations)
-- **GPU:** NVIDIA GPU with CUDA 11.8+ (for PPO training)
+- **GPU:** NVIDIA GPU with CUDA 11.8+ (CUDA 13 recommended)
 - **RAM:** 16GB minimum (8GB for training, 4GB for inference, 4GB OS overhead)
 - **Storage:** 5GB (models, logs, benchmark data)
 
