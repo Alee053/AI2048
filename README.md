@@ -182,7 +182,7 @@ for (size_t i = 0; i < leaves_to_evaluate.size(); ++i)
 - Depth 2: ~500-1,000 leaves
 - Depth 3: ~3,000-8,000 leaves
 
-**GPU Utilization:** Batching increases GPU utilization from ~10% (sequential) to ~80% (batch).
+Inference Efficiency: Batched evaluation amortizes the Python Interpreter overhead and CUDA kernel launch costs across thousands of states, significantly reducing per-state inference latency.
 
 ---
 
@@ -339,7 +339,7 @@ python scripts/train.py --config configs/train/NewArch-GradReward-v2-LightningRu
 
 Evaluate with visualization:
 ```bash
-python scripts/visualizer.py data/models/NewArch-GradReward-v2-LightningRun/rl_model_200000000_steps.zip --depth 3
+python scripts/evaluate.py data/models/NewArch-GradReward-v2-LightningRun/rl_model_200000000_steps.zip --depth 3
 ```
 
 Run full benchmark suite:
@@ -374,7 +374,7 @@ python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_mo
 │   ├── train.py             # PPO training loop
 │   ├── tune.py              # Optuna hyperparameter search
 │   ├── benchmark.py         # Headless evaluation
-│   └── visualizer.py        # Interactive pygame demo
+│   └── evaluate.py        # Interactive pygame demo
 ├── data/
 │   ├── models/              # Checkpoints (e.g., NewArch-GradReward-v2-LightningRun/...)
 │   └── benchmarks/          # JSON results + plots
@@ -387,10 +387,10 @@ python scripts/benchmark.py data/models/NewArch-GradReward-v2-LightningRun/rl_mo
 
 ## **Future Work**
 
-- **AlphaZero-style MCTS:** Replace Expectimax with Monte Carlo Tree Search using the policy network for action selection.
-- **Curriculum Learning:** Start training on easier setups with less randomness (e.g., fewer 4-tile spawns).
-- **Multi-Objective RL:** Simultaneously optimize for score AND tile count (more tiles = longer games).
-- **Generalization:** Test on variants (2048 Fibonacci, Threes, larger grids).
+- **Uncertainty-Aware Search:** Instead of a point-estimate $V(s)$, learn a distribution $P(V(s))$ (e.g., via Ensembles). Use the variance to guide Expectimax, penalizing high-uncertainty paths (Pessimistic Search) to improve safety.
+- **Safe Reinforcement Learning:** Integrate Lyapunov constraints into the PPO loss function to provide formal guarantees against "game over" states during training.
+- **AlphaZero-style MCTS:** Replace fixed-depth Expectimax with learned node expansion, using the policy network $\pi(s)$ to prune the search tree dynamically.
+- **Sim-to-Real Transfer:** Analyze how the quantization artifacts of the 4x4 grid generalize to continuous state spaces in robotics tasks.
 
 ---
 
