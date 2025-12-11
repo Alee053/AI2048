@@ -5,6 +5,8 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/) [![C++17](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
+## **Quick Links**
+- [Demo](#demo) | [Benchmarks](#performance-results) | [Installation](#installation) | [CLI Docs](#command-line-interface)
 
 ## **Overview**
 
@@ -45,12 +47,12 @@ python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --de
 
 All benchmarks conducted over **100 episodes**.
 
-| Configuration | Avg Score | 2048+ Win Rate | Max Tile (Frequency) | Avg Moves |
-|---------------|-----------|----------------|----------------------|-----------|
-| **Raw PPO Policy** | 7,996 | 0% | 1024 (18%) | 541 |
-| **+ Expectimax (d=1)** | 5,127 | 0% | 1024 (4%) | 372 |
-| **+ Expectimax (d=2)** | 14,014 | 13% | 2048 (13%) | 822 |
-| **+ Expectimax (d=3)** | **26,523** | **58%** | **4096 (8%)** | 1,393 |
+| Configuration | Avg Score            | 2048+ Win Rate | Max Tile (Frequency) | Avg Moves |
+|---------------|----------------------|----------------|----------------------|-----------|
+| **Raw PPO Policy** | 7,995.6 ± 3502.67    | 0% | 1024 (18%) | 541 |
+| **+ Expectimax (d=1)** | 5,127.32 ± 2482.23   | 0% | 1024 (4%) | 372 |
+| **+ Expectimax (d=2)** | 14,014.08 ± 6496.21  | 13% | 2048 (13%) | 822 |
+| **+ Expectimax (d=3)** | **26,523 ± 12749.82** | **58%** | **4096 (8%)** | 1,393 |
 
 While the raw policy struggles to reach terminal states (2048) due to the dense reward structure and horizon effects, it learns a highly robust value function that enables the search to succeed.
 <p align="center">
