@@ -1,13 +1,24 @@
-﻿--extra-index-url https://download.pytorch.org/whl/cu130
+﻿# --- PyTorch with CUDA 13.0 Support ---
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.9.1+cu130
 
+# --- Core RL & Environment ---
 gymnasium==1.2.0
 stable-baselines3==2.7.0
-numpy~=1.26
-wandb==0.21.3
+sb3-contrib==2.7.1
 pygame==2.6.1
+
+# --- Performance & C++ Integration ---
+numpy==1.26.4
+numba==0.62.1
+pybind11==3.0.1
+
+# --- Experiment Tracking & Config ---
+wandb==0.21.3
 optuna==4.5.0
-pyyaml~=6.0.3
-numba~=0.62.1
-torch==2.9.1
-sb3_contrib==2.7.1
-pybind11
+PyYAML==6.0.3
+tqdm==4.67.1
+
+# --- Data Analysis & Visualization ---
+pandas==2.3.3
+matplotlib==3.10.7
