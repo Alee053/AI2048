@@ -81,15 +81,13 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
     std::pair<int, bool> Fast2048::move_simulated(int direction) {
     int merge_score = 0;
 
-    // Check validity first
     if (!is_move_valid(direction)) {
         return {0, false};
     }
 
-    // Move logic
     if (direction == 3) { // Left
         for (auto &row : board) {
-            int index = row_to_number(row);
+            int index=row_to_number(row);
             merge_score += move_reward_LUT[index];
             row = move_row_LUT[index];
         }

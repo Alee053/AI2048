@@ -1,6 +1,6 @@
 # s--- Run & Path Settings ---
 project_name: "2048-ppo-training"
-run_name: "bayesian_opt_search"
+run_name: "hybrid_ppo_v1"
 output_dir: "data" # Base directory for models and studies
 
 # --- Resume Settings ---

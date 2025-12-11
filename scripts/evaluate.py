@@ -50,7 +50,6 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Instantiate the visualizer with the arguments from the command line
         vis = Visualizer(
             model_path=args.model_path,
             use_expectimax=args.use_expectimax,

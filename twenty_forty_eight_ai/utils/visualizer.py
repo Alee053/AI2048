@@ -159,7 +159,6 @@ class Visualizer:
         last_action = -1
 
         while running:
-            # Events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -193,7 +192,6 @@ class Visualizer:
                     obs, _, terminated, _, info = self.env.step(last_action)
                     step_count += 1
 
-            # Draw
             self._draw_board(self.env.game.board)
             self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
 

@@ -5,7 +5,6 @@
 
 #include "Fast2048.h"
 
-// Print board
 void print_board(const std::array<std::array<int, 4>, 4>& board) {
     std::cout << "-----------------------------" << std::endl;
     for (int r = 0; r < 4; ++r) {
@@ -54,7 +53,6 @@ int main() {
                 continue;
         }
 
-        // Unpack results
         auto [merge_score, done, moved] = game.move(direction);
         score += merge_score;
 

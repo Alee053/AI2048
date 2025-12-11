@@ -2,7 +2,7 @@
 
 # --- Study Settings ---
 project_name: "2048-ppo-tuning"
-study_name: "hybrid_ppo_search"
+study_name: "bayesian_opt_search"
 db_path: "data/studies.db" # A single database file for all studies
 timeout_hours: 12
 

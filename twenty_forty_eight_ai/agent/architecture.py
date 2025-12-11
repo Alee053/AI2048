@@ -69,7 +69,6 @@ class CustomCNN(BaseFeaturesExtractor):
     def _embed_observations(self, observations: torch.Tensor) -> torch.Tensor:
         """Embed integer observations."""
         indices = observations.long()
-        # Flatten for embedding
         embedded = self.embedding(indices.squeeze(1).view(-1, 16))
         # Reshape to (N, C, H, W)
         return embedded.permute(0, 2, 1).reshape(-1, self.embedding.embedding_dim, 4, 4)
@@ -84,16 +83,12 @@ class CustomCNN(BaseFeaturesExtractor):
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         """Forward pass."""
-        # Embed
         embedded = self._embed_observations(observations)
 
-        # Extract features
         row_features = self.row_pathway(embedded)
         col_features = self.col_pathway(embedded)
         grid_features = self.grid_pathway(embedded)
 
-        # Concatenate
         combined_features = torch.cat((row_features, col_features, grid_features), dim=1)
 
-        # Project
         return self.linear(combined_features)

@@ -26,13 +26,10 @@ def _njit_log2_where_zero(board: np.ndarray) -> np.ndarray:
 
 def board_to_tensor(board: np.ndarray) -> np.ndarray:
     """Convert board(s) to tensor format."""
-    # Compute log2
     log_board = _njit_log2_where_zero(board.astype(np.float32))
 
-    # Cast to int64
     int_log_board = log_board.astype(np.int64)
 
-    # Add channel dim
     if int_log_board.ndim == 2:  # Single board (4, 4)
         return np.expand_dims(int_log_board, axis=0)
     else:  # Batch (N, 4, 4)
