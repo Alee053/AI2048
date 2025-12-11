@@ -1,5 +1,18 @@
 ﻿"""
 Hyperparameter tuning with Optuna.
+
+Usage:
+    python scripts/tune.py --config <path_to_tune_config>
+
+Required Config Keys:
+    - project_name: W&B project identifier
+    - study_name: Unique Optuna study identifier
+    - db_path: Path to SQLite database
+    - ppo_search_space: Hyperparameter ranges
+    - trial: Trial configuration (n_envs, timesteps)
+
+Examples:
+    python scripts/tune.py --config configs/tune/bayesian_opt_search.yaml
 """
 
 import argparse
@@ -124,7 +137,10 @@ def main(config_path: str):
             print(f"    {key}: {value}")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run an Optuna hyperparameter study for the 2048 AI.")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--config", type=str, required=True,
         help="Path to the YAML configuration file for the tuning study."

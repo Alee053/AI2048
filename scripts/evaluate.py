@@ -1,14 +1,20 @@
 ﻿"""
-Evaluate trained 2048 agent.
-
-Modes:
-1. Raw PPO
-2. PPO + Expectimax (uses value function for tactical search)
+Evaluate trained 2048 agent with visualization.
 
 Usage:
-    python scripts/evaluate.py data/models/my_model.zip
-    python scripts/evaluate.py data/models/my_model.zip --no-search
-    python scripts/evaluate.py data/models/my_model.zip --depth 5
+    python scripts/evaluate.py <model_path> [OPTIONS]
+
+Arguments:
+    model_path (required): Path to trained model .zip file
+    --no-search: Disable Expectimax search (use raw PPO policy)
+    --depth <int>: Search depth for Expectimax (default: 3)
+
+Examples:
+    # Depth-3 Expectimax (recommended)
+    python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+
+    # Raw policy (no search)
+    python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --no-search
 """
 
 import argparse
@@ -17,7 +23,10 @@ from twenty_forty_eight_ai.utils.visualizer import Visualizer
 
 def main():
     """Run visualizer."""
-    parser = argparse.ArgumentParser(description="Evaluate a trained 2048 AI agent.")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
     # Arguments
     parser.add_argument(

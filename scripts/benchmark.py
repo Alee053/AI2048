@@ -1,5 +1,22 @@
 """
 Headless benchmark for 2048 AI.
+
+Usage:
+    python scripts/benchmark.py <model_path> [OPTIONS]
+
+Arguments:
+    model_path (required): Path to trained model .zip file
+    --n_runs <int>: Number of episodes to simulate (default: 10)
+    --depth <int>: Expectimax search depth; 0 = raw policy (default: 0)
+    --output <name>: Custom run name for output folder
+    --device <str>: Device for model inference: cpu, cuda, auto (default: auto)
+
+Examples:
+    # Full 100-episode benchmark with depth-3 search
+    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --n_runs 100 --depth 3
+
+    # Quick test with raw policy
+    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --n_runs 10 --depth 0
 """
 
 import argparse
@@ -211,7 +228,10 @@ class Benchmarker:
                 print(f"Error creating plot: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Headless Benchmark for 2048 AI Agent.")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("model_path", type=str, help="Path to the trained model .zip file")
     parser.add_argument("--n_runs", type=int, default=10, help="Number of games to simulate (default: 10)")
     parser.add_argument("--depth", type=int, default=0, help="Expectimax search depth. 0 = Raw Policy (default: 0)")

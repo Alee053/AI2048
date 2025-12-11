@@ -304,6 +304,235 @@ The **transposition table** in Expectimax acts as a **safety mechanism**:
 
 ---
 
+## **Command-Line Interface**
+
+All scripts support the `--help` flag for detailed usage information. Below are common workflows:
+
+### **Training**
+
+Train a new agent from scratch or resume from a checkpoint:
+
+```bash
+python scripts/train.py --config <path_to_yaml>
+```
+
+**Required Config Keys (YAML):**
+
+```yaml
+project_name: "2048-hybrid-ai" # W&B project name
+run_name: "ppo-expectimax-v1" # Unique run identifier
+output_dir: "data/" # Base directory for outputs
+total_timesteps: 200_000_000 # Total training steps
+n_envs: 32 # Parallel environments
+save_interval: 5_000_000 # Checkpoint frequency (steps)
+features_dim: 256 # CNN feature extractor output size
+
+# PPO Hyperparameters
+ppo_params:
+  learning_rate:
+    type: "linear_decay"
+    initial_value: 0.0003
+  gamma: 0.998 # Discount factor
+  gae_lambda: 0.95 # GAE parameter
+  clip_range: 0.2 # PPO clip range
+  ent_coef: 0.005 # Entropy coefficient
+
+# Resume Training (optional)
+load_model: false # Set to true to resume
+checkpoint_path: null # Path to .zip checkpoint
+```
+
+**Example:**
+
+Fresh training
+```bash
+python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+```
+
+Resume from checkpoint
+```bash
+python scripts/train.py --config configs/train/resume_training.yaml
+```
+
+---
+
+### **Hyperparameter Tuning**
+
+Run Bayesian optimization over hyperparameter search space:
+
+```bash
+python scripts/tune.py --config <path_to_tune_config>
+```
+
+**Required Config Keys (YAML):**
+
+```yaml
+project_name: "2048-optuna-study"
+study_name: "ppo-hp-search-v1"
+db_path: "data/optuna/study.db" # SQLite storage
+timeout_hours: 48 # Max study duration
+
+# Search space definitions
+ppo_search_space:
+  learning_rate:
+    type: "float"
+    low: 0.00001
+    high: 0.001
+    log: true
+  gamma:
+    type: "float"
+    low: 0.95
+    high: 0.999
+  ent_coef:
+    type: "float"
+    low: 0.0
+    high: 0.01
+
+# Trial configuration
+trial:
+  n_envs: 16
+  total_timesteps: 5_000_000
+  report_freq: 100_000
+
+# Pruner settings
+pruner:
+  n_startup_trials: 5
+  n_warmup_steps: 500_000
+```
+
+**Resumable Studies:**
+Optuna automatically resumes from the SQLite database if `load_if_exists=True` (default).
+
+---
+
+### **Evaluation (Visual)**
+
+Watch the agent play with interactive pygame visualization:
+
+```bash
+python scripts/evaluate.py <model_path> [OPTIONS]
+```
+
+**Arguments:**
+- `model_path` (required): Path to trained model `.zip` file
+- `--no-search`: Disable Expectimax search (use raw PPO policy)
+- `--depth <int>`: Search depth for Expectimax (default: 3)
+
+**Examples:**
+
+Depth-3 Expectimax (recommended)
+```bash
+python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+```
+
+Raw policy (no search)
+```bash
+python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --no-search
+```
+
+Shallow search (faster, worse performance)
+```bash
+python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 1
+```
+
+---
+
+### **Benchmark (Headless)**
+
+Run large-scale performance evaluation without visualization:
+
+```bash
+python scripts/benchmark.py <model_path> [OPTIONS]
+```
+
+**Arguments:**
+- `model_path` (required): Path to trained model `.zip` file
+- `--n_runs <int>`: Number of episodes to simulate (default: 10)
+- `--depth <int>`: Expectimax search depth; 0 = raw policy (default: 0)
+- `--output <name>`: Custom run name for output folder (default: auto-generated)
+- `--device <str>`: Device for model inference: `cpu`, `cuda`, `auto` (default: auto)
+
+**Examples:**
+
+Full 100-episode benchmark with depth-3 search
+```bash
+python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+  --n_runs 100 --depth 3 --output depth3_final_eval
+```
+
+Quick 10-episode test with raw policy
+```bash
+python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+  --n_runs 10 --depth 0 --output raw_policy_baseline
+```
+
+CPU-only benchmark (no GPU required)
+```bash
+python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+  --n_runs 50 --depth 2 --device cpu --output depth2_cpu_test
+```
+
+**Output Structure:**
+
+```text
+data/benchmarks/<run_name>/
+├── results.json # Metrics + raw data (scores, tiles, steps)
+└── score_distribution.png # Histogram with mean line
+```
+
+**Metrics Reported:**
+- Average score ± std
+- Min/max scores
+- Average moves per episode
+- Max tile distribution (frequency of 512, 1024, 2048, 4096, etc.)
+
+---
+
+### **Performance Profiling**
+
+Use built-in W&B logging to track training metrics in real-time:
+
+Training automatically logs to W&B
+```bash
+python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+```
+
+View dashboard
+```bash
+wandb login
+# Navigate to your W&B project URL
+```
+
+**Logged Metrics:**
+- Episode reward (mean, min, max)
+- Episode length
+- Value loss
+- Policy loss
+- Entropy coefficient
+- Learning rate schedule
+- Custom 2048 metrics (max tile reached, merge efficiency)
+
+---
+
+### **Config File Templates**
+
+Example configs are provided in `configs/train/`:
+
+```text
+configs/train/
+├── hybrid_ppo_v1.yaml # Standard training (200M steps, tested)
+├── quick_test.yaml # Fast convergence test (10M steps)
+└── resume_training.yaml # Template for resuming from checkpoint
+```
+
+To create a custom config:
+
+```bash
+cp configs/train/hybrid_ppo_v1.yaml configs/train/my_experiment.yaml
+# Edit my_experiment.yaml with your hyperparameters
+python scripts/train.py --config configs/train/my_experiment.yaml
+```
+
 ## **Reproducibility**
 
 ### **System Requirements**

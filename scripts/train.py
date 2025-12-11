@@ -1,5 +1,22 @@
 ﻿"""
-Training script for 2048 AI.
+Training script for 2048 AI agent.
+
+Usage:
+    python scripts/train.py --config <path_to_yaml>
+
+Required Config Keys:
+    - project_name: W&B project identifier
+    - run_name: Unique experiment name
+    - total_timesteps: Training steps (e.g., 200_000_000)
+    - n_envs: Parallel environment count
+    - ppo_params: Dict of PPO hyperparameters
+
+Examples:
+    # Fresh training
+    python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+    
+    # Resume from checkpoint
+    python scripts/train.py --config configs/train/resume_training.yaml
 """
 
 import os
@@ -106,7 +123,10 @@ def train(config: dict):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--config", type=str, required=True, help="Path to the YAML config file.")
     args = parser.parse_args()
 
