@@ -352,7 +352,7 @@ python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 
 Resume from checkpoint
 ```bash
-python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml #--load_model true --checkpoint_path data/models/release/Hybrid-PPO-Expectimax-v1.zip
+python scripts/train.py --config configs/train/resume_training.yaml
 ```
 
 ---
@@ -521,7 +521,8 @@ Example config is provided in `configs/train/`:
 
 ```text
 configs/train/
-└─ hybrid_ppo_v1.yaml # Standard training (200M steps, tested)
+├─ hybrid_ppo_v1.yaml # Standard training (200M steps, tested)
+└─ resume_training.yaml # Resume training
 ```
 
 To create a custom config:
