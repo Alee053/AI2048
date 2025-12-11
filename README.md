@@ -25,7 +25,11 @@ The core insight: **learned value functions can replace hand-crafted heuristics*
   <!-- Ensure assets/demo.gif exists or replace with a valid path -->
   <img src="assets/demo.gif" width="400" alt="Agent playing 2048"/>
   <br/>
-  <em>Agent achieving 4096 tile using Depth-3 Expectimax with learned value function</em>
+  <em>
+    Agent demonstrating an emergent "Wall Strategy" (keeping max tile on edge center).
+    <br/>
+    Unlike the human "Snake" heuristic, the agent leverages Depth-3 Expectimax to maintain stability in this higher-entropy configuration.
+  </em>
 </p>
 
 **Try it yourself:**
