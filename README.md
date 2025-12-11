@@ -30,7 +30,7 @@ The core insight: **learned value functions can replace hand-crafted heuristics*
 
 **Try it yourself:**
 ```bash
-python scripts/evaluate.py data/models/NewArch-GradReward-v2-LightningRun/Hybrid-PPO-Expectimax-v1.zip --depth 3
+python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
 ```
 
 ---
