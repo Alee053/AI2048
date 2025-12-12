@@ -282,28 +282,20 @@ def objective(trial):
 
 ## **Research Connections**
 
-### **Relation to Bayesian Optimization (Krause et al., 2009)**
+### Relation to Bayesian Optimization (GP-UCB, Srinivas et al. 2009)
 
-This project shares conceptual DNA with **GP-UCB** (Gaussian Process Upper Confidence Bound):
+Tuning the PPO hyperparameters for this agent is an instance of **black-box optimization**:
+- Input: hyperparameter vector \(x\)
+- Output: noisy objective \(f(x)\) = average 2048 score over 50 games
 
-| GP-UCB (Function Optimization) | This Work (Game Playing) |
-|-------------------------------|--------------------------|
-| **Goal:** Find $\\max_x f(x)$ | **Goal:** Find $\\max_a Q(s,a)$ |
-| **Uncertainty:** GP posterior variance $\\sigma^2(x)$ | **Uncertainty:** Search tree averaging over chance nodes |
-| **Exploitation:** GP mean $\\mu(x)$ | **Exploitation:** Value function $V(s)$ |
-| **Exploration:** UCB = $\\mu(x) + \\beta \\sigma(x)$ | **Exploration:** Expectimax over stochastic tile spawns |
-| **Regret Bound:** $O(\\sqrt{T \\gamma_T})$ | **Search Depth:** Depth 3 filters noise in $V(s)$ |
+I used **Optuna’s Bayesian optimization** to choose hyperparameters, which is conceptually close to the **GP-UCB** framework: a surrogate model of \(f\) is updated from past trials and an acquisition rule balances exploration (trying uncertain regions) and exploitation (refining promising ones).
+### Conceptual Parallel: Planning Under Uncertainty
 
-**Key Insight:** Both methods use **principled uncertainty quantification** to balance exploitation (current best estimate) with exploration (reducing uncertainty). In GP-UCB, this is explicit ($\\beta \\sigma(x)$ term). In Expectimax, it's implicit (averaging over search tree).
+Although Expectimax in this project does **not** implement Gaussian-process UCB, it faces a related trade-off: 
+- The value function \(V(s)\) acts as a learned surrogate for long-term return.
+- Expectimax search over stochastic tile spawns reduces uncertainty by averaging over possible futures.
 
----
-
-### **Relation to Safe Exploration (Berkenkamp et al., 2017)**
-
-The **transposition table** in Expectimax acts as a **safety mechanism**:
-- Invalid moves are cached as `-inf` value.
-- Search never explores board states that lead to immediate loss.
-- Similar to how Lyapunov-based safe RL restricts exploration to provably stable regions.
+This is philosophically similar to Bayesian optimization’s use of surrogate models and uncertainty-aware acquisition, but without explicit confidence bounds or regret guarantees.
 
 ---
 
@@ -629,11 +621,22 @@ python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
 
 ## **Future Work**
 
-- **Uncertainty-Aware Search:** Instead of a point-estimate $V(s)$, learn a distribution $P(V(s))$ (e.g., via Ensembles). Use the variance to guide Expectimax, penalizing high-uncertainty paths (Pessimistic Search) to improve safety.
-- **Safe Reinforcement Learning:** Integrate Lyapunov constraints into the PPO loss function to provide formal guarantees against "game over" states during training.
-- **AlphaZero-style MCTS:** Replace fixed-depth Expectimax with learned node expansion, using the policy network $\pi(s)$ to prune the search tree dynamically.
-- **Sim-to-Real Transfer:** Analyze how the quantization artifacts of the 4x4 grid generalize to continuous state spaces in robotics tasks.
+### **Directions Aligned with This Project:**
 
+- **Distributional Value Networks:** Replace point-estimate $V(s)$ with a distribution (e.g., via quantile regression or ensembles). Use variance to implement **risk-sensitive Expectimax**, penalizing high-uncertainty leaf nodes.
+
+- **AlphaZero-Style MCTS:** Replace fixed-depth Expectimax with **Monte Carlo Tree Search** guided by the learned policy $\pi(s)$, enabling adaptive depth and more efficient exploration of promising branches.
+
+- **Transfer to Other Stochastic Games:** Apply the hybrid RL + search framework to games like **Threes**, **2048 variants** (5×5 grid, different merge rules), or **slot-based puzzle games** with similar uncertainty structures.
+
+### **Connections to Broader Research (Krause et al.):**
+
+- **Bayesian Hyperparameter Optimization:** Extend the Optuna-based tuning framework to jointly optimize **RL hyperparameters** and **search hyperparameters** (depth, pruning thresholds) in a single study.
+
+### **Not Pursued (Out of Scope):**
+
+- Safe RL for physical systems (no hardware risk in 2048)
+- Lyapunov-based stability guarantees (game has no "crash" states requiring formal safety)
 ---
 
 ## **Citation**
