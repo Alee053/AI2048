@@ -2,3 +2,10 @@ wandb
 .idea
 wandb-key
 __pycache__/
+
+
+build
+
+twenty_forty_eight_ai
+twenty_forty_eight_ai.egg-info
+.envrc

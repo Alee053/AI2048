@@ -1,10 +1,52 @@
 [build-system]
-requires = ["setuptools"]
+# pybind11 is added here so the build backend can find the C++ headers during compilation
+requires = ["setuptools>=42", "pybind11==3.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "twenty_forty_eight_ai"
 version = "0.1.0"
+# Locking this to 3.12 to ensure Numba and PyTorch remain stable
+requires-python = "==3.12.*"
+
+dependencies = [
+    # --- PyTorch ---
+    "torch==2.9.1+cu130",
+
+    # --- Core RL & Environment ---
+    "gymnasium==1.2.0",
+    "stable-baselines3==2.7.0",
+    "sb3-contrib==2.7.1",
+    "pygame==2.6.1",
+
+    # --- Performance & C++ Integration ---
+    "numpy==1.26.4",
+    "numba==0.62.1",
+    "pybind11==3.0.1",
+
+    # --- Experiment Tracking & Config ---
+    "wandb==0.21.3",
+    "optuna==4.5.0",
+    "optuna-integration==4.0.0",
+    "PyYAML==6.0.3",
+    "tqdm==4.67.1",
+
+    # --- Data Analysis & Visualization ---
+    "pandas==2.3.3",
+    "matplotlib==3.10.7"
+]
 
 [tool.setuptools]
 packages = ["twenty_forty_eight_ai"]
+
+# --- uv Specific Configurations ---
+
+# 1. Define the custom PyTorch CUDA registry
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+# 2. Tell uv to ONLY look for PyTorch in that custom registry
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
