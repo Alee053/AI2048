@@ -36,7 +36,7 @@ The core insight: **learned value functions can replace hand-crafted heuristics*
 
 **Try it yourself:**
 ```bash
-python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
 ```
 
 ---
@@ -308,7 +308,7 @@ All scripts support the `--help` flag for detailed usage information. Below are 
 Train a new agent from scratch or resume from a checkpoint:
 
 ```bash
-python scripts/train.py --config <path_to_yaml>
+uv run python scripts/train.py --config <path_to_yaml>
 ```
 
 **Required Config Keys (YAML):**
@@ -341,12 +341,12 @@ checkpoint_path: null # Path to .zip checkpoint
 
 Fresh training
 ```bash
-python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 ```
 
 Resume from checkpoint
 ```bash
-python scripts/train.py --config configs/train/resume_training.yaml
+uv run python scripts/train.py --config configs/train/resume_training.yaml
 ```
 
 ---
@@ -356,7 +356,7 @@ python scripts/train.py --config configs/train/resume_training.yaml
 Run Bayesian optimization over hyperparameter search space:
 
 ```bash
-python scripts/tune.py --config <path_to_tune_config>
+uv run python scripts/tune.py --config <path_to_tune_config>
 ```
 
 **Required Config Keys (YAML):**
@@ -405,7 +405,7 @@ Optuna automatically resumes from the SQLite database if `load_if_exists=True` (
 Watch the agent play with interactive pygame visualization:
 
 ```bash
-python scripts/evaluate.py <model_path> [OPTIONS]
+uv run python scripts/evaluate.py <model_path> [OPTIONS]
 ```
 
 **Arguments:**
@@ -417,17 +417,17 @@ python scripts/evaluate.py <model_path> [OPTIONS]
 
 Depth-3 Expectimax (recommended)
 ```bash
-python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
 ```
 
 Raw policy (no search)
 ```bash
-python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --no-search
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --no-search
 ```
 
 Shallow search (faster, worse performance)
 ```bash
-python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 1
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 1
 ```
 
 ---
@@ -437,7 +437,7 @@ python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --de
 Run large-scale performance evaluation without visualization:
 
 ```bash
-python scripts/benchmark.py <model_path> [OPTIONS]
+uv run python scripts/benchmark.py <model_path> [OPTIONS]
 ```
 
 **Arguments:**
@@ -451,19 +451,19 @@ python scripts/benchmark.py <model_path> [OPTIONS]
 
 Full 100-episode benchmark with depth-3 search
 ```bash
-python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
   --n_runs 100 --depth 3 --output depth3_final_eval
 ```
 
 Quick 10-episode test with raw policy
 ```bash
-python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
   --n_runs 10 --depth 0 --output raw_policy_baseline
 ```
 
 CPU-only benchmark (no GPU required)
 ```bash
-python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
   --n_runs 50 --depth 2 --device cpu --output depth2_cpu_test
 ```
 
@@ -489,7 +489,7 @@ Use built-in W&B logging to track training metrics in real-time:
 
 Training automatically logs to W&B
 ```bash
-python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 ```
 
 View dashboard
@@ -524,7 +524,7 @@ To create a custom config:
 ```bash
 cp configs/train/hybrid_ppo_v1.yaml configs/train/my_experiment.yaml
 # Edit my_experiment.yaml with your hyperparameters
-python scripts/train.py --config configs/train/my_experiment.yaml
+uv run python scripts/train.py --config configs/train/my_experiment.yaml
 ```
 
 ## **Reproducibility**
@@ -547,8 +547,7 @@ python scripts/train.py --config configs/train/my_experiment.yaml
 
 2. Install Python dependencies:
    ```bash
-    pip install -r requirements.txt
-    pip install -e .
+    uv sync
    ```
    
 3. Build C++ engine:
@@ -569,17 +568,17 @@ python scripts/train.py --config configs/train/my_experiment.yaml
 
 Train a new agent (200M steps, 44 hours on a T4 GPU):
 ```bash
-python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 ```
 
 Evaluate with visualization:
 ```bash
-python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
 ```
 
 Run full benchmark suite:
 ```bash
-python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
   --n_runs 100 --depth 3 --output depth3_expectimax_test
 ```
 
