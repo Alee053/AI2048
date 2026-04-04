@@ -42,6 +42,10 @@ from sb3_contrib import MaskablePPO
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
+# Module-level helper to convert numpy scalars to Python types
+def to_py(val):
+    return val.item() if isinstance(val, np.generic) else val
+
 # Attempt to import the ExpectimaxSearcher extension
 try:
     from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
@@ -168,9 +172,6 @@ class Benchmarker:
         max_tiles = [s['max_tile'] for s in stats]
         steps = [s['steps'] for s in stats]
         
-        # Numpy safety
-        def to_py(val): return val.item() if isinstance(val, np.generic) else val
-
         summary = {
             "config": {
                 "use_expectimax": self.use_expectimax,
@@ -259,10 +260,15 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
         for seed_path in seed_dirs:
             seed_match = re.search(r"seed_(\d+)", seed_path)
             seed_n = seed_match.group(1)
-            out_file = output_dir / f"results_seed_{seed_n}.json"
+            model_file = os.path.join(seed_path, "final_model.zip")
+
+            if not os.path.exists(model_file):
+                print(f"Warning: {model_file} not found, skipping seed {seed_n}")
+                continue
+
             cmd = [
                 sys.executable, __file__,
-                os.path.join(seed_path, "final_model.zip"),
+                model_file,
                 "--n_runs", str(n_runs),
                 "--depth", str(search_depth),
                 "--output", output,
@@ -272,9 +278,11 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
             cmd = [c for c in cmd if c]
             print(f"Launching seed {seed_n} in background...")
             procs.append(subprocess.Popen(cmd, cwd=os.getcwd()))
-        # Wait for all
+        # Wait for all and check return codes
         for p in procs:
-            p.wait()
+            ret = p.wait()
+            if ret != 0:
+                print(f"Warning: subprocess exited with code {ret}")
         print("All parallel benchmark jobs complete.")
     else:
         # Sequential execution
@@ -303,8 +311,6 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
             scores = [s['score'] for s in stats]
             max_tiles = [s['max_tile'] for s in stats]
             steps = [s['steps'] for s in stats]
-
-            def to_py(val): return val.item() if isinstance(val, np.generic) else val
 
             seed_summary = {
                 "config": {"use_expectimax": search_depth > 0, "search_depth": search_depth, "n_runs": len(stats)},
