@@ -2,6 +2,7 @@
 #include <vector>
 #include <array>
 #include <algorithm>
+#include <mutex>
 #include "RandomUtil.h"
 #include <iostream>
 #include <tuple>

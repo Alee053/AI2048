@@ -1,9 +1,8 @@
-#pragma once
 #include "Fast2048.h"
 
 Fast2048::Fast2048() {
-    if (move_row_LUT.empty())
-        init_LUT();
+    static std::once_flag flag;
+    std::call_once(flag, [this] { init_LUT(); });
     reset();
 }
 
