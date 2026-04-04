@@ -9,3 +9,9 @@ build
 twenty_forty_eight_ai
 twenty_forty_eight_ai.egg-info
 .envrc
+
+docs
+.claude
+.venv
+CLAUDE.md
+uv.lock
