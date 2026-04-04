@@ -14,6 +14,7 @@ Output: summary.csv + paper_figures/ in the benchmark root directory.
 import argparse
 import os
 import re
+import sys
 import json
 import csv
 from pathlib import Path
@@ -303,5 +304,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import sys
     main()
