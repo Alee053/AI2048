@@ -32,14 +32,39 @@ from twenty_forty_eight_ai.agent.architecture import CustomCNN
 from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
 
 
+def set_global_seed(seed: int) -> None:
+    """Set all random seeds for deterministic, reproducible runs."""
+    import random
+    import numpy as np
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        try:
+            torch.use_deterministic_algorithms(True)
+        except Exception:
+            pass  # Some ops don't have deterministic fallback
+
+
+def seed_from_config(config: dict) -> int:
+    """Get seed from config dict, defaulting to 0."""
+    return config.get("seed", 0)
+
+
 def train(config: dict):
     """Run training loop."""
+    seed = seed_from_config(config)
+    run_name = f"{config['run_name']}-seed{seed}"
     run = wandb.init(
         project=config['project_name'],
         config=config,
-        name=config['run_name'],
+        name=run_name,
         save_code=True,
     )
+    set_global_seed(seed)
 
     model_dir = os.path.join(config['output_dir'], "models", config['run_name'])
     os.makedirs(model_dir, exist_ok=True)
