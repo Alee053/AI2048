@@ -184,7 +184,7 @@ def train(config: dict):
     print("Training complete!")
 
 
-def main_with_sweep(config: dict, args):
+def main_with_sweep(config: dict):
     sweep_cfg = config.get("__sweep", {})
     if not sweep_cfg.get("enabled"):
         train(config)
@@ -249,7 +249,7 @@ def _print_dry_run(config: dict, sweep_name: str, n_seeds: int):
     for i in range(n_seeds):
         seed_output = os.path.join(config["output_dir"], "models", sweep_name, f"seed_{i}")
         cmd = (f"python scripts/train.py --config <config> --seed {i} "
-               f"--output-dir {config['output_dir']} --run-name {sweep_name}-seed{i}")
+               f"--output-dir {seed_output} --run-name {sweep_name}-seed{i}")
         print(f"Seed {i} │ run: {sweep_name}-seed{i} │ output: {seed_output} │ cmd: {cmd}")
 
     print("\nDry run complete. No jobs launched.")
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     config_data["_config_path"] = args.config
 
     try:
-        main_with_sweep(config_data, args)
+        main_with_sweep(config_data)
     except KeyboardInterrupt:
         print("\nTraining interrupted by user. Exiting.")
     finally:
