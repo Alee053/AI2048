@@ -132,6 +132,8 @@ def main():
         depth_results = []
         for result_path in info["results"]:
             seed_m = re.search(r"results_seed_(\d+)\.json", os.path.basename(result_path))
+            if seed_m is None:
+                continue
             seed_n = int(seed_m.group(1))
             result = load_result_file(result_path)
             raw = result.get("raw_data", [])
@@ -225,6 +227,8 @@ def main():
             for result_path in info["results"]:
                 result = load_result_file(result_path)
                 seed_m = re.search(r"results_seed_(\d+)\.json", os.path.basename(result_path))
+                if seed_m is None:
+                    continue
                 seed_n = seed_m.group(1)
                 scores = [r["score"] for r in result.get("raw_data", [])]
                 seed_data.append({"seed": seed_n, "scores": scores})
