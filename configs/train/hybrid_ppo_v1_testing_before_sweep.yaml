@@ -9,7 +9,7 @@ checkpoint_path: null # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model
 
 # --- Training Parameters ---
 total_timesteps: 20_000_000
-n_envs: 4
+n_envs: 32
 save_interval: 100_000
 
 # --- PPO Hyperparameters---
@@ -21,7 +21,7 @@ ppo_params:
     type: "linear_decay"
     initial_value: 0.0002506795165161916
   clip_range: 0.2
-  batch_size: 4096
+  batch_size: 2048
   n_epochs: 4
 
 # --- Agent Architecture ---
