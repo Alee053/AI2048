@@ -9,12 +9,12 @@ checkpoint_path: null # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model
 
 # --- Training Parameters ---
 total_timesteps: 20_000_000
-n_envs: 32
-save_interval: 100_000
+n_envs: 64
+save_interval: 1_000_000
 
 # --- PPO Hyperparameters---
 ppo_params:
-  n_steps: 512
+  n_steps: 265
   gamma: 0.9500241783796721
   ent_coef: 0.000006683561172757891
   learning_rate:
@@ -26,3 +26,6 @@ ppo_params:
 
 # --- Agent Architecture ---
 features_dim: 256
+
+# export OMP_NUM_THREADS=1
+# export MKL_NUM_THREADS=1
