@@ -9,7 +9,7 @@ checkpoint_path: null # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model
 
 # --- Training Parameters ---
 total_timesteps: 20_000_000
-n_envs: 64
+n_envs: 128
 save_interval: 1_000_000
 
 # --- PPO Hyperparameters---
