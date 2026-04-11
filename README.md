@@ -6,7 +6,7 @@
 
 ---
 ## **Quick Links**
-- [Demo](#demo) | [Benchmarks](#performance-results) | [Installation](#installation) | [CLI Docs](#command-line-interface)
+- [Demo](#demo) | [Benchmarks](#performance-results) | [Installation](#installation) | [CLI Docs](#command-line-interface) | [Seed Sweeps](#seed-sweep-training) | [Aggregation](#post-processing-aggregation)
 
 ## **Overview**
 
@@ -349,6 +349,42 @@ Resume from checkpoint
 uv run python scripts/train.py --config configs/train/resume_training.yaml
 ```
 
+**Seed Sweep Training:**
+
+Run multiple seeds sequentially for statistical robustness:
+```bash
+# Dry run to preview what would be launched
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
+  --seed-sweep 3 --dry-run
+
+# Launch 5-seed sweep (sequential)
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
+  --seed-sweep 5
+
+# Resume a failed sweep (skips completed seeds, re-runs failed/pending)
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
+  --seed-sweep 5 --resume-sweep
+```
+
+**Arguments:**
+- `--seed <int>`: Set a single fixed seed
+- `--seed-sweep <N>`: Launch N sequential runs with seeds 0..N-1
+- `--resume-sweep`: Resume interrupted sweep (skip completed, re-run failed/pending)
+- `--dry-run`: Print sweep plan without launching any jobs
+
+**Output Structure:**
+```
+data/models/<run_name>/
+├── sweep_status.json        # Tracks seed completion status
+├── seed_0/
+│   └── final_model.zip
+├── seed_1/
+│   └── final_model.zip
+└── ...
+```
+
+Each seed run's W&B run name is `<run_name>-seed<N>` for easy filtering.
+
 ---
 
 ### **Hyperparameter Tuning**
@@ -483,6 +519,74 @@ data/benchmarks/<run_name>/
 
 ---
 
+### **Multi-Seed Benchmarking**
+
+Benchmark multiple trained seeds in one command:
+
+```bash
+# Benchmark all seed_N/ subdirectories in a sweep
+uv run python scripts/benchmark.py data/models/sweep-v1/ \
+  --model-dir --n_runs 100 --depth 3 \
+  --output sweep-v1_depth3
+```
+
+**Arguments:**
+- `--model-dir`: Directory containing `seed_N/` subdirectories
+- `--verbose`: Print per-episode progress line
+- `--parallel`: Run seed benchmarks in parallel (background jobs)
+
+**Requirements:**
+- `--output` must follow pattern `<sweep_name>_depth<N>` (e.g., `sweep-v1_depth3`)
+- Each `seed_N/` subdirectory must contain `final_model.zip`
+
+**Output Structure:**
+```
+data/benchmarks/<sweep_name>_depth<N>/
+├── results_seed_0.json
+├── results_seed_1.json
+└── ...
+```
+
+---
+
+### **Post-Processing Aggregation**
+
+Aggregate multi-seed, multi-depth benchmark results into summary statistics and figures:
+
+```bash
+# Aggregate all depth results for a sweep
+uv run python scripts/aggregate.py data/benchmarks/ --sweep sweep-v1
+
+# Focus on a specific win threshold
+uv run python scripts/aggregate.py data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
+```
+
+**Arguments:**
+- `benchmark_dir`: Root folder containing `{sweep_name}_depth*` subfolders
+- `--sweep <name>`: Sweep name to aggregate (required)
+- `--win-threshold <N>`: Report single win threshold (default: 1024, 2048, 4096, 8192)
+- `--output <dir>`: Override output directory
+
+**Output:**
+```
+<benchmark_dir>/
+├── summary.csv              # Per-seed + aggregate rows with all metrics
+├── cross_depth_ci_table.csv # Depth comparison with 95% confidence intervals
+└── paper_figures/
+    ├── violin_score_depth0.png   # Score distributions per seed
+    ├── violin_score_depth1.png
+    ├── bar_winrate_depth0.png    # Win rates per seed + aggregate
+    ├── bar_winrate_depth1.png
+    └── heatmap_max_tile.png      # Max tile frequency across seeds/depths
+```
+
+**Metrics in summary.csv:**
+- `avg_score`, `std_score`, `min_score`, `max_score`, `avg_steps`
+- `win_rate_1024`, `win_rate_2048`, `win_rate_4096`, `win_rate_8192`
+- `max_tile_eq_1024_pct`, `max_tile_eq_2048_pct`, etc.
+
+---
+
 ### **Performance Profiling**
 
 Use built-in W&B logging to track training metrics in real-time:
@@ -603,9 +707,10 @@ uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.
 │       ├── tensor_utils.py  # Board→Tensor conversion
 │       └── searcher.py      # Python wrapper for C++ Expectimax
 ├── scripts/
-│   ├── train.py             # PPO training loop
+│   ├── train.py             # PPO training loop (supports seed sweeps)
 │   ├── tune.py              # Optuna hyperparameter search
-│   ├── benchmark.py         # Headless evaluation
+│   ├── benchmark.py         # Headless evaluation (supports multi-seed)
+│   ├── aggregate.py         # Post-processing aggregator for sweeps
 │   └── evaluate.py          # Visual evaluation
 ├── data/
 │   ├── models/              

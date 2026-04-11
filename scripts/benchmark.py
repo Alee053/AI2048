@@ -42,6 +42,10 @@ from sb3_contrib import MaskablePPO
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
+# Module-level helper to convert numpy scalars to Python types
+def to_py(val):
+    return val.item() if isinstance(val, np.generic) else val
+
 # Attempt to import the ExpectimaxSearcher extension
 try:
     from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
@@ -88,34 +92,35 @@ class Benchmarker:
             
         return values.cpu().numpy().flatten().tolist()
 
-    def run_episode(self) -> Dict[str, Any]:
+    def run_episode(self, verbose: bool = False) -> Dict[str, Any]:
         """Run single episode."""
         obs, _ = self.env.reset()
         done = False
         steps = 0
-        
+
         while not done:
             if self.searcher:
-                # Use C++ Expectimax with Model Value Function
                 action = self.searcher.find_best_move(
-                    self.env.game.board, 
-                    self.search_depth, 
+                    self.env.game.board,
+                    self.search_depth,
                     self._evaluate_batch
                 )
             else:
-                # Use Raw Policy
                 action_mask = self.env.action_masks()
                 action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
                 action = int(action)
-            
+
             obs, _, done, _, info = self.env.step(action)
             steps += 1
-            
-        return {
+
+        result = {
             "score": int(self.env.game.score),
             "max_tile": int(2 ** self.env.game.max_tile),
             "steps": steps
         }
+        if verbose:
+            print(f"Episode N │ Score: {result['score']:,} │ Max tile: {result['max_tile']:,} │ Steps: {result['steps']}")
+        return result
 
     def _create_plot(self, scores: List[int], avg_score: float, output_path: str, config: Dict):
         """Generate score histogram."""
@@ -167,9 +172,6 @@ class Benchmarker:
         max_tiles = [s['max_tile'] for s in stats]
         steps = [s['steps'] for s in stats]
         
-        # Numpy safety
-        def to_py(val): return val.item() if isinstance(val, np.generic) else val
-
         summary = {
             "config": {
                 "use_expectimax": self.use_expectimax,
@@ -227,6 +229,108 @@ class Benchmarker:
             except Exception as e:
                 print(f"Error creating plot: {e}")
 
+
+def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device: str, output: str, verbose: bool, parallel: bool):
+    """Run benchmark across all seed_N/ subdirs in model_dir."""
+    import re
+
+    # Discover seed subdirs
+    seed_dirs = []
+    for entry in os.scandir(model_dir):
+        if entry.is_dir() and re.match(r"^seed_\d+$", entry.name):
+            seed_dirs.append(entry.path)
+
+    seed_dirs.sort(key=lambda p: int(re.search(r"seed_(\d+)", p).group(1)))
+
+    if not seed_dirs:
+        print(f"Error: no seed_N/ directories found in {model_dir}")
+        sys.exit(1)
+
+    print(f"Found {len(seed_dirs)} seed directories: {[os.path.basename(d) for d in seed_dirs]}")
+
+    # Output setup
+    base_dir = Path("data/benchmarks")
+    output_dir = base_dir / output
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if parallel:
+        # Parallel execution (background jobs)
+        import subprocess
+        procs = []
+        for seed_path in seed_dirs:
+            seed_match = re.search(r"seed_(\d+)", seed_path)
+            seed_n = seed_match.group(1)
+            model_file = os.path.join(seed_path, "final_model.zip")
+
+            if not os.path.exists(model_file):
+                print(f"Warning: {model_file} not found, skipping seed {seed_n}")
+                continue
+
+            cmd = [
+                sys.executable, __file__,
+                model_file,
+                "--n_runs", str(n_runs),
+                "--depth", str(search_depth),
+                "--output", output,
+                "--device", device,
+                "--verbose" if verbose else "",
+            ]
+            cmd = [c for c in cmd if c]
+            print(f"Launching seed {seed_n} in background...")
+            procs.append(subprocess.Popen(cmd, cwd=os.getcwd()))
+        # Wait for all and check return codes
+        for p in procs:
+            ret = p.wait()
+            if ret != 0:
+                print(f"Warning: subprocess exited with code {ret}")
+        print("All parallel benchmark jobs complete.")
+    else:
+        # Sequential execution
+        all_results = []
+        for seed_path in seed_dirs:
+            seed_match = re.search(r"seed_(\d+)", seed_path)
+            seed_n = seed_match.group(1)
+            model_file = os.path.join(seed_path, "final_model.zip")
+            out_file = output_dir / f"results_seed_{seed_n}.json"
+
+            if not os.path.exists(model_file):
+                print(f"Warning: {model_file} not found, skipping seed {seed_n}")
+                continue
+
+            print(f"\n=== Benchmarking seed {seed_n} ({os.path.basename(seed_path)}) ===")
+            bencher = Benchmarker(model_file, search_depth > 0, search_depth, device)
+
+            stats = []
+            iterator = tqdm(range(n_runs), desc=f"Seed {seed_n}", unit="game")
+            for _ in iterator:
+                result = bencher.run_episode(verbose=verbose)
+                stats.append(result)
+                iterator.set_postfix({"Score": result['score'], "MaxTile": result['max_tile']})
+
+            # Save per-seed results
+            scores = [s['score'] for s in stats]
+            max_tiles = [s['max_tile'] for s in stats]
+            steps = [s['steps'] for s in stats]
+
+            seed_summary = {
+                "config": {"use_expectimax": search_depth > 0, "search_depth": search_depth, "n_runs": len(stats)},
+                "metrics": {
+                    "avg_score": to_py(np.mean(scores)), "std_score": to_py(np.std(scores)),
+                    "min_score": to_py(np.min(scores)), "max_score": to_py(np.max(scores)),
+                    "avg_steps": to_py(np.mean(steps)),
+                },
+                "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
+                "raw_data": [{"score": s['score'], "max_tile": s['max_tile'], "steps": s['steps']} for s in stats]
+            }
+
+            with open(out_file, "w") as f:
+                json.dump(seed_summary, f, indent=4)
+            print(f"Seed {seed_n} results saved to {out_file}")
+            all_results.append((seed_n, seed_summary))
+
+        print(f"\n=== All seeds benchmarked: {len(all_results)}/{len(seed_dirs)} ===")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -237,15 +341,35 @@ if __name__ == "__main__":
     parser.add_argument("--depth", type=int, default=0, help="Expectimax search depth. 0 = Raw Policy (default: 0)")
     parser.add_argument("--output", type=str, default=None, help="Name of the run (folder name). Defaults to 'run_<timestamp>'")
     parser.add_argument("--device", type=str, default="auto", help="Device to run model on (cpu, cuda, auto)")
-    
+    parser.add_argument("--verbose", action="store_true", help="Print per-episode progress line.")
+    parser.add_argument("--model-dir", type=str, default=None,
+                        help="Directory containing seed_N/ subdirectories for multi-seed benchmarking.")
+    parser.add_argument("--parallel", action="store_true",
+                        help="Run seed benchmarks in parallel (valid for benchmark.py).")
     args = parser.parse_args()
-    
-    use_search = args.depth > 0
-    
-    # Check for file existence
-    if not os.path.exists(args.model_path):
-        print(f"Error: Model file not found at {args.model_path}")
+
+    # Validate output naming convention (required for aggregate.py)
+    import re
+    output_name = args.output or f"run_{int(time.time())}"
+    if args.model_dir and not re.match(r"^[\w-]+_depth\d+$", output_name):
+        print(f"Error: --output must follow pattern {{sweep_name}}_depth{{N}} when using --model-dir.")
+        print(f"  Got: '{output_name}' — expected something like 'sweep-v1_depth3'")
         sys.exit(1)
 
-    bencher = Benchmarker(args.model_path, use_search, args.depth, args.device)
-    bencher.benchmark(args.n_runs, args.output)
+    if args.model_dir:
+        if not os.path.isdir(args.model_dir):
+            print(f"Error: --model-dir path is not a directory: {args.model_dir}")
+            sys.exit(1)
+        benchmark_multi_seed(args.model_dir, args.n_runs, args.depth, args.device,
+                             output_name, args.verbose, args.parallel)
+    else:
+        # Original single-model behavior
+        use_search = args.depth > 0
+
+        # Check for file existence
+        if not os.path.exists(args.model_path):
+            print(f"Error: Model file not found at {args.model_path}")
+            sys.exit(1)
+
+        bencher = Benchmarker(args.model_path, use_search, args.depth, args.device)
+        bencher.benchmark(args.n_runs, args.output)

@@ -2,14 +2,26 @@
 import wandb
 from stable_baselines3.common.callbacks import BaseCallback
 
+
+def should_log(episode: int) -> bool:
+    """Adaptive logging schedule — more frequent early, less frequent late."""
+    if episode < 1000:
+        return episode % 10 == 0
+    elif episode < 10_000:
+        return episode % 100 == 0
+    elif episode < 100_000:
+        return episode % 500 == 0
+    else:
+        return episode % 1000 == 0
+
+
 class WandbLoggingCallback(BaseCallback):
     """Custom callback for W&B logging."""
 
-    def __init__(self, log_chart_freq: int = 100, verbose: int = 0):
+    def __init__(self, verbose: int = 0):
         """Initialize callback."""
         super().__init__(verbose)
         self.episode_count = 0
-        self.log_chart_freq = log_chart_freq
 
     def _on_step(self) -> bool:
         """Log stats after each step."""
@@ -34,24 +46,22 @@ class WandbLoggingCallback(BaseCallback):
                         "Episode/Final Max Tile": 2 ** final_max_tile if final_max_tile > 0 else 0
                     })
 
-                # Log final board chart
-                if self.episode_count % self.log_chart_freq == 0 and 'terminal_observation' in info:
+                # Tile distribution via table (chart configured in W&B UI)
+                if (should_log(self.episode_count)
+                        and 'terminal_observation' in info):
                     final_obs = info['terminal_observation'].squeeze()
-
-                    # Filter invalid values
                     final_obs = final_obs[np.isfinite(final_obs)]
-
                     tiles_with_values = final_obs[final_obs > 0]
 
                     if tiles_with_values.size > 0:
                         exps, counts = np.unique(tiles_with_values, return_counts=True)
                         vals = [str(int(2 ** e)) for e in exps]
-                        table = wandb.Table(data=list(zip(vals, counts)), columns=["Tile", "Count"])
-                        wandb.log({"Charts/Final Board State": wandb.plot.bar(
-                            table, "Tile", "Count", title="Final Tile Distribution"
-                        )})
+                        table = wandb.Table(
+                            data=list(zip(vals, counts)),
+                            columns=["Tile", "Count"]
+                        )
+                        wandb.log({"Tiles/Distribution": table})
                     elif self.verbose > 0:
-                        print(
-                            f"\n[WandbLoggingCallback] Skipped bar chart: No non-zero tiles found in terminal observation.")
+                        print("[WandbLoggingCallback] Skipped: no non-zero tiles found.")
 
         return True

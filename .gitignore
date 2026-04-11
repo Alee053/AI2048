@@ -12,6 +12,7 @@ twenty_forty_eight_ai.egg-info
 
 docs
 .claude
+.worktrees
 .venv
 CLAUDE.md
 uv.lock
