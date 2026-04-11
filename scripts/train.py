@@ -241,6 +241,8 @@ def main_with_sweep(config: dict):
                 print("Continuing to next seed (resume mode)...")
             else:
                 raise
+        finally:
+            wandb.finish()
 
 
 def _print_dry_run(config: dict, sweep_name: str, n_seeds: int):
