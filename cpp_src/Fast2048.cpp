@@ -1,8 +1,12 @@
 #include "Fast2048.h"
+#include "RandomUtil.h"
 
 Fast2048::Fast2048() {
     static std::once_flag flag;
-    std::call_once(flag, [this] { init_LUT(); });
+    std::call_once(flag, [this] {
+        init_LUT();
+        RandomUtil::init_zobrist_table();
+    });
     reset();
 }
 

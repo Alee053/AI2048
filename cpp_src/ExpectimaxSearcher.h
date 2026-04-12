@@ -19,13 +19,6 @@ struct BoardHash {
     }
 };
 
-struct TranspositionKeyHash {
-    size_t operator()(const std::pair<Board, int>& k) const {
-        BoardHash bh;
-        return bh(k.first) * 31 + std::hash<int>{}(k.second);
-    }
-};
-
 class ExpectimaxSearcher {
 public:
     ExpectimaxSearcher();
@@ -33,17 +26,20 @@ public:
     int find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func);
 
 private:
+    static constexpr size_t BATCH_SIZE = 512;
     Fast2048 game_instance;
 
-    // Key: (Board, depth) pair. Depth is included because a board at depth 1
-    // has a different value than at depth 3 (more future moves possible).
-    std::unordered_map<std::pair<Board, int>, float, TranspositionKeyHash> transposition_table;
+    // Key: uint64_t Zobrist hash of the board
+    std::unordered_map<uint64_t, float> transposition_table;
 
-    void gather_leaves(const Board& board, int depth, std::vector<Board>& leaves_queue,
+    void gather_leaves(const Board& board, int depth, uint64_t board_hash,
+                       std::vector<Board>& leaves_queue,
                        std::map<int, std::unordered_set<Board, BoardHash>>& visited);
 
     float chance_node_substitute(const Board& board, int depth,
-                                 const std::unordered_map<Board, float, BoardHash>& leaf_cache);
-    float max_node_substitute(const Board& board, int depth,
-                              const std::unordered_map<Board, float, BoardHash>& leaf_cache);
+                                 const std::unordered_map<Board, float, BoardHash>& leaf_cache,
+                                 float alpha, float beta);
+    float max_node_substitute(const Board& board, int depth, uint64_t board_hash,
+                              const std::unordered_map<Board, float, BoardHash>& leaf_cache,
+                              float alpha, float beta);
 };
