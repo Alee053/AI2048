@@ -16,4 +16,10 @@ docs
 .venv
 CLAUDE.md
 uv.lock
-CLAUDE.md
+
+data/models/hybrid_ppo_v2_sweep
+data/models/hybrid_ppo_v2_sweep-seed0
+data/models/hybrid_ppo_v2_sweep-seed1
+data/models/hybrid_ppo_v2_sweep-seed2
+
+logs
