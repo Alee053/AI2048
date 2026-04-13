@@ -98,6 +98,7 @@ class Benchmarker:
         done = False
         steps = 0
 
+        episode_stats = None
         while not done:
             if self.searcher:
                 stats = self.searcher.find_best_move(
