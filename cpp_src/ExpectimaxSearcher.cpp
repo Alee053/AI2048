@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_set>
 #include <algorithm>
+#include <chrono>
 
 ExpectimaxSearcher::ExpectimaxSearcher() = default;
 
@@ -89,8 +90,10 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
     }
 
     // TT lookup — uses board_hash only (depth not part of key)
+    tt_lookups++;
     auto tp_it = transposition_table.find(board_hash);
     if (tp_it != transposition_table.end()) {
+        tt_hits++;
         return tp_it->second;
     }
 
@@ -127,8 +130,12 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
     return result;
 }
 
-int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func) {
+SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func) {
     transposition_table.clear();
+    tt_lookups = 0;
+    tt_hits = 0;
+    batches_eval = 0;
+    search_start = std::chrono::high_resolution_clock::now();
 
     uint64_t root_hash = RandomUtil::compute_board_hash(board);
 
@@ -145,12 +152,23 @@ int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const Batc
 
     for (int move = 0; move < 4; ++move) {
         game_instance.set_board(board);
-        auto [merge_score, moved] = game_instance.move_simulated(move);
+        auto [ms, moved] = game_instance.move_simulated(move);
         if (!moved) continue;
-        root_moves.push_back({move, game_instance.get_board(), RandomUtil::compute_board_hash(game_instance.get_board()), get_log_reward(merge_score), 0.0f});
+        root_moves.push_back({move, game_instance.get_board(), RandomUtil::compute_board_hash(game_instance.get_board()), get_log_reward(ms), 0.0f});
     }
 
-    if (root_moves.empty()) return 0;
+    if (root_moves.empty()) {
+        SearchStats empty_stats{};
+        empty_stats.best_move = 0;
+        empty_stats.think_ms = 0;
+        empty_stats.nodes_visited = 0;
+        empty_stats.batches_eval = 0;
+        for (int i = 0; i < 4; ++i) empty_stats.move_scores[i] = -1e9f;
+        empty_stats.tt_size = 0;
+        empty_stats.tt_lookups = 0;
+        empty_stats.tt_hits = 0;
+        return empty_stats;
+    }
 
     // --- Pre-eval root post-move boards for ordering ---
     if (root_moves.size() > 1) {
@@ -173,6 +191,10 @@ int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const Batc
     int best_move = root_moves[0].move_id;
     float global_alpha = -1e9f;
 
+    // Initialize move_scores with invalid value
+    float move_scores[4] = {-1e9f, -1e9f, -1e9f, -1e9f};
+    size_t total_nodes_visited = 0;
+
     for (const auto& rm : root_moves) {
         // For each root move, gather its leaves and evaluate in batches
         std::vector<Board> move_leaves;
@@ -180,6 +202,7 @@ int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const Batc
 
         // Gather leaves for this root move only
         gather_leaves(rm.post_board, depth, rm.post_hash, move_leaves, move_visited);
+        total_nodes_visited += move_leaves.size();
 
         // Batch evaluate
         std::unordered_map<Board, float, BoardHash> leaf_cache;
@@ -187,6 +210,7 @@ int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const Batc
             size_t end = std::min(i + BATCH_SIZE, move_leaves.size());
             std::vector<Board> batch(move_leaves.begin() + i, move_leaves.begin() + end);
             std::vector<float> batch_evals = batch_eval_func(batch);
+            batches_eval++;
             for (size_t j = 0; j < batch.size(); ++j) {
                 leaf_cache[batch[j]] = batch_evals[j];
             }
@@ -195,6 +219,7 @@ int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const Batc
         // Evaluate this root move using the populated leaf_cache
         float future_value = max_node_substitute(rm.post_board, depth, rm.post_hash, leaf_cache, global_alpha, 1e9f);
         float total_score = rm.immediate_reward + future_value;
+        move_scores[rm.move_id] = total_score;
 
         if (total_score > best_score) {
             best_score = total_score;
@@ -203,5 +228,19 @@ int ExpectimaxSearcher::find_best_move(const Board& board, int depth, const Batc
         global_alpha = std::max(global_alpha, total_score);
     }
 
-    return best_move;
+    auto search_end = std::chrono::high_resolution_clock::now();
+    double think_ms = std::chrono::duration<double, std::milli>(search_end - search_start).count();
+
+    // Build SearchStats
+    SearchStats stats;
+    stats.best_move = best_move;
+    stats.think_ms = think_ms;
+    stats.nodes_visited = total_nodes_visited;
+    stats.batches_eval = batches_eval;
+    for (int i = 0; i < 4; ++i) stats.move_scores[i] = move_scores[i];
+    stats.tt_size = transposition_table.size();
+    stats.tt_lookups = tt_lookups;
+    stats.tt_hits = tt_hits;
+
+    return stats;
 }
