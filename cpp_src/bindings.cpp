@@ -19,9 +19,19 @@ PYBIND11_MODULE(searcher, m) {
         .def_property_readonly("board", &Fast2048::get_board)
         .def_property_readonly("score", &Fast2048::get_score)
         .def_property_readonly("max_tile", &Fast2048::get_max_tile);
+    py::class_<SearchStats>(m, "SearchStats")
+        .def_readonly("best_move", &SearchStats::best_move)
+        .def_readonly("think_ms", &SearchStats::think_ms)
+        .def_readonly("nodes_visited", &SearchStats::nodes_visited)
+        .def_readonly("batches_eval", &SearchStats::batches_eval)
+        .def_readonly("move_scores", &SearchStats::move_scores)
+        .def_readonly("tt_size", &SearchStats::tt_size)
+        .def_readonly("tt_lookups", &SearchStats::tt_lookups)
+        .def_readonly("tt_hits", &SearchStats::tt_hits);
+
     py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
         .def(py::init<>())
         .def("find_best_move", &ExpectimaxSearcher::find_best_move,
-             "Finds the best move using a batched Expectimax search.",
+             "Returns SearchStats with best move and search statistics.",
              py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"));
 }
