@@ -5,9 +5,21 @@
 #include <unordered_set>
 #include <map>
 #include <functional>
+#include <chrono>
 
 using BatchEvalFunc = std::function<std::vector<float>(const std::vector<std::array<std::array<int, 4>, 4>>&)>;
 using Board = std::array<std::array<int, 4>, 4>;
+
+struct SearchStats {
+    int best_move;
+    double think_ms;
+    size_t nodes_visited;
+    size_t batches_eval;
+    float move_scores[4];
+    size_t tt_size;
+    size_t tt_lookups;
+    size_t tt_hits;
+};
 
 struct BoardHash {
     size_t operator()(const Board& b) const {
@@ -23,7 +35,7 @@ class ExpectimaxSearcher {
 public:
     ExpectimaxSearcher();
 
-    int find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func);
+    SearchStats find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func);
 
 private:
     static constexpr size_t BATCH_SIZE = 512;
@@ -31,6 +43,12 @@ private:
 
     // Key: uint64_t Zobrist hash of the board
     std::unordered_map<uint64_t, float> transposition_table;
+
+    // Counters
+    size_t tt_lookups = 0;
+    size_t tt_hits = 0;
+    size_t batches_eval = 0;
+    std::chrono::high_resolution_clock::time_point search_start;
 
     void gather_leaves(const Board& board, int depth, uint64_t board_hash,
                        std::vector<Board>& leaves_queue,
