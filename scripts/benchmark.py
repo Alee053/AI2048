@@ -100,11 +100,21 @@ class Benchmarker:
 
         while not done:
             if self.searcher:
-                action = self.searcher.find_best_move(
+                stats = self.searcher.find_best_move(
                     self.env.game.board,
                     self.search_depth,
                     self._evaluate_batch
                 )
+                action = int(stats['best_move'])
+                episode_stats = {
+                    'think_ms': stats.get('think_ms', 0),
+                    'nodes_visited': stats.get('nodes_visited', 0),
+                    'batches_eval': stats.get('batches_eval', 0),
+                    'tt_size': stats.get('tt_size', 0),
+                    'tt_hits': stats.get('tt_hits', 0),
+                    'tt_lookups': stats.get('tt_lookups', 0),
+                    'move_scores': list(stats.get('move_scores', [])),
+                }
             else:
                 action_mask = self.env.action_masks()
                 action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
@@ -116,7 +126,8 @@ class Benchmarker:
         result = {
             "score": int(self.env.game.score),
             "max_tile": int(2 ** self.env.game.max_tile),
-            "steps": steps
+            "steps": steps,
+            "search_stats": episode_stats,
         }
         if verbose:
             print(f"Episode N │ Score: {result['score']:,} │ Max tile: {result['max_tile']:,} │ Steps: {result['steps']}")
