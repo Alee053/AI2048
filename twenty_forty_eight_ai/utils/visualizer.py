@@ -11,7 +11,8 @@ from ..env.environment import Game2048Env
 
 # Config
 THEME = {
-    "window_size": (400, 550), # Height includes status text
+    "window_size": (620, 550),  # Width increased for side panel
+    "side_panel_width": 220,
     "bg_color": (187, 173, 160),
     "tile_colors": {
         0: (205, 193, 180), 2: (238, 228, 218), 4: (237, 224, 200),
@@ -30,12 +31,21 @@ THEME = {
 class Visualizer:
     """Pygame visualizer for PPO agent with threaded Expectimax support."""
 
-    def __init__(self, model_path: str, use_expectimax: bool = True, search_depth: int = 3):
+    def __init__(self, model_path: str, use_expectimax: bool = True, search_depth: int = 3, show_stats: bool = True):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
 
         self.use_expectimax = use_expectimax
         self.search_depth = search_depth
+        self.show_stats = show_stats
+        self.move_history: List = []
+        self.cumulative = {
+            'total_moves': 0,
+            'total_time_ms': 0.0,
+            'total_nodes': 0,
+            'total_tt_lookups': 0,
+            'total_tt_hits': 0,
+        }
 
         # Setup Pygame
         pygame.init()
@@ -84,8 +94,8 @@ class Visualizer:
         if value < 1000: return self.fonts["large"]
         return self.fonts["medium"]
 
-    def _draw_board(self, board: np.ndarray):
-        """Draws the 4x4 game grid."""
+    def _draw_board(self, board: np.ndarray, offset_x: int = 0):
+        """Draws the 4x4 game grid at the given x offset."""
         self.screen.fill(THEME["bg_color"])
         tile_size, padding = 100, 10
 
@@ -98,7 +108,7 @@ class Visualizer:
                 color = THEME["tile_colors"].get(tile_value, THEME["tile_colors"]["default"])
 
                 rect = pygame.Rect(
-                    c * tile_size + padding / 2,
+                    offset_x + c * tile_size + padding / 2,
                     r * tile_size + padding / 2,
                     tile_size - padding,
                     tile_size - padding
@@ -133,21 +143,115 @@ class Visualizer:
             surf = self.fonts["small"].render(text, True, THEME["font_color"])
             self.screen.blit(surf, pos)
 
+    def _draw_stats_panel(self, last_stats: dict):
+        """Draws the right-side stats panel."""
+        panel_x = 400  # right of board
+        panel_w = THEME["side_panel_width"]
+        panel_h = 400  # full height of board area
+        pygame.draw.rect(self.screen, THEME["stats_bg_color"], (panel_x, 0, panel_w, panel_h))
+
+        font_small = self.fonts["small"]
+        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+
+        # Current move section
+        y = 10
+        move_n = self.cumulative['total_moves']
+        surf = font_small.render(f"Move #{move_n}", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 30
+
+        # think_ms
+        surf = font_small.render(f"think: {last_stats.get('think_ms', 0):.1f}ms", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 25
+
+        # nodes
+        surf = font_small.render(f"nodes: {last_stats.get('nodes_visited', 0):,}", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 25
+
+        # batches
+        surf = font_small.render(f"batches: {last_stats.get('batches_eval', 0)}", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 25
+
+        # best move
+        best = last_stats.get('best_move', 0)
+        best_score = last_stats.get('move_scores', [0]*4)[best]
+        surf = font_small.render(f"best: {action_names[best]} ({best_score:.2f})", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 30
+
+        # all move scores
+        surf = font_small.render("scores:", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 22
+        scores = last_stats.get('move_scores', [-1e9]*4)
+        score_labels = [
+            f"U:{scores[0]:.1f}" if scores[0] > -1e8 else "U:--",
+            f"R:{scores[1]:.1f}" if scores[1] > -1e8 else "R:--",
+            f"D:{scores[2]:.1f}" if scores[2] > -1e8 else "D:--",
+            f"L:{scores[3]:.1f}" if scores[3] > -1e8 else "L:--",
+        ]
+        surf = font_small.render(f"  {score_labels[0]}  {score_labels[1]}", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 20
+        surf = font_small.render(f"  {score_labels[2]}  {score_labels[3]}", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 35
+
+        # Move history header
+        surf = font_small.render("History:", True, THEME["font_color"])
+        self.screen.blit(surf, (panel_x + 10, y))
+        y += 22
+
+        # Move history list (newest first, show last 8)
+        history = self.move_history[-8:] if len(self.move_history) > 8 else self.move_history
+        for i, mh in enumerate(reversed(history)):
+            mh_best = action_names[mh.get('best_move', 0)]
+            mh_ms = mh.get('think_ms', 0)
+            mh_nodes = mh.get('nodes_visited', 0)
+            label = f"#{len(self.move_history)-i} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
+            surf = font_small.render(label, True, (180, 180, 180))
+            self.screen.blit(surf, (panel_x + 10, y))
+            y += 18
+            if y > 380: break  # don't overflow
+
+    def _draw_cumulative_bar(self, score: int, max_tile: int):
+        """Draws the cumulative stats bar below the board area."""
+        bar_y = 400
+        bar_h = 150
+        pygame.draw.rect(self.screen, THEME["stats_bg_color"], (0, bar_y, 620, bar_h))
+
+        font_small = self.fonts["small"]
+        c = self.cumulative
+        n = c['total_moves']
+        tt_rate = (c['total_tt_hits'] / c['total_tt_lookups'] * 100) if c['total_tt_lookups'] > 0 else 0
+
+        line1 = f"Moves: {n} | {c['total_time_ms']:.0f}ms | {c['total_nodes']:,} nodes | {tt_rate:.0f}% tt"
+        line2 = f"Score: {score} | Max: {max_tile}"
+
+        surf = font_small.render(line1, True, THEME["font_color"])
+        self.screen.blit(surf, (20, bar_y + 10))
+        surf = font_small.render(line2, True, THEME["font_color"])
+        self.screen.blit(surf, (20, bar_y + 40))
+
     def _search_worker(self):
         """Background thread for search."""
         try:
             # Copy board for thread safety
             current_board = self.env.game.board.copy()
 
-            action = self.searcher.find_best_move(
+            stats = self.searcher.find_best_move(
                 current_board,
                 self.search_depth,
                 self._evaluate_batch
             )
-            self.next_action = int(action)
+            self.next_action = int(stats['best_move'])
+            self.last_stats = stats
         except Exception as e:
             print(f"Search thread error: {e}")
-            self.next_action = 0 # Fallback
+            self.next_action = 0  # Fallback
         finally:
             self.is_thinking = False
 
@@ -181,6 +285,16 @@ class Visualizer:
                         obs, _, terminated, _, info = self.env.step(action)
                         step_count += 1
 
+                        # Update cumulative stats
+                        if hasattr(self, 'last_stats'):
+                            stats = self.last_stats
+                            self.move_history.append(stats)
+                            self.cumulative['total_moves'] += 1
+                            self.cumulative['total_time_ms'] += stats.get('think_ms', 0)
+                            self.cumulative['total_nodes'] += stats.get('nodes_visited', 0)
+                            self.cumulative['total_tt_lookups'] += stats.get('tt_lookups', 0)
+                            self.cumulative['total_tt_hits'] += stats.get('tt_hits', 0)
+
                 else:
                     # Standard PPO
                     # Delay for visibility
@@ -192,8 +306,17 @@ class Visualizer:
                     obs, _, terminated, _, info = self.env.step(last_action)
                     step_count += 1
 
-            self._draw_board(self.env.game.board)
-            self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
+            self._draw_board(self.env.game.board, offset_x=0)
+
+            if self.show_stats:
+                last_s = self.move_history[-1] if self.move_history else {
+                    'think_ms': 0, 'nodes_visited': 0, 'batches_eval': 0,
+                    'best_move': 0, 'move_scores': [-1e9]*4
+                }
+                self._draw_stats_panel(last_s)
+                self._draw_cumulative_bar(self.env.game.score, self.env.game.max_tile)
+            else:
+                self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
 
             if terminated:
                 final_score = self.env.game.score
