@@ -24,10 +24,12 @@ PYBIND11_MODULE(searcher, m) {
         .def_readonly("think_ms", &SearchStats::think_ms)
         .def_readonly("nodes_visited", &SearchStats::nodes_visited)
         .def_readonly("batches_eval", &SearchStats::batches_eval)
-        .def_readonly("move_scores", &SearchStats::move_scores)
         .def_readonly("tt_size", &SearchStats::tt_size)
         .def_readonly("tt_lookups", &SearchStats::tt_lookups)
-        .def_readonly("tt_hits", &SearchStats::tt_hits);
+        .def_readonly("tt_hits", &SearchStats::tt_hits)
+        .def_property_readonly("move_scores", [](const SearchStats& s) {
+            return std::array<float, 4>{s.move_scores[0], s.move_scores[1], s.move_scores[2], s.move_scores[3]};
+        });
 
     py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
         .def(py::init<>())

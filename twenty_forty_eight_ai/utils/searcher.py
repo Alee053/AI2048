@@ -56,7 +56,8 @@ class ExpectimaxSearcher:
         # the full array on some platforms, so we work around this.
         raw_scores = stats.move_scores
         if isinstance(raw_scores, float):
-            move_scores = [raw_scores] * 4
+            # pybind11 quirk: C-style float[4] array returned as scalar
+            move_scores = [float(raw_scores)] * 4
         else:
             move_scores = [float(raw_scores[i]) for i in range(4)]
         return {
