@@ -105,17 +105,13 @@ class Visualizer:
         # Create scrollable history area
         history_y = 290
         history_h = 110
-        self.history_scroll_area = pygame_gui.elements.UIScrollingArea(
+        self.history_scroll_area = pygame_gui.elements.UIScrollingContainer(
             relative_rect=pygame.Rect((panel_x + 10, history_y), (200, history_h)),
             manager=self.manager
         )
-        self.history_list = pygame_gui.elements.UIList(
-            relative_rect=pygame.Rect((0, 0), (180, history_h)),
-            manager=self.manager,
-            container=self.history_scroll_area
-        )
-        # Set scrolling area height
-        self.history_list.set_scrolling_area_height(history_h - 20)
+        self.history_inner = self.history_scroll_area.get_container()
+        self.history_inner.set_scrollable_area_dimensions((180, history_h * 3))
+        self.history_labels = []
 
         # Setup RL
         self.env = Game2048Env()
@@ -226,31 +222,35 @@ class Visualizer:
 
     def _update_history_display(self):
         """Rebuild history list items."""
-        if not hasattr(self, 'history_list'):
+        if not hasattr(self, 'history_scroll_area'):
             return
 
-        self.history_list.clear()
-        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+        # Kill existing labels
+        for label in self.history_labels:
+            label.kill()
+        self.history_labels.clear()
 
-        # Show newest first, last 20
+        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
         history = list(reversed(self.move_history[-20:]))
+        item_height = 18
         for i, mh in enumerate(history):
             mh_best = action_names[mh.get('best_move', 0)]
             mh_ms = mh.get('think_ms', 0)
             mh_nodes = mh.get('nodes_visited', 0)
             global_idx = len(self.move_history) - len(history) + i + 1
-            label = f"#{global_idx} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
+            label_text = f"#{global_idx} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
 
-            item = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect((0, i * 18), (180, 18)),
-                text=label,
+            label = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect((0, i * item_height), (180, item_height)),
+                text=label_text,
                 manager=self.manager,
-                container=self.history_list
+                container=self.history_inner
             )
-            self.history_list.add_item(item)
+            self.history_labels.append(label)
 
-        if hasattr(self, 'history_scroll_area'):
-            self.history_scroll_area.update(0.016)
+        # Update scroll area height based on item count
+        total_height = len(history) * item_height
+        self.history_inner.set_scrollable_area_dimensions((180, max(total_height, history_h)))
 
     def _search_worker(self):
         """Background thread for search."""
@@ -367,6 +367,8 @@ class Visualizer:
             self.stats_labels["scores_row2"].set_text(f"  {score_labels[2]}  {score_labels[3]}")
 
             time_delta = self.clock.tick(60) / 1000.0
+            if hasattr(self, 'history_scroll_area'):
+                self.history_scroll_area.update(time_delta)
             self.manager.update(time_delta)
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
