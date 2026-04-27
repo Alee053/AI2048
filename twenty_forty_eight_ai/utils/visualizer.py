@@ -64,8 +64,16 @@ class Visualizer:
             for size_name, size_val in THEME["font_sizes"].items()
         }
 
-        # Create stats panel UILabels
+        # Create right panel background (UIPanel is a container)
         panel_x = 400
+        panel_w = 220
+        panel_h = 400
+        self.side_panel = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((panel_x, 0), (panel_w, panel_h)),
+            manager=self.manager
+        )
+
+        # Create stats panel UILabels (children of side_panel)
         self.stats_labels = {}
         label_defs = [
             ("move_num", f"Move #0", (panel_x + 10, 10)),
@@ -80,10 +88,11 @@ class Visualizer:
         for name, text, pos in label_defs:
             rect = pygame.Rect(pos, (200, 22))
             self.stats_labels[name] = pygame_gui.elements.UILabel(
-                relative_rect=rect, text=text, manager=self.manager
+                relative_rect=rect, text=text, manager=self.manager,
+                container=self.side_panel
             )
 
-        # Create buttons
+        # Create buttons (children of side_panel)
         button_y = 240
         button_w = 95
         button_h = 40
@@ -92,24 +101,27 @@ class Visualizer:
         self.new_game_button = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect((panel_x + 10, button_y), (button_w, button_h)),
             text='New Game',
-            manager=self.manager
+            manager=self.manager,
+            container=self.side_panel
         )
 
         self.pause_button = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect((panel_x + 10 + button_w + button_gap, button_y), (button_w, button_h)),
             text='Pause',
-            manager=self.manager
+            manager=self.manager,
+            container=self.side_panel
         )
 
         self.paused = False
 
-        # Create scrollable history area
+        # Create scrollable history area (child of side_panel)
         history_y = 290
         self.history_h = 110
         history_h = self.history_h
         self.history_scroll_area = pygame_gui.elements.UIScrollingContainer(
             relative_rect=pygame.Rect((panel_x + 10, history_y), (200, history_h)),
-            manager=self.manager
+            manager=self.manager,
+            container=self.side_panel
         )
         self.history_inner = self.history_scroll_area.scrollable_container
         self.history_scroll_area.set_scrollable_area_dimensions((180, history_h * 3))
@@ -243,7 +255,7 @@ class Visualizer:
             label_text = f"#{global_idx} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
 
             label = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect((0, i * item_height), (180, item_height)),
+                relative_rect=pygame.Rect((0, i * item_height), (200, item_height)),
                 text=label_text,
                 manager=self.manager,
                 container=self.history_inner
@@ -335,12 +347,7 @@ class Visualizer:
             self._draw_board(self.env.game.board, offset_x=0)
 
             if self.show_stats:
-                self._draw_cumulative_bar(self.env.game.score, self.env.game.max_tile)
-
-            if terminated:
-                final_score = self.env.game.score
-                final_max = self.env.game.max_tile
-                self._draw_game_over(final_score, final_max)
+                self._draw_game_over(self.env.game.score, self.env.game.max_tile)
 
             # Update stats labels
             last_s = self.move_history[-1] if self.move_history else {

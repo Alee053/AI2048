@@ -21,11 +21,15 @@
         },
         "widgets":
         {
+            "UIPanel":
+            {
+                "bg_colour": "@panel_bg"
+            },
             "UILabel":
             {
                 "builder_width": "200",
                 "builder_height": "30",
-                "bg_colour": "@dark_bg",
+                "bg_colour": "@label_bg",
                 "text_colour": "@normal_text",
                 "font": {"name": "None", "size": "14"}
             },
