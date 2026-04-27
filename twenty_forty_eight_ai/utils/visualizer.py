@@ -199,13 +199,13 @@ class Visualizer:
 
         # ===== Scrollable history via UITextBox =====
         history_y = button_y + button_h + 10
-        history_h = 100  # Must fit within side_panel (ends at 480)
+        history_h = 100  # Fixed visible height, scrollbar appears when content overflows
         self.history_text = pygame_gui.elements.UITextBox(
             relative_rect=pygame.Rect((10, history_y), (200, history_h)),
             html_text="No moves yet.",
             manager=self.manager,
             container=self.side_panel,
-            wrap_to_height=True
+            wrap_to_height=False  # False = fixed height, content scrolls vertically when it overflows
         )
 
         # ===== Cumulative bar at bottom (spans full window) =====
