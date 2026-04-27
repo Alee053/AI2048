@@ -181,100 +181,6 @@ class Visualizer:
                     text_rect = text_surf.get_rect(center=rect.center)
                     self.screen.blit(text_surf, text_rect)
 
-    def _draw_stats(self, score: int, max_tile: int, step: int, action: int):
-        """Draws the statistics panel."""
-        stats_rect = pygame.Rect(0, 400, THEME["window_size"][0], 150)
-        pygame.draw.rect(self.screen, THEME["stats_bg_color"], stats_rect)
-
-        action_map = {0: 'Up', 1: 'Right', 2: 'Down', 3: 'Left', -1: '...'}
-        status_text = "Thinking..." if self.is_thinking else "Ready"
-
-        stats = {
-            f"Score: {score}": (20, 415),
-            f"Max: {max_tile}": (20, 455),
-            f"Step: {step}": (200, 415),
-            f"Act: {action_map.get(action, 'N/A')}": (200, 455),
-            f"Status: {status_text}": (20, 495)
-        }
-
-        for text, pos in stats.items():
-            surf = self.fonts["small"].render(text, True, THEME["font_color"])
-            self.screen.blit(surf, pos)
-
-    def _draw_stats_panel(self, last_stats: dict):
-        """Draws the right-side stats panel."""
-        panel_x = 400  # right of board
-        panel_w = THEME["side_panel_width"]
-        panel_h = 400  # full height of board area
-        pygame.draw.rect(self.screen, THEME["stats_bg_color"], (panel_x, 0, panel_w, panel_h))
-
-        font_small = self.fonts["small"]
-        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
-
-        # Current move section
-        y = 10
-        move_n = self.cumulative['total_moves']
-        surf = font_small.render(f"Move #{move_n}", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 30
-
-        # think_ms
-        surf = font_small.render(f"think: {last_stats.get('think_ms', 0):.1f}ms", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 25
-
-        # nodes
-        surf = font_small.render(f"nodes: {last_stats.get('nodes_visited', 0):,}", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 25
-
-        # batches
-        surf = font_small.render(f"batches: {last_stats.get('batches_eval', 0)}", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 25
-
-        # best move
-        best = last_stats.get('best_move', 0)
-        best_score = last_stats.get('move_scores', [0]*4)[best]
-        surf = font_small.render(f"best: {action_names[best]} ({best_score:.2f})", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 30
-
-        # all move scores
-        surf = font_small.render("scores:", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 22
-        scores = last_stats.get('move_scores', [-1e9]*4)
-        score_labels = [
-            f"U:{scores[0]:.1f}" if scores[0] > -1e8 else "U:--",
-            f"R:{scores[1]:.1f}" if scores[1] > -1e8 else "R:--",
-            f"D:{scores[2]:.1f}" if scores[2] > -1e8 else "D:--",
-            f"L:{scores[3]:.1f}" if scores[3] > -1e8 else "L:--",
-        ]
-        surf = font_small.render(f"  {score_labels[0]}  {score_labels[1]}", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 20
-        surf = font_small.render(f"  {score_labels[2]}  {score_labels[3]}", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 35
-
-        # Move history header
-        surf = font_small.render("History:", True, THEME["font_color"])
-        self.screen.blit(surf, (panel_x + 10, y))
-        y += 22
-
-        # Move history list (newest first, show last 8)
-        history = self.move_history[-8:] if len(self.move_history) > 8 else self.move_history
-        for i, mh in enumerate(reversed(history)):
-            mh_best = action_names[mh.get('best_move', 0)]
-            mh_ms = mh.get('think_ms', 0)
-            mh_nodes = mh.get('nodes_visited', 0)
-            label = f"#{len(self.move_history)-i} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
-            surf = font_small.render(label, True, (180, 180, 180))
-            self.screen.blit(surf, (panel_x + 10, y))
-            y += 18
-            if y > 380: break  # don't overflow
-
     def _draw_cumulative_bar(self, score: int, max_tile: int):
         """Draws the cumulative stats bar below the board area."""
         bar_y = 400
@@ -428,8 +334,6 @@ class Visualizer:
 
             if self.show_stats:
                 self._draw_cumulative_bar(self.env.game.score, self.env.game.max_tile)
-            else:
-                self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
 
             if terminated:
                 final_score = self.env.game.score
