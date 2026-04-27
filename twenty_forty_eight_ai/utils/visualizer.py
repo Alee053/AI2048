@@ -248,7 +248,7 @@ class Visualizer:
             mh_best = action_names[mh.get('best_move', 0)]
             mh_ms = mh.get('think_ms', 0)
             mh_nodes = mh.get('nodes_visited', 0)
-            global_idx = len(self.move_history) - len(history) + i + 1
+            global_idx = len(self.move_history) - i
             label_text = f"#{global_idx} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
 
             label = pygame_gui.elements.UILabel(
