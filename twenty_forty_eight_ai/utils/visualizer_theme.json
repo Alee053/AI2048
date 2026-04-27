@@ -1,0 +1,43 @@
+{
+    "theme":
+    {
+        "colours":
+        {
+            "dark_bg": "#323232",
+            "panel_bg": "#323232",
+            "label_bg": "#323232",
+            "normal_text": "#FFFFFF",
+            "hover_text": "#CCCCCC",
+            "muted_text": "#AAAAAA",
+            "button_background": "#555555",
+            "button_hover": "#666666",
+            "button_selected": "#777777",
+            "button_text": "#FFFFFF"
+        },
+        "fonts":
+        {
+            "small": { "name": "None", "size": "14", "regular_path": "", "bold_path": "", "italic_path": "" },
+            "medium": { "name": "None", "size": "18", "regular_path": "", "bold_path": "", "italic_path": "" }
+        },
+        "widgets":
+        {
+            "UILabel":
+            {
+                "builder_width": "200",
+                "builder_height": "30",
+                "bg_colour": "@dark_bg",
+                "text_colour": "@normal_text",
+                "font": {"name": "None", "size": "14"}
+            },
+            "UIButton":
+            {
+                "builder_width": "100",
+                "builder_height": "40",
+                "bg_colour": "@button_background",
+                "hover_colour": "@button_hover",
+                "text_colour": "@button_text",
+                "font": {"name": "None", "size": "14"}
+            }
+        }
+    }
+}

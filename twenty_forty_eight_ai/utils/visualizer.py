@@ -53,13 +53,33 @@ class Visualizer:
         self.screen = pygame.display.set_mode(THEME["window_size"])
         pygame.display.set_caption("2048 AI Agent")
         self.clock = pygame.time.Clock()
-        self.manager = pygame_gui.UIManager(THEME["window_size"])
+        theme_path = os.path.join(os.path.dirname(__file__), "visualizer_theme.json")
+        self.manager = pygame_gui.UIManager(THEME["window_size"], theme_path=theme_path)
 
         # Load fonts
         self.fonts = {
             size_name: pygame.font.Font(None, size_val)
             for size_name, size_val in THEME["font_sizes"].items()
         }
+
+        # Create stats panel UILabels
+        panel_x = 400
+        self.stats_labels = {}
+        label_defs = [
+            ("move_num", f"Move #0", (panel_x + 10, 10)),
+            ("think_ms", "think: 0.0ms", (panel_x + 10, 40)),
+            ("nodes", "nodes: 0", (panel_x + 10, 70)),
+            ("batches", "batches: 0", (panel_x + 10, 100)),
+            ("best_move", "best: -- (0.00)", (panel_x + 10, 130)),
+            ("scores_label", "scores:", (panel_x + 10, 160)),
+            ("scores_row1", "  U:--  R:--", (panel_x + 10, 182)),
+            ("scores_row2", "  D:--  L:--", (panel_x + 10, 204)),
+        ]
+        for name, text, pos in label_defs:
+            rect = pygame.Rect(pos, (200, 22))
+            self.stats_labels[name] = pygame_gui.elements.UILabel(
+                relative_rect=rect, text=text, manager=self.manager
+            )
 
         # Setup RL
         self.env = Game2048Env()
@@ -312,11 +332,6 @@ class Visualizer:
             self._draw_board(self.env.game.board, offset_x=0)
 
             if self.show_stats:
-                last_s = self.move_history[-1] if self.move_history else {
-                    'think_ms': 0, 'nodes_visited': 0, 'batches_eval': 0,
-                    'best_move': 0, 'move_scores': [-1e9]*4
-                }
-                self._draw_stats_panel(last_s)
                 self._draw_cumulative_bar(self.env.game.score, self.env.game.max_tile)
             else:
                 self._draw_stats(self.env.game.score, self.env.game.max_tile, step_count, last_action)
@@ -325,6 +340,32 @@ class Visualizer:
                 final_score = self.env.game.score
                 final_max = self.env.game.max_tile
                 self._draw_game_over(final_score, final_max)
+
+            # Update stats labels
+            last_s = self.move_history[-1] if self.move_history else {
+                'think_ms': 0, 'nodes_visited': 0, 'batches_eval': 0,
+                'best_move': 0, 'move_scores': [-1e9]*4
+            }
+            n = self.cumulative['total_moves']
+            self.stats_labels["move_num"].set_text(f"Move #{n}")
+            self.stats_labels["think_ms"].set_text(f"think: {last_s.get('think_ms', 0):.1f}ms")
+            self.stats_labels["nodes"].set_text(f"nodes: {last_s.get('nodes_visited', 0):,}")
+            self.stats_labels["batches"].set_text(f"batches: {last_s.get('batches_eval', 0)}")
+
+            scores = last_s.get('move_scores', [-1e9]*4)
+            best = last_s.get('best_move', 0)
+            action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+            best_score = scores[best] if best < len(scores) else 0.0
+            self.stats_labels["best_move"].set_text(f"best: {action_names[best]} ({best_score:.2f})")
+
+            score_labels = [
+                f"U:{scores[0]:.1f}" if scores[0] > -1e8 else "U:--",
+                f"R:{scores[1]:.1f}" if scores[1] > -1e8 else "R:--",
+                f"D:{scores[2]:.1f}" if scores[2] > -1e8 else "D:--",
+                f"L:{scores[3]:.1f}" if scores[3] > -1e8 else "L:--",
+            ]
+            self.stats_labels["scores_row1"].set_text(f"  {score_labels[0]}  {score_labels[1]}")
+            self.stats_labels["scores_row2"].set_text(f"  {score_labels[2]}  {score_labels[3]}")
 
             time_delta = self.clock.tick(60) / 1000.0
             self.manager.update(time_delta)
