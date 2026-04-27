@@ -346,6 +346,9 @@ class Visualizer:
             self._draw_board(self.env.game.board, offset_x=0)
 
             if self.show_stats:
+                self._draw_cumulative_bar(self.env.game.score, self.env.game.max_tile)
+
+            if terminated:
                 self._draw_game_over(self.env.game.score, self.env.game.max_tile)
 
             # Update stats labels
