@@ -109,8 +109,8 @@ class Visualizer:
             relative_rect=pygame.Rect((panel_x + 10, history_y), (200, history_h)),
             manager=self.manager
         )
-        self.history_inner = self.history_scroll_area.get_container()
-        self.history_inner.set_scrollable_area_dimensions((180, history_h * 3))
+        self.history_inner = self.history_scroll_area.scrollable_container
+        self.history_scroll_area.set_scrollable_area_dimensions((180, history_h * 3))
         self.history_labels = []
 
         # Setup RL
@@ -250,7 +250,7 @@ class Visualizer:
 
         # Update scroll area height based on item count
         total_height = len(history) * item_height
-        self.history_inner.set_scrollable_area_dimensions((180, max(total_height, history_h)))
+        self.history_scroll_area.set_scrollable_area_dimensions((180, max(total_height, history_h)))
 
     def _search_worker(self):
         """Background thread for search."""
