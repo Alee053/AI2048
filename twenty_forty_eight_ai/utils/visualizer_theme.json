@@ -38,7 +38,7 @@
                 "builder_height": "24",
                 "bg_colour": "@label_bg",
                 "text_colour": "@normal_text",
-                "font": {"name": "None", "size": "14"}
+                "font": {"name": "pygame_font", "size": "14"}
             },
             "UIButton":
             {
@@ -47,12 +47,20 @@
                 "bg_colour": "@button_background",
                 "hover_colour": "@button_hover",
                 "text_colour": "@button_text",
-                "font": {"name": "None", "size": "14"}
+                "font": {"name": "pygame_font", "size": "14"}
             },
             "UIProgressBar":
             {
                 "filled_bar": "@progress_filled",
                 "unfilled_bar": "@progress_unfilled"
+            },
+            "UITextBox":
+            {
+                "builder_width": "200",
+                "builder_height": "24",
+                "bg_colour": "@label_bg",
+                "text_colour": "@normal_text",
+                "font": {"name": "pygame_font", "size": "13"}
             }
         }
     }

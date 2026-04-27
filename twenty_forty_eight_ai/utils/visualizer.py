@@ -198,16 +198,17 @@ class Visualizer:
         self.paused = False
 
         # ===== Scrollable history via UITextBox =====
-        history_y = button_y + button_h + 15
+        history_y = button_y + button_h + 10
+        history_h = 100  # Must fit within side_panel (ends at 480)
         self.history_text = pygame_gui.elements.UITextBox(
-            relative_rect=pygame.Rect((10, history_y), (200, 130)),
+            relative_rect=pygame.Rect((10, history_y), (200, history_h)),
             html_text="No moves yet.",
             manager=self.manager,
             container=self.side_panel,
             wrap_to_height=True
         )
 
-        # ===== Cumulative bar at bottom =====
+        # ===== Cumulative bar at bottom (spans full window) =====
         self.cum_panel = pygame_gui.elements.UIPanel(
             relative_rect=pygame.Rect((0, 420), (620, 60)),
             manager=self.manager
@@ -218,7 +219,7 @@ class Visualizer:
         )
         self.cum_top_border.background_colour = pygame.Color("#F5A623")
         self.cum_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, 427), (600, 40)),
+            relative_rect=pygame.Rect((10, 430), (600, 36)),
             text="Moves: 0 | 0ms | 0 nodes | 0% tt | Score: 0",
             manager=self.manager
         )
@@ -383,19 +384,15 @@ class Visualizer:
         if not hasattr(self, 'history_text'):
             return
 
-        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
-        arrow_colors = ['#76E4A3', '#F5A623', '#888888', '#888888']
-
         lines = []
         history = list(reversed(self.move_history[-50:]))
         for i, mh in enumerate(history):
             global_idx = len(self.move_history) - i
             best = mh.get('best_move', 0)
             arrow = ['↑', '→', '↓', '←'][best]
-            color = arrow_colors[best]
             ms = mh.get('think_ms', 0)
             nodes = mh.get('nodes_visited', 0)
-            lines.append(f"<b>#{global_idx}</b> <font color='{color}'>{arrow}</font> {ms:.0f}ms, {nodes:,} nodes")
+            lines.append(f"#{global_idx} {arrow} {ms:.0f}ms, {nodes:,} nodes")
 
         html = "<br>".join(lines) if lines else "No moves yet."
         self.history_text.set_text(html)
