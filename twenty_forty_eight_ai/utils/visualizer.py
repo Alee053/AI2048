@@ -105,7 +105,7 @@ class Visualizer:
             manager=self.manager,
             container=self.side_panel
         )
-        self.stats_top_border.set_fill_colour(pygame.Color("#F5A623"))
+        self.stats_top_border.background_colour = pygame.Color("#F5A623")
 
         # Stats labels
         y_offset = 10
@@ -146,13 +146,6 @@ class Visualizer:
 
         # ===== Action scores block =====
         y_offset += 36
-        scores_header = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 20)),
-            text="Action Scores",
-            manager=self.manager,
-            container=self.side_panel
-        )
-        y_offset += 22
 
         self.score_bars: List[pygame_gui.elements.UIProgressBar] = []
         self.score_labels: List[pygame_gui.elements.UILabel] = []
@@ -223,7 +216,7 @@ class Visualizer:
             relative_rect=pygame.Rect((0, 420), (620, 3)),
             manager=self.manager
         )
-        self.cum_top_border.set_fill_colour(pygame.Color("#F5A623"))
+        self.cum_top_border.background_colour = pygame.Color("#F5A623")
         self.cum_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, 430), (600, 40)),
             text="Moves: 0 | 0ms | 0 nodes | 0% tt | Score: 0",
@@ -368,13 +361,12 @@ class Visualizer:
         if not self.paused:
             self._start_search_if_idle()
 
-    def _execute_action(self, action: int):
-        last_action = action
-        obs, _, terminated, _, info = self.env.step(action)
+    def _execute_action(self, action: int, result=None):
+        obs, _, terminated, _, _ = self.env.step(action)
         self.terminated = terminated
 
-        if hasattr(self, '_current_result') and self._current_result:
-            stats = self._current_result
+        if result:
+            stats = result
             self.move_history.append(stats)
             self.cumulative['total_moves'] += 1
             self.cumulative['total_time_ms'] += stats.get('think_ms', 0)
@@ -477,8 +469,9 @@ class Visualizer:
             if not self.paused and not self.terminated:
                 if self._current_result is not None and not self._searching:
                     action = self._current_result['best_move']
+                    result = self._current_result
                     self._current_result = None
-                    self._execute_action(action)
+                    self._execute_action(action, result)
 
                 if not self._searching and not self.terminated:
                     self._start_search_if_idle()
