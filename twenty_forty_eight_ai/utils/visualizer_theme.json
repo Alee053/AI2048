@@ -21,9 +21,9 @@
         },
         "fonts":
         {
-            "small": { "name": "None", "size": "13", "regular_path": "", "bold_path": "", "italic_path": "" },
-            "medium": { "name": "None", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "" },
-            "large": { "name": "None", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "" }
+            "small": { "name": "pygame_font", "size": "13", "regular_path": "", "bold_path": "", "italic_path": "" },
+            "medium": { "name": "pygame_font", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "" },
+            "large": { "name": "pygame_font", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "" }
         },
         "widgets":
         {

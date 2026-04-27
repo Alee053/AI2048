@@ -154,13 +154,13 @@ class Visualizer:
         for i, name in enumerate(action_names):
             row_y = y_offset + i * 24
             name_label = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect((10, row_y), (40, 20)),
+                relative_rect=pygame.Rect((10, row_y), (50, 20)),
                 text=name,
                 manager=self.manager,
                 container=self.side_panel
             )
             bar = pygame_gui.elements.UIProgressBar(
-                relative_rect=pygame.Rect((55, row_y), (100, 16)),
+                relative_rect=pygame.Rect((65, row_y), (90, 16)),
                 manager=self.manager,
                 container=self.side_panel
             )
@@ -218,10 +218,9 @@ class Visualizer:
         )
         self.cum_top_border.background_colour = pygame.Color("#F5A623")
         self.cum_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, 430), (600, 40)),
+            relative_rect=pygame.Rect((10, 427), (600, 40)),
             text="Moves: 0 | 0ms | 0 nodes | 0% tt | Score: 0",
-            manager=self.manager,
-            container=self.cum_panel
+            manager=self.manager
         )
 
         # Setup RL
@@ -261,7 +260,9 @@ class Visualizer:
 
     def _draw_board(self, board: np.ndarray, offset_x: int = 0):
         """Draws the 4x4 game grid at the given x offset."""
-        self.screen.fill(THEME["bg_color"])
+        # Fill only the board area (left 400px) to preserve bottom bar
+        board_rect = pygame.Rect(0, 0, 400, 480)
+        self.screen.fill(THEME["bg_color"], board_rect)
         tile_size, padding = 100, 10
 
         for r in range(4):
