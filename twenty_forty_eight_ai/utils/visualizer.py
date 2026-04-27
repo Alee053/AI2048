@@ -1,4 +1,4 @@
-﻿import os
+import os
 import pygame
 import numpy as np
 import torch
@@ -48,10 +48,12 @@ class Visualizer:
         }
 
         # Setup Pygame
+        import pygame_gui
         pygame.init()
         self.screen = pygame.display.set_mode(THEME["window_size"])
         pygame.display.set_caption("2048 AI Agent")
         self.clock = pygame.time.Clock()
+        self.manager = pygame_gui.UIManager(THEME["window_size"])
 
         # Load fonts
         self.fonts = {
@@ -266,6 +268,7 @@ class Visualizer:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                self.manager.process_events(event)
 
             if not terminated:
                 if self.use_expectimax:
@@ -323,8 +326,10 @@ class Visualizer:
                 final_max = self.env.game.max_tile
                 self._draw_game_over(final_score, final_max)
 
+            time_delta = self.clock.tick(60) / 1000.0
+            self.manager.update(time_delta)
+            self.manager.draw_ui(self.screen)
             pygame.display.flip()
-            self.clock.tick(60) # Maintain UI FPS
 
         if self.search_thread and self.search_thread.is_alive():
             self.search_thread.join()
