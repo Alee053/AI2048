@@ -102,6 +102,21 @@ class Visualizer:
 
         self.paused = False
 
+        # Create scrollable history area
+        history_y = 290
+        history_h = 110
+        self.history_scroll_area = pygame_gui.elements.UIScrollingArea(
+            relative_rect=pygame.Rect((panel_x + 10, history_y), (200, history_h)),
+            manager=self.manager
+        )
+        self.history_list = pygame_gui.elements.UIList(
+            relative_rect=pygame.Rect((0, 0), (180, history_h)),
+            manager=self.manager,
+            container=self.history_scroll_area
+        )
+        # Set scrolling area height
+        self.history_list.set_scrolling_area_height(history_h - 20)
+
         # Setup RL
         self.env = Game2048Env()
         self.model = MaskablePPO.load(model_path)
@@ -283,6 +298,7 @@ class Visualizer:
         """Reset environment and clear stats."""
         obs, _ = self.env.reset()
         self.move_history.clear()
+        self._update_history_display()
         self.cumulative = {
             'total_moves': 0,
             'total_time_ms': 0.0,
@@ -301,6 +317,34 @@ class Visualizer:
         self.paused = not self.paused
         if self.pause_button:
             self.pause_button.set_text('Resume' if self.paused else 'Pause')
+
+    def _update_history_display(self):
+        """Rebuild history list items."""
+        if not hasattr(self, 'history_list'):
+            return
+
+        self.history_list.clear()
+        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+
+        # Show newest first, last 20
+        history = list(reversed(self.move_history[-20:]))
+        for i, mh in enumerate(history):
+            mh_best = action_names[mh.get('best_move', 0)]
+            mh_ms = mh.get('think_ms', 0)
+            mh_nodes = mh.get('nodes_visited', 0)
+            global_idx = len(self.move_history) - len(history) + i + 1
+            label = f"#{global_idx} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
+
+            item = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect((0, i * 18), (180, 18)),
+                text=label,
+                manager=self.manager,
+                container=self.history_list
+            )
+            self.history_list.add_item(item)
+
+        if hasattr(self, 'history_scroll_area'):
+            self.history_scroll_area.update(0.016)
 
     def _search_worker(self):
         """Background thread for search."""
@@ -362,6 +406,7 @@ class Visualizer:
                         if hasattr(self, 'last_stats'):
                             stats = self.last_stats
                             self.move_history.append(stats)
+                            self._update_history_display()
                             self.cumulative['total_moves'] += 1
                             self.cumulative['total_time_ms'] += stats.get('think_ms', 0)
                             self.cumulative['total_nodes'] += stats.get('nodes_visited', 0)
