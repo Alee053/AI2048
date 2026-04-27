@@ -105,7 +105,8 @@ class Visualizer:
 
         # Create scrollable history area
         history_y = 290
-        history_h = 110
+        self.history_h = 110
+        history_h = self.history_h
         self.history_scroll_area = pygame_gui.elements.UIScrollingContainer(
             relative_rect=pygame.Rect((panel_x + 10, history_y), (200, history_h)),
             manager=self.manager
