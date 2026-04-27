@@ -252,7 +252,7 @@ class Visualizer:
 
         # Update scroll area height based on item count
         total_height = len(history) * item_height
-        self.history_scroll_area.set_scrollable_area_dimensions((180, max(total_height, history_h)))
+        self.history_scroll_area.set_scrollable_area_dimensions((180, max(total_height, self.history_h)))
 
     def _search_worker(self):
         """Background thread for search."""
