@@ -126,6 +126,23 @@ class Visualizer:
         self.history_scroll_area.set_scrollable_area_dimensions((200, history_h * 3))
         self.history_labels = []
 
+        # Create bottom cumulative stats panel
+        self.stats_panel = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((0, 400), (620, 150)),
+            manager=self.manager
+        )
+        self.cumulative_labels = {}
+        cum_label_defs = [
+            ("cum1", "", (10, 10)),
+            ("cum2", "", (10, 40)),
+        ]
+        for name, text, pos in cum_label_defs:
+            rect = pygame.Rect(pos, (600, 24))
+            self.cumulative_labels[name] = pygame_gui.elements.UILabel(
+                relative_rect=rect, text=text, manager=self.manager,
+                container=self.stats_panel
+            )
+
         # Setup RL
         self.env = Game2048Env()
         self.model = MaskablePPO.load(model_path)
@@ -189,25 +206,6 @@ class Visualizer:
                     text_surf = font.render(str(tile_value), True, text_color)
                     text_rect = text_surf.get_rect(center=rect.center)
                     self.screen.blit(text_surf, text_rect)
-
-    def _draw_cumulative_bar(self, score: int, max_tile: int):
-        """Draws the cumulative stats bar below the board area."""
-        bar_y = 400
-        bar_h = 150
-        pygame.draw.rect(self.screen, THEME["stats_bg_color"], (0, bar_y, 620, bar_h))
-
-        font_small = self.fonts["small"]
-        c = self.cumulative
-        n = c['total_moves']
-        tt_rate = (c['total_tt_hits'] / c['total_tt_lookups'] * 100) if c['total_tt_lookups'] > 0 else 0
-
-        line1 = f"Moves: {n} | {c['total_time_ms']:.0f}ms | {c['total_nodes']:,} nodes | {tt_rate:.0f}% tt"
-        line2 = f"Score: {score} | Max: {max_tile}"
-
-        surf = font_small.render(line1, True, THEME["font_color"])
-        self.screen.blit(surf, (20, bar_y + 10))
-        surf = font_small.render(line2, True, THEME["font_color"])
-        self.screen.blit(surf, (20, bar_y + 40))
 
     def _reset_game(self):
         """Reset environment and clear stats."""
@@ -346,7 +344,11 @@ class Visualizer:
             self._draw_board(self.env.game.board, offset_x=0)
 
             if self.show_stats:
-                self._draw_cumulative_bar(self.env.game.score, self.env.game.max_tile)
+                c = self.cumulative
+                n = c['total_moves']
+                tt_rate = (c['total_tt_hits'] / c['total_tt_lookups'] * 100) if c['total_tt_lookups'] > 0 else 0
+                self.cumulative_labels["cum1"].set_text(f"Moves: {n} | {c['total_time_ms']:.0f}ms | {c['total_nodes']:,} nodes | {tt_rate:.0f}% tt")
+                self.cumulative_labels["cum2"].set_text(f"Score: {self.env.game.score} | Max: {self.env.game.max_tile}")
 
             if terminated:
                 self._draw_game_over(self.env.game.score, self.env.game.max_tile)
