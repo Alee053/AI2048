@@ -49,6 +49,7 @@ class Visualizer:
 
         # Setup Pygame
         import pygame_gui
+        self._pygame_gui = pygame_gui
         pygame.init()
         self.screen = pygame.display.set_mode(THEME["window_size"])
         pygame.display.set_caption("2048 AI Agent")
@@ -80,6 +81,26 @@ class Visualizer:
             self.stats_labels[name] = pygame_gui.elements.UILabel(
                 relative_rect=rect, text=text, manager=self.manager
             )
+
+        # Create buttons
+        button_y = 240
+        button_w = 95
+        button_h = 40
+        button_gap = 10
+
+        self.new_game_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect((panel_x + 10, button_y), (button_w, button_h)),
+            text='New Game',
+            manager=self.manager
+        )
+
+        self.pause_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect((panel_x + 10 + button_w + button_gap, button_y), (button_w, button_h)),
+            text='Pause',
+            manager=self.manager
+        )
+
+        self.paused = False
 
         # Setup RL
         self.env = Game2048Env()
@@ -258,6 +279,29 @@ class Visualizer:
         surf = font_small.render(line2, True, THEME["font_color"])
         self.screen.blit(surf, (20, bar_y + 40))
 
+    def _reset_game(self):
+        """Reset environment and clear stats."""
+        obs, _ = self.env.reset()
+        self.move_history.clear()
+        self.cumulative = {
+            'total_moves': 0,
+            'total_time_ms': 0.0,
+            'total_nodes': 0,
+            'total_tt_lookups': 0,
+            'total_tt_hits': 0,
+        }
+        self.next_action = None
+        self.is_thinking = False
+        if self.search_thread and self.search_thread.is_alive():
+            self.search_thread.join()
+        self.search_thread = None
+
+    def _toggle_pause(self):
+        """Toggle pause state."""
+        self.paused = not self.paused
+        if self.pause_button:
+            self.pause_button.set_text('Resume' if self.paused else 'Pause')
+
     def _search_worker(self):
         """Background thread for search."""
         try:
@@ -290,7 +334,13 @@ class Visualizer:
                     running = False
                 self.manager.process_events(event)
 
-            if not terminated:
+                if event.type == self._pygame_gui.UI_BUTTON_PRESSED:
+                    if event.ui_element == self.new_game_button:
+                        self._reset_game()
+                    elif event.ui_element == self.pause_button:
+                        self._toggle_pause()
+
+            if not terminated and not self.paused:
                 if self.use_expectimax:
                     # Threaded Expectimax
                     if not self.is_thinking and self.next_action is None:
