@@ -3,32 +3,39 @@
     {
         "colours":
         {
-            "dark_bg": "#323232",
-            "panel_bg": "#323232",
-            "label_bg": "#323232",
+            "dark_bg": "#1A1A1A",
+            "panel_bg": "#1A1A1A",
+            "label_bg": "#1A1A1A",
+            "accent": "#F5A623",
+            "positive": "#76E4A3",
+            "negative": "#E74C3C",
             "normal_text": "#FFFFFF",
-            "hover_text": "#CCCCCC",
-            "muted_text": "#AAAAAA",
-            "button_background": "#555555",
-            "button_hover": "#666666",
-            "button_selected": "#777777",
-            "button_text": "#FFFFFF"
+            "muted_text": "#888888",
+            "hover_text": "#FFFFFF",
+            "button_background": "#333333",
+            "button_hover": "#F5A623",
+            "button_selected": "#444444",
+            "button_text": "#FFFFFF",
+            "progress_filled": "#F5A623",
+            "progress_unfilled": "#333333"
         },
         "fonts":
         {
-            "small": { "name": "None", "size": "14", "regular_path": "", "bold_path": "", "italic_path": "" },
-            "medium": { "name": "None", "size": "18", "regular_path": "", "bold_path": "", "italic_path": "" }
+            "small": { "name": "None", "size": "13", "regular_path": "", "bold_path": "", "italic_path": "" },
+            "medium": { "name": "None", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "" },
+            "large": { "name": "None", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "" }
         },
         "widgets":
         {
             "UIPanel":
             {
-                "bg_colour": "@panel_bg"
+                "bg_colour": "@panel_bg",
+                "border_width": "0"
             },
             "UILabel":
             {
                 "builder_width": "200",
-                "builder_height": "30",
+                "builder_height": "24",
                 "bg_colour": "@label_bg",
                 "text_colour": "@normal_text",
                 "font": {"name": "None", "size": "14"}
@@ -41,6 +48,11 @@
                 "hover_colour": "@button_hover",
                 "text_colour": "@button_text",
                 "font": {"name": "None", "size": "14"}
+            },
+            "UIProgressBar":
+            {
+                "filled_bar": "@progress_filled",
+                "unfilled_bar": "@progress_unfilled"
             }
         }
     }
