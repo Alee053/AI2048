@@ -1,5 +1,6 @@
 import os
 import pygame
+import pygame_gui
 import numpy as np
 import torch
 import threading
