@@ -49,7 +49,6 @@ class Visualizer:
         }
 
         # Setup Pygame
-        import pygame_gui
         self._pygame_gui = pygame_gui
         pygame.init()
         self.screen = pygame.display.set_mode(THEME["window_size"])
@@ -76,14 +75,14 @@ class Visualizer:
         # Create stats panel UILabels (children of side_panel)
         self.stats_labels = {}
         label_defs = [
-            ("move_num", f"Move #0", (panel_x + 10, 10)),
-            ("think_ms", "think: 0.0ms", (panel_x + 10, 40)),
-            ("nodes", "nodes: 0", (panel_x + 10, 70)),
-            ("batches", "batches: 0", (panel_x + 10, 100)),
-            ("best_move", "best: -- (0.00)", (panel_x + 10, 130)),
-            ("scores_label", "scores:", (panel_x + 10, 160)),
-            ("scores_row1", "  U:--  R:--", (panel_x + 10, 182)),
-            ("scores_row2", "  D:--  L:--", (panel_x + 10, 204)),
+            ("move_num", f"Move #0", (10, 10)),
+            ("think_ms", "think: 0.0ms", (10, 40)),
+            ("nodes", "nodes: 0", (10, 70)),
+            ("batches", "batches: 0", (10, 100)),
+            ("best_move", "best: -- (0.00)", (10, 130)),
+            ("scores_label", "scores:", (10, 160)),
+            ("scores_row1", "  U:--  R:--", (10, 182)),
+            ("scores_row2", "  D:--  L:--", (10, 204)),
         ]
         for name, text, pos in label_defs:
             rect = pygame.Rect(pos, (200, 22))
@@ -99,14 +98,14 @@ class Visualizer:
         button_gap = 10
 
         self.new_game_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect((panel_x + 10, button_y), (button_w, button_h)),
+            relative_rect=pygame.Rect((10, button_y), (button_w, button_h)),
             text='New Game',
             manager=self.manager,
             container=self.side_panel
         )
 
         self.pause_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect((panel_x + 10 + button_w + button_gap, button_y), (button_w, button_h)),
+            relative_rect=pygame.Rect((10 + button_w + button_gap, button_y), (button_w, button_h)),
             text='Pause',
             manager=self.manager,
             container=self.side_panel
@@ -119,12 +118,12 @@ class Visualizer:
         self.history_h = 110
         history_h = self.history_h
         self.history_scroll_area = pygame_gui.elements.UIScrollingContainer(
-            relative_rect=pygame.Rect((panel_x + 10, history_y), (200, history_h)),
+            relative_rect=pygame.Rect((10, history_y), (200, history_h)),
             manager=self.manager,
             container=self.side_panel
         )
         self.history_inner = self.history_scroll_area.scrollable_container
-        self.history_scroll_area.set_scrollable_area_dimensions((180, history_h * 3))
+        self.history_scroll_area.set_scrollable_area_dimensions((200, history_h * 3))
         self.history_labels = []
 
         # Setup RL
@@ -255,7 +254,7 @@ class Visualizer:
             label_text = f"#{global_idx} [{mh_ms:.0f}ms, {mh_nodes:,}, {mh_best}]"
 
             label = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect((0, i * item_height), (200, item_height)),
+                relative_rect=pygame.Rect((0, i * item_height), (195, item_height)),
                 text=label_text,
                 manager=self.manager,
                 container=self.history_inner
@@ -264,7 +263,7 @@ class Visualizer:
 
         # Update scroll area height based on item count
         total_height = len(history) * item_height
-        self.history_scroll_area.set_scrollable_area_dimensions((180, max(total_height, self.history_h)))
+        self.history_scroll_area.set_scrollable_area_dimensions((200, max(total_height, self.history_h)))
 
     def _search_worker(self):
         """Background thread for search."""
