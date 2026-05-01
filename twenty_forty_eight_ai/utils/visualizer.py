@@ -152,6 +152,32 @@ class Visualizer:
             container=self.side_panel
         )
 
+        # ===== TT Cache Stats block =====
+        y_offset += 36
+
+        self.tt_size_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
+            text="TT size: 0",
+            manager=self.manager,
+            container=self.side_panel
+        )
+        y_offset += 26
+
+        self.tt_lookups_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
+            text="lookups: 0",
+            manager=self.manager,
+            container=self.side_panel
+        )
+        y_offset += 26
+
+        self.tt_hits_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
+            text="hit rate: 0%",
+            manager=self.manager,
+            container=self.side_panel
+        )
+
         # ===== Action scores block =====
         y_offset += 36
 
@@ -422,6 +448,15 @@ class Visualizer:
         action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
         best_score = scores[best] if best < len(scores) else 0.0
         self.best_move_label.set_text(f"best: {action_names[best]} ({best_score:.2f})")
+
+        tt_size = last_s.get('tt_size', 0)
+        tt_lookups = last_s.get('tt_lookups', 0)
+        tt_hits = last_s.get('tt_hits', 0)
+        hit_rate = (tt_hits / tt_lookups * 100) if tt_lookups > 0 else 0
+
+        self.tt_size_label.set_text(f"TT size: {tt_size:,}")
+        self.tt_lookups_label.set_text(f"lookups: {tt_lookups:,} / {tt_hits:,}")
+        self.tt_hits_label.set_text(f"hit rate: {hit_rate:.0f}%")
 
         max_score = max(scores) if max(scores) > -1e8 else 1.0
         for i, (bar, score_label) in enumerate(zip(self.score_bars, self.score_labels)):
