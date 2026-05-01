@@ -15,8 +15,16 @@ from ..utils.tensor_utils import board_to_tensor
 
 # Config
 THEME = {
-    "window_size": (620, 480),
-    "side_panel_width": 220,
+    "window_size": (1280, 720),
+    "board_size": 560,
+    "board_offset": (40, 20),
+    "side_panel_x": 620,
+    "side_panel_width": 640,
+    "side_panel_height": 560,
+    "bottom_strip_y": 600,
+    "bottom_strip_height": 120,
+    "tile_size": 135,
+    "padding": 14,
     "bg_color": (187, 173, 160),
     "tile_colors": {
         0: (205, 193, 180),
@@ -91,11 +99,11 @@ class Visualizer:
         }
 
         # Create right side panel
-        panel_x = 400
-        panel_w = 220
-        panel_h = 480
+        panel_x = THEME["side_panel_x"]
+        panel_w = THEME["side_panel_width"]
+        panel_h = THEME["side_panel_height"]
         self.side_panel = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((panel_x, 0), (panel_w, panel_h)),
+            relative_rect=pygame.Rect((panel_x, 20), (panel_w, panel_h)),
             manager=self.manager
         )
 
@@ -110,35 +118,35 @@ class Visualizer:
         # Stats labels
         y_offset = 10
         self.move_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 22)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="Move #0",
             manager=self.manager,
             container=self.side_panel
         )
         y_offset += 26
         self.think_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 22)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="think: 0.0ms",
             manager=self.manager,
             container=self.side_panel
         )
         y_offset += 26
         self.nodes_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 22)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="nodes: 0",
             manager=self.manager,
             container=self.side_panel
         )
         y_offset += 26
         self.batches_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 22)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="batches: 0",
             manager=self.manager,
             container=self.side_panel
         )
         y_offset += 26
         self.best_move_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 22)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="best: -- (0.00)",
             manager=self.manager,
             container=self.side_panel
@@ -160,12 +168,12 @@ class Visualizer:
                 container=self.side_panel
             )
             bar = pygame_gui.elements.UIProgressBar(
-                relative_rect=pygame.Rect((65, row_y), (90, 16)),
+                relative_rect=pygame.Rect((65, row_y), (200, 16)),
                 manager=self.manager,
                 container=self.side_panel
             )
             score_lbl = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect((160, row_y), (50, 20)),
+                relative_rect=pygame.Rect((270, row_y), (70, 20)),
                 text="--",
                 manager=self.manager,
                 container=self.side_panel
@@ -177,7 +185,7 @@ class Visualizer:
 
         # ===== Buttons =====
         button_y = y_offset
-        button_w = 95
+        button_w = 140
         button_h = 40
         button_gap = 10
 
@@ -199,27 +207,27 @@ class Visualizer:
 
         # ===== Scrollable history via UITextBox =====
         history_y = button_y + button_h + 10
-        history_h = 100  # Fixed visible height, scrollbar appears when content overflows
+        history_h = 160
         self.history_text = pygame_gui.elements.UITextBox(
-            relative_rect=pygame.Rect((10, history_y), (180, history_h)),  # 180px wide to leave room for scrollbar
+            relative_rect=pygame.Rect((10, history_y), (panel_w - 20, history_h)),
             html_text="No moves yet.",
             manager=self.manager,
             container=self.side_panel,
-            wrap_to_height=False  # False = fixed height, content scrolls vertically when it overflows
+            wrap_to_height=False
         )
 
         # ===== Cumulative bar at bottom (spans full window) =====
         self.cum_panel = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((0, 420), (620, 60)),
+            relative_rect=pygame.Rect((0, THEME["bottom_strip_y"]), (THEME["window_size"][0], THEME["bottom_strip_height"])),
             manager=self.manager
         )
         self.cum_top_border = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((0, 420), (620, 3)),
+            relative_rect=pygame.Rect((0, THEME["bottom_strip_y"]), (THEME["window_size"][0], 3)),
             manager=self.manager
         )
         self.cum_top_border.background_colour = pygame.Color("#F5A623")
         self.cum_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, 430), (600, 36)),
+            relative_rect=pygame.Rect((10, THEME["bottom_strip_y"] + 10), (THEME["window_size"][0] - 20, 36)),
             text="Moves: 0 | 0ms | 0 nodes | 0% tt | Score: 0",
             manager=self.manager
         )
@@ -261,27 +269,26 @@ class Visualizer:
 
     def _draw_board(self, board: np.ndarray, offset_x: int = 0):
         """Draws the 4x4 game grid at the given x offset."""
-        # Fill only the board area (left 400px) to preserve bottom bar
-        board_rect = pygame.Rect(0, 0, 400, 480)
+        board_rect = pygame.Rect(0, 0, THEME["side_panel_x"], THEME["window_size"][1])
         self.screen.fill(THEME["bg_color"], board_rect)
-        tile_size, padding = 100, 10
+        tile_size = THEME["tile_size"]
+        padding = THEME["padding"]
+        board_offset_x, board_offset_y = THEME["board_offset"]
 
         for r in range(4):
             for c in range(4):
                 tile_value = int(board[r, c])
-
                 if tile_value > 0:
                     tile_value = 2 ** tile_value
-
                 color = THEME["tile_colors"].get(tile_value, THEME["tile_colors"]["default"])
 
                 rect = pygame.Rect(
-                    offset_x + c * tile_size + padding / 2,
-                    r * tile_size + padding / 2,
+                    board_offset_x + c * tile_size + padding / 2,
+                    board_offset_y + r * tile_size + padding / 2,
                     tile_size - padding,
                     tile_size - padding
                 )
-                pygame.draw.rect(self.screen, color, rect, border_radius=5)
+                pygame.draw.rect(self.screen, color, rect, border_radius=6)
 
                 if tile_value != 0:
                     font = self._get_font_for_tile(tile_value)
@@ -431,15 +438,17 @@ class Visualizer:
         """Draw game over overlay."""
         overlay = pygame.Surface(THEME["window_size"], pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
-        big_font = pygame.font.Font(None, 60)
-        small_font = pygame.font.Font(None, 32)
+        big_font = pygame.font.Font(None, 72)
+        small_font = pygame.font.Font(None, 36)
         game_over_surf = big_font.render("Game Over", True, THEME["font_color"])
         score_surf = small_font.render(f"Final Score: {score}", True, THEME["font_color"])
         tile_surf = small_font.render(f"Max Tile: {max_tile}", True, THEME["font_color"])
         self.screen.blit(overlay, (0, 0))
-        self.screen.blit(game_over_surf, game_over_surf.get_rect(center=(200, 200)))
-        self.screen.blit(score_surf, score_surf.get_rect(center=(200, 270)))
-        self.screen.blit(tile_surf, tile_surf.get_rect(center=(200, 310)))
+        board_cx = THEME["board_offset"][0] + THEME["board_size"] // 2
+        board_cy = THEME["board_offset"][1] + THEME["board_size"] // 2
+        self.screen.blit(game_over_surf, game_over_surf.get_rect(center=(board_cx, board_cy - 40)))
+        self.screen.blit(score_surf, score_surf.get_rect(center=(board_cx, board_cy + 30)))
+        self.screen.blit(tile_surf, tile_surf.get_rect(center=(board_cx, board_cy + 70)))
 
     def run(self):
         obs, _ = self.env.reset()
