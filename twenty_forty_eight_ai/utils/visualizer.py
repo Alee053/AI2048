@@ -63,6 +63,9 @@ class Visualizer:
         self.search_depth = search_depth
         self.show_stats = show_stats
         self.move_history: List = []
+        self.score_history: List[float] = []
+        self.think_time_history: List[float] = []
+        self.nodes_history: List[float] = []
         self.cumulative = {
             'total_moves': 0,
             'total_time_ms': 0.0,
@@ -70,6 +73,22 @@ class Visualizer:
             'total_tt_lookups': 0,
             'total_tt_hits': 0,
         }
+
+        sparkline_w = (THEME["window_size"][0] - 80) // 3
+        sparkline_h = THEME["bottom_strip_height"] - 30
+        from ..utils.sparkline import SparklineRenderer
+        self.score_sparkline = SparklineRenderer(
+            width=sparkline_w, height=sparkline_h,
+            color=(245, 166, 35), bg_color=(26, 26, 26)
+        )
+        self.think_sparkline = SparklineRenderer(
+            width=sparkline_w, height=sparkline_h,
+            color=(0, 200, 255), bg_color=(26, 26, 26)
+        )
+        self.nodes_sparkline = SparklineRenderer(
+            width=sparkline_w, height=sparkline_h,
+            color=(100, 255, 100), bg_color=(26, 26, 26)
+        )
 
         # Custom event types
         self.CUSTOM_SEARCH_REQUEST = pygame.event.custom_type()
@@ -242,22 +261,6 @@ class Visualizer:
             wrap_to_height=False
         )
 
-        # ===== Cumulative bar at bottom (spans full window) =====
-        self.cum_panel = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((0, THEME["bottom_strip_y"]), (THEME["window_size"][0], THEME["bottom_strip_height"])),
-            manager=self.manager
-        )
-        self.cum_top_border = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((0, THEME["bottom_strip_y"]), (THEME["window_size"][0], 3)),
-            manager=self.manager
-        )
-        self.cum_top_border.background_colour = pygame.Color("#F5A623")
-        self.cum_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, THEME["bottom_strip_y"] + 10), (THEME["window_size"][0] - 20, 36)),
-            text="Moves: 0 | 0ms | 0 nodes | 0% tt | Score: 0",
-            manager=self.manager
-        )
-
         # Setup RL
         self.env = Game2048Env()
         self.model = MaskablePPO.load(model_path)
@@ -379,6 +382,12 @@ class Visualizer:
         self._current_result = None
         self.env.reset()
         self.move_history.clear()
+        self.score_history.clear()
+        self.think_time_history.clear()
+        self.nodes_history.clear()
+        self.score_sparkline.update_data([])
+        self.think_sparkline.update_data([])
+        self.nodes_sparkline.update_data([])
         self.cumulative = {
             'total_moves': 0,
             'total_time_ms': 0.0,
@@ -408,6 +417,13 @@ class Visualizer:
             self.cumulative['total_nodes'] += stats.get('nodes_visited', 0)
             self.cumulative['total_tt_lookups'] += stats.get('tt_lookups', 0)
             self.cumulative['total_tt_hits'] += stats.get('tt_hits', 0)
+
+            self.score_history.append(float(self.env.game.score))
+            self.think_time_history.append(stats.get('think_ms', 0.0))
+            self.nodes_history.append(float(stats.get('nodes_visited', 0)))
+            self.score_history = self.score_history[-100:]
+            self.think_time_history = self.think_time_history[-100:]
+            self.nodes_history = self.nodes_history[-100:]
 
         if terminated:
             self._draw_game_over(self.env.game.score, self.env.game.max_tile)
@@ -520,12 +536,29 @@ class Visualizer:
 
             self._draw_board(self.env.game.board, offset_x=0)
 
-            c = self.cumulative
-            n = c['total_moves']
-            tt_rate = (c['total_tt_hits'] / c['total_tt_lookups'] * 100) if c['total_tt_lookups'] > 0 else 0
-            self.cum_label.set_text(
-                f"Moves: {n} | {c['total_time_ms']:.0f}ms | {c['total_nodes']:,} nodes | {tt_rate:.0f}% tt | Score: {self.env.game.score}"
-            )
+            self.score_sparkline.update_data(self.score_history)
+            self.think_sparkline.update_data(self.think_time_history)
+            self.nodes_sparkline.update_data(self.nodes_history)
+
+            strip_y = THEME["bottom_strip_y"]
+            strip_h = THEME["bottom_strip_height"]
+            sparkline_w = self.score_sparkline.width
+
+            pygame.draw.rect(self.screen, (30, 30, 30), pygame.Rect(0, strip_y, 1280, strip_h))
+
+            font = pygame.font.Font(None, 20)
+            labels = [
+                ("Score", (20, strip_y + 4)),
+                ("Think Time (ms)", (40 + sparkline_w, strip_y + 4)),
+                ("Nodes Visited", (60 + 2 * sparkline_w, strip_y + 4)),
+            ]
+            for text, pos in labels:
+                surf = font.render(text, True, (200, 200, 200))
+                self.screen.blit(surf, pos)
+
+            self.screen.blit(self.score_sparkline.render(), (20, strip_y + 22))
+            self.screen.blit(self.think_sparkline.render(), (40 + sparkline_w, strip_y + 22))
+            self.screen.blit(self.nodes_sparkline.render(), (60 + 2 * sparkline_w, strip_y + 22))
 
             self._update_stats_labels()
             self._update_history_display()
