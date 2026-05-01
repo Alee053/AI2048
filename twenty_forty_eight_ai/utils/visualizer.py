@@ -172,7 +172,7 @@ class Visualizer:
         )
 
         # ===== TT Cache Stats block =====
-        y_offset += 36
+        y_offset += 28
 
         self.tt_size_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
@@ -252,7 +252,7 @@ class Visualizer:
 
         # ===== Scrollable history via UITextBox =====
         history_y = button_y + button_h + 10
-        history_h = 160
+        history_h = 120
         self.history_text = pygame_gui.elements.UITextBox(
             relative_rect=pygame.Rect((10, history_y), (panel_w - 20, history_h)),
             html_text="No moves yet.",
