@@ -77,18 +77,23 @@ class Visualizer:
         sparkline_w = (THEME["window_size"][0] - 80) // 3
         sparkline_h = THEME["bottom_strip_height"] - 30
         from ..utils.sparkline import SparklineRenderer
-        self.score_sparkline = SparklineRenderer(
-            width=sparkline_w, height=sparkline_h,
-            color=(245, 166, 35), bg_color=(26, 26, 26)
-        )
-        self.think_sparkline = SparklineRenderer(
-            width=sparkline_w, height=sparkline_h,
-            color=(0, 200, 255), bg_color=(26, 26, 26)
-        )
-        self.nodes_sparkline = SparklineRenderer(
-            width=sparkline_w, height=sparkline_h,
-            color=(100, 255, 100), bg_color=(26, 26, 26)
-        )
+        if self.show_stats:
+            self.score_sparkline = SparklineRenderer(
+                width=sparkline_w, height=sparkline_h,
+                color=(245, 166, 35), bg_color=(26, 26, 26)
+            )
+            self.think_sparkline = SparklineRenderer(
+                width=sparkline_w, height=sparkline_h,
+                color=(0, 200, 255), bg_color=(26, 26, 26)
+            )
+            self.nodes_sparkline = SparklineRenderer(
+                width=sparkline_w, height=sparkline_h,
+                color=(100, 255, 100), bg_color=(26, 26, 26)
+            )
+        else:
+            self.score_sparkline = None
+            self.think_sparkline = None
+            self.nodes_sparkline = None
 
         # Custom event types
         self.CUSTOM_SEARCH_REQUEST = pygame.event.custom_type()
@@ -334,10 +339,10 @@ class Visualizer:
                 break
             self._search_event.clear()
 
-            board_copy = self._current_board_for_search.copy()
-            if board_copy is None:
+            if self._current_board_for_search is None:
                 self._searching = False
                 continue
+            board_copy = self._current_board_for_search.copy()
 
             try:
                 stats = self.searcher.find_best_move(
@@ -385,9 +390,10 @@ class Visualizer:
         self.score_history.clear()
         self.think_time_history.clear()
         self.nodes_history.clear()
-        self.score_sparkline.update_data([])
-        self.think_sparkline.update_data([])
-        self.nodes_sparkline.update_data([])
+        if self.show_stats:
+            self.score_sparkline.update_data([])
+            self.think_sparkline.update_data([])
+            self.nodes_sparkline.update_data([])
         self.cumulative = {
             'total_moves': 0,
             'total_time_ms': 0.0,
@@ -426,7 +432,7 @@ class Visualizer:
             self.nodes_history = self.nodes_history[-100:]
 
         if terminated:
-            self._draw_game_over(self.env.game.score, self.env.game.max_tile)
+            self._draw_game_over(self.env.game.score, 2 ** self.env.game.max_tile)
 
     def _update_history_display(self):
         """Rebuild history HTML text and update UITextBox."""
@@ -536,32 +542,33 @@ class Visualizer:
 
             self._draw_board(self.env.game.board, offset_x=0)
 
-            self.score_sparkline.update_data(self.score_history)
-            self.think_sparkline.update_data(self.think_time_history)
-            self.nodes_sparkline.update_data(self.nodes_history)
+            if self.show_stats:
+                self.score_sparkline.update_data(self.score_history)
+                self.think_sparkline.update_data(self.think_time_history)
+                self.nodes_sparkline.update_data(self.nodes_history)
 
-            strip_y = THEME["bottom_strip_y"]
-            strip_h = THEME["bottom_strip_height"]
-            sparkline_w = self.score_sparkline.width
+                strip_y = THEME["bottom_strip_y"]
+                strip_h = THEME["bottom_strip_height"]
+                sparkline_w = self.score_sparkline.width
 
-            pygame.draw.rect(self.screen, (30, 30, 30), pygame.Rect(0, strip_y, 1280, strip_h))
+                pygame.draw.rect(self.screen, (30, 30, 30), pygame.Rect(0, strip_y, 1280, strip_h))
 
-            font = pygame.font.Font(None, 20)
-            labels = [
-                ("Score", (20, strip_y + 4)),
-                ("Think Time (ms)", (40 + sparkline_w, strip_y + 4)),
-                ("Nodes Visited", (60 + 2 * sparkline_w, strip_y + 4)),
-            ]
-            for text, pos in labels:
-                surf = font.render(text, True, (200, 200, 200))
-                self.screen.blit(surf, pos)
+                font = pygame.font.Font(None, 20)
+                labels = [
+                    ("Score", (20, strip_y + 4)),
+                    ("Think Time (ms)", (40 + sparkline_w, strip_y + 4)),
+                    ("Nodes Visited", (60 + 2 * sparkline_w, strip_y + 4)),
+                ]
+                for text, pos in labels:
+                    surf = font.render(text, True, (200, 200, 200))
+                    self.screen.blit(surf, pos)
 
-            self.screen.blit(self.score_sparkline.render(), (20, strip_y + 22))
-            self.screen.blit(self.think_sparkline.render(), (40 + sparkline_w, strip_y + 22))
-            self.screen.blit(self.nodes_sparkline.render(), (60 + 2 * sparkline_w, strip_y + 22))
+                self.screen.blit(self.score_sparkline.render(), (20, strip_y + 22))
+                self.screen.blit(self.think_sparkline.render(), (40 + sparkline_w, strip_y + 22))
+                self.screen.blit(self.nodes_sparkline.render(), (60 + 2 * sparkline_w, strip_y + 22))
 
-            self._update_stats_labels()
-            self._update_history_display()
+                self._update_stats_labels()
+                self._update_history_display()
 
             self.manager.update(time_delta)
             self.manager.draw_ui(self.screen)
