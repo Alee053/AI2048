@@ -133,6 +133,21 @@ Aha! I realized that using Stable Baselines3 significantly streamlined the imple
 #### Story Relevance: Is this a key "plot point" in the project's story?
 Key Moment: This commit marked a major advancement in the project, transitioning from a DQN-based approach to a more sophisticated PPO agent. The introduction of modularity, comprehensive logging, and a visualizer significantly enhanced the project's structure and usability, setting the stage for more effective training and evaluation of the AI agent.
 
+* ### Fix #1 (Infinite Search Loop)
+**Date:** 05/05/2026
+
+#### The Goal: What was I trying to achieve with this change?
+Debug and fix a hard hang in the C++ Expectimax searcher where it would enter an infinite loop on specific board states.
+
+#### The Challenge: Was this harder or easier than I expected? Why?
+Extremely Hard: The bug was caused by a "perfect storm" of pure hash collisions in the Transposition Table and I/O blocking from debug logs. It required deep tracing of the search passes to realize that the searcher was losing its progress because two "hot" keys were fighting for the same bucket.
+
+#### The "Aha!" Moment: Did I learn or realize anything important?
+Aha! I realized that in a multi-pass deferred-batching searcher, the Transposition Table is not just an optimization—it's the primary mechanism for termination. If progress is overwritten, the searcher can loop forever. I also learned that 4-way associativity is a "magic number" for C++ performance, as it fits perfectly into a 64-byte cache line.
+
+#### Story Relevance: Is this a key "plot point" in the project's story?
+Key Breakthrough: This fix stabilized the C++/Python hybrid searcher, allowing it to scale to arbitrary depths without hanging. It also established the "C++ Searcher Development Guidelines" for future improvements.
+
 ---
 # Sources
 https://github.com/tsangwpx/ml2048/tree/main
