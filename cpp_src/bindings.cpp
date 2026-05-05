@@ -1,6 +1,7 @@
 ﻿#include <pybind11/pybind11.h>
 #include "Fast2048.h"
 #include "ExpectimaxSearcher.h"
+#include "BoardEncoder.h"
 #include <pybind11/stl.h>
 #include <pybind11/functional.h>
 
@@ -30,6 +31,12 @@ PYBIND11_MODULE(searcher, m) {
         .def_property_readonly("move_scores", [](const SearchStats& s) {
             return std::array<float, 4>{s.move_scores[0], s.move_scores[1], s.move_scores[2], s.move_scores[3]};
         });
+
+    py::class_<BoardEncoder>(m, "BoardEncoder")
+        .def_static("pack", &BoardEncoder::pack)
+        .def_static("unpack", &BoardEncoder::unpack)
+        .def_static("canonicalize_board", static_cast<uint64_t(*)(const Board&)>(&BoardEncoder::canonicalize))
+        .def_static("canonicalize_packed", static_cast<uint64_t(*)(uint64_t)>(&BoardEncoder::canonicalize));
 
     py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
         .def(py::init<>())
