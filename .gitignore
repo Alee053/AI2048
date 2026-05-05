@@ -24,3 +24,6 @@ data/models/hybrid_ppo_v2_sweep-seed2
 logs
 .superpowers
 data/benchmarks/
+
+
+opencode.json
