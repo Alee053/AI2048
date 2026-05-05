@@ -1,35 +1,31 @@
-#include <iostream>
-#include <set>
 #include "ExpectimaxSearcher.h"
-#include "BoardEncoder.h"
+#include <iostream>
+#include <vector>
 
 std::vector<float> fake_eval(const std::vector<Board>& boards) {
-    std::vector<float> result;
+    std::vector<float> results;
     for (const auto& b : boards) {
         float sum = 0;
         for (int r = 0; r < 4; ++r)
             for (int c = 0; c < 4; ++c)
                 sum += b[r][c];
-        result.push_back(sum);
+        results.push_back(sum);
     }
-    return result;
+    return results;
 }
 
 int main() {
+    ExpectimaxSearcher searcher(32768);
     Board board = {{
-        {{0, 1, 5, 1}},
-        {{0, 1, 2, 6}},
-        {{0, 0, 0, 1}},
-        {{0, 0, 0, 1}}
+        {{1, 1, 3, 5}},
+        {{0, 0, 0, 3}},
+        {{1, 0, 0, 2}},
+        {{0, 0, 0, 0}}
     }};
 
-    ExpectimaxSearcher searcher;
-    
-    // Run for exactly 10 passes to collect keys
-    // We need to instrument the searcher to collect keys, but let's just run it
-    // and see the tt_size after 10 passes.
-    
-    auto stats = searcher.find_best_move(board, 2, fake_eval);
-    std::cout << "best_move=" << stats.best_move << " think_ms=" << stats.think_ms << std::endl;
+    std::cout << "Starting search for problematic board at depth 3...\n";
+    auto stats = searcher.find_best_move(board, 3, fake_eval);
+    std::cout << "best_move=" << stats.best_move << " nodes=" << stats.nodes_visited << "\n";
+
     return 0;
 }

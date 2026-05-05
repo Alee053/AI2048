@@ -3,11 +3,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <iostream>
 
 enum class NodeType : uint8_t { MAX = 0, CHANCE = 1 };
 
 // Keeping the struct small maximizes CPU cache hits.
-// 16 bytes per entry => 256 MiB for 2^24 slots.
+// 16 bytes per entry.
 struct TTEntry {
     uint64_t key;   // Zobrist hash of the board state
     float    score; // Evaluated Expectimax score
@@ -15,15 +16,20 @@ struct TTEntry {
     uint8_t  type;  // 0 = MAX, 1 = CHANCE
 };
 
+// 4-way associative bucket (64 bytes total, fits perfectly in a typical CPU cache line)
+struct TTBucket {
+    TTEntry entries[4];
+};
+
 class TranspositionTable {
 public:
-    // 2^24 entries ≈ 16.7 million slots (~256 MiB)
-    static constexpr uint32_t TT_SIZE = 16777216;
-    static constexpr uint32_t TT_MASK = TT_SIZE - 1;
+    // 2^22 buckets * 4 entries/bucket = 2^24 entries total (~256 MiB)
+    static constexpr uint32_t NUM_BUCKETS = 4194304;
+    static constexpr uint32_t BUCKET_MASK = NUM_BUCKETS - 1;
 
     TranspositionTable() {
         // Allocate once. Zero-initialise so key==0 means "empty slot".
-        table = new TTEntry[TT_SIZE]();
+        table = new TTBucket[NUM_BUCKETS]();
         if (!table) {
             throw std::bad_alloc();
         }
@@ -38,8 +44,7 @@ public:
     TranspositionTable& operator=(const TranspositionTable&) = delete;
 
     // Scramble 64-bit key into a well-distributed 64-bit hash.
-    // Uses splitmix64 to avoid clustering when low bits of canonical boards collide.
-static uint64_t hash_key(uint64_t key, uint8_t type) {
+    static uint64_t hash_key(uint64_t key, uint8_t type) {
         uint64_t x = key ^ (static_cast<uint64_t>(type) << 1);
         x += 0x9e3779b97f4a7c15ULL;
         x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
@@ -48,57 +53,73 @@ static uint64_t hash_key(uint64_t key, uint8_t type) {
     }
 
     bool probe(uint64_t key, uint8_t depth, NodeType type, float& out_score) const {
-        uint32_t idx = static_cast<uint32_t>(hash_key(key, static_cast<uint8_t>(type)) & TT_MASK);
-        const TTEntry& entry = table[idx];
-        if (entry.key == key && entry.type == static_cast<uint8_t>(type) && entry.depth >= depth) {
-            out_score = entry.score;
-            return true;
-        }
-        static int miss_log = 20;
-        if (miss_log > 0 && depth <= 2) {
-            std::cerr << "[TT_MISS] key=" << key << " depth=" << (int)depth << " type=" << (int)type
-                      << " entry_depth=" << (int)entry.depth << " entry_key=" << entry.key
-                      << " entry_type=" << (int)entry.type << " idx=" << idx << "\n";
-            miss_log--;
+        uint32_t idx = static_cast<uint32_t>(hash_key(key, static_cast<uint8_t>(type)) & BUCKET_MASK);
+        const TTBucket& bucket = table[idx];
+        
+        for (int i = 0; i < 4; ++i) {
+            const TTEntry& entry = bucket.entries[i];
+            if (entry.key == key && entry.type == static_cast<uint8_t>(type)) {
+                if (entry.depth >= depth) {
+                    out_score = entry.score;
+                    return true;
+                }
+                // Key matches but stored depth is shallower than requested search.
+                return false;
+            }
         }
         return false;
     }
 
     void store(uint64_t key, uint8_t depth, NodeType type, float score) {
-        uint32_t idx = static_cast<uint32_t>(hash_key(key, static_cast<uint8_t>(type)) & TT_MASK);
-        TTEntry& entry = table[idx];
+        uint32_t idx = static_cast<uint32_t>(hash_key(key, static_cast<uint8_t>(type)) & BUCKET_MASK);
+        TTBucket& bucket = table[idx];
 
-        bool replace = false;
-        if (entry.key == 0) {
-            // Empty sentinel
-            replace = true;
-            num_entries_++;
-        } else if (entry.key == key && entry.type == static_cast<uint8_t>(type)) {
-            // Same board+type: always replace (higher depth entries can't overwrite lower ones)
-            replace = true;
-            same_key_overwrite_count_++;
-        } else {
-            replace = true;
-            collision_count_++;
-            if (collision_count_ <= 10) {
-                std::cerr << "[COLLISION] idx=" << idx << " old_key=" << entry.key
-                          << " new_key=" << key << " old_type=" << (int)entry.type
-                          << " new_type=" << (int)type << "\n";
+        // 1. If key already exists in any slot, overwrite it.
+        for (int i = 0; i < 4; ++i) {
+            if (bucket.entries[i].key == key && bucket.entries[i].type == static_cast<uint8_t>(type)) {
+                bucket.entries[i].score = score;
+                bucket.entries[i].depth = depth;
+                same_key_overwrite_count_++;
+                return;
             }
         }
 
-        if (replace) {
-            entry.key   = key;
-            entry.score = score;
-            entry.depth = depth;
-            entry.type  = static_cast<uint8_t>(type);
+        // 2. Otherwise, find an empty slot.
+        for (int i = 0; i < 4; ++i) {
+            if (bucket.entries[i].key == 0) {
+                bucket.entries[i].key   = key;
+                bucket.entries[i].score = score;
+                bucket.entries[i].depth = depth;
+                bucket.entries[i].type  = static_cast<uint8_t>(type);
+                num_entries_++;
+                return;
+            }
         }
+
+        // 3. All slots full: replace the one with the smallest depth.
+        // Use collision_count to cycle through slots on equal depth to avoid ping-ponging.
+        collision_count_++;
+        int replace_idx = collision_count_ % 4;
+        uint8_t min_depth = bucket.entries[replace_idx].depth;
+
+        for (int i = 0; i < 4; ++i) {
+            if (bucket.entries[i].depth < min_depth) {
+                min_depth = bucket.entries[i].depth;
+                replace_idx = i;
+            }
+        }
+        
+        bucket.entries[replace_idx].key   = key;
+        bucket.entries[replace_idx].score = score;
+        bucket.entries[replace_idx].depth = depth;
+        bucket.entries[replace_idx].type  = static_cast<uint8_t>(type);
     }
 
-    // Wipe the table (rarely needed; mainly for explicit resets between models).
     void clear() {
-        std::memset(table, 0, TT_SIZE * sizeof(TTEntry));
+        std::memset(table, 0, NUM_BUCKETS * sizeof(TTBucket));
         num_entries_ = 0;
+        collision_count_ = 0;
+        same_key_overwrite_count_ = 0;
     }
 
     size_t occupancy() const { return num_entries_; }
@@ -106,7 +127,7 @@ static uint64_t hash_key(uint64_t key, uint8_t type) {
     size_t same_key_overwrite_count() const { return same_key_overwrite_count_; }
 
 private:
-    TTEntry* table;
+    TTBucket* table;
     size_t num_entries_ = 0;
     size_t collision_count_ = 0;
     size_t same_key_overwrite_count_ = 0;
