@@ -218,12 +218,12 @@ class Visualizer:
                 container=self.side_panel
             )
             bar = pygame_gui.elements.UIProgressBar(
-                relative_rect=pygame.Rect((65, row_y), (200, 16)),
+                relative_rect=pygame.Rect((65, row_y), (240, 16)),
                 manager=self.manager,
                 container=self.side_panel
             )
             score_lbl = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect((270, row_y), (70, 20)),
+                relative_rect=pygame.Rect((310, row_y), (70, 20)),
                 text="--",
                 manager=self.manager,
                 container=self.side_panel
@@ -257,7 +257,7 @@ class Visualizer:
 
         # ===== Scrollable history via UITextBox =====
         history_y = button_y + button_h + 10
-        history_h = 120
+        history_h = 160
         self.history_text = pygame_gui.elements.UITextBox(
             relative_rect=pygame.Rect((10, history_y), (panel_w - 20, history_h)),
             html_text="No moves yet.",
