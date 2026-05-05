@@ -6,7 +6,6 @@ __pycache__/
 
 build
 
-twenty_forty_eight_ai
 twenty_forty_eight_ai.egg-info
 .envrc
 
@@ -23,3 +22,8 @@ data/models/hybrid_ppo_v2_sweep-seed1
 data/models/hybrid_ppo_v2_sweep-seed2
 
 logs
+.superpowers
+data/benchmarks/
+
+
+opencode.json

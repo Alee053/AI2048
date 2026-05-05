@@ -17,6 +17,7 @@ dependencies = [
     "stable-baselines3==2.8.0",
     "sb3-contrib==2.8.0",
     "pygame==2.6.1",
+    "pygame-gui>=0.6.9",
     # --- Performance & C++ Integration ---
     "numpy==1.26.4",
     "numba==0.62.1",

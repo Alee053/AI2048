@@ -1,0 +1,146 @@
+{
+    "_comment": "SEE docs/pygame-gui/THEME-CHEATSHEET.md for pygame_gui theme rules. Key gotchas: (1) Element IDs are lowercase (label, panel, button), not class names. (2) Colors go inside 'colours' sub-dict using 'normal_text'/'dark_bg' keys. (3) Misc data uses 'misc' key, not 'misc_data'. (4) Class overrides use bare class ID (amber, section_header), not 'label.amber'. (5) Bold uses '1', not 'true'.",
+    "defaults":
+    {
+        "colours":
+        {
+            "dark_bg": "#1A1A1A",
+            "normal_bg": "#1A1A1A",
+            "normal_text": "#FFFFFF",
+            "muted_text": "#888888",
+            "filled_bar": "#F5A623",
+            "unfilled_bar": "#1A1A1A"
+        }
+    },
+    "fonts":
+    {
+        "small": { "name": "noto_sans", "size": "14", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
+        "medium": { "name": "noto_sans", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
+        "large": { "name": "noto_sans", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" }
+    },
+    "panel":
+    {
+        "colours":
+        {
+            "dark_bg": "#1A1A1A",
+            "normal_border": "#1A1A1A"
+        },
+        "misc":
+        {
+            "border_width": "0",
+            "shadow_width": "0"
+        }
+    },
+    "label":
+    {
+        "colours":
+        {
+            "normal_text": "#FFFFFF",
+            "dark_bg": "#1A1A1A"
+        },
+        "misc":
+        {
+            "text_horiz_alignment": "left",
+            "text_vert_alignment": "top",
+            "text_shadow_size": "0"
+        }
+    },
+    "button":
+    {
+        "colours":
+        {
+            "normal_text": "#FFFFFF",
+            "dark_bg": "#1A1A1A"
+        },
+        "misc":
+        {
+            "text_horiz_alignment": "left"
+        }
+    },
+    "progress_bar":
+    {
+        "colours":
+        {
+            "filled_bar": "#F5A623",
+            "unfilled_bar": "#1A1A1A"
+        }
+    },
+    "text_box":
+    {
+        "colours":
+        {
+            "normal_text": "#FFFFFF",
+            "dark_bg": "#1A1A1A"
+        }
+    },
+    "amber":
+    {
+        "colours":
+        {
+            "normal_text": "#F5A623"
+        }
+    },
+    "cyan":
+    {
+        "colours":
+        {
+            "normal_text": "#00C8FF"
+        }
+    },
+    "green":
+    {
+        "colours":
+        {
+            "normal_text": "#64FF64"
+        }
+    },
+    "muted":
+    {
+        "colours":
+        {
+            "normal_text": "#AAAAAA"
+        }
+    },
+    "section_header":
+    {
+        "colours":
+        {
+            "normal_text": "#FFFFFF"
+        },
+        "font":
+        {
+            "name": "noto_sans",
+            "size": "16",
+            "bold": "1"
+        },
+        "misc":
+        {
+            "text_horiz_alignment": "left",
+            "text_vert_alignment": "top"
+        }
+    },
+    "history_row":
+    {
+        "colours":
+        {
+            "normal_text": "#CCCCCC"
+        },
+        "font":
+        {
+            "name": "noto_sans",
+            "size": "13"
+        },
+        "misc":
+        {
+            "text_horiz_alignment": "left",
+            "text_vert_alignment": "top"
+        }
+    },
+    "scrolling_container":
+    {
+        "colours":
+        {
+            "dark_bg": "#1A1A1A"
+        }
+    }
+}

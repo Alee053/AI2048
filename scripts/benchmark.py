@@ -27,8 +27,21 @@ import sys
 import os
 import time
 from typing import List, Dict, Any
-from tqdm import tqdm
 from pathlib import Path
+
+# tqdm is lightweight; auto-disable if not a TTY (CI, logs, pipes)
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None  # type: ignore
+
+
+def _tqdm_iter(iterable, **kwargs):
+    """Lightweight tqdm wrapper that disables itself in non-TTY environments."""
+    if tqdm is None:
+        return iterable
+    disable = not sys.stdout.isatty()
+    return tqdm(iterable, disable=disable, **kwargs)
 
 # Attempt to import Matplotlib for plotting
 try:
@@ -98,13 +111,32 @@ class Benchmarker:
         done = False
         steps = 0
 
+        # Accumulate search stats across all moves in the episode
+        episode_stats = {
+            'think_ms': 0.0,
+            'nodes_visited': 0,
+            'batches_eval': 0,
+            'tt_size': 0,
+            'tt_hits': 0,
+            'tt_lookups': 0,
+            'move_scores': [],
+        }
         while not done:
             if self.searcher:
-                action = self.searcher.find_best_move(
+                stats = self.searcher.find_best_move(
                     self.env.game.board,
                     self.search_depth,
                     self._evaluate_batch
                 )
+                action = int(stats['best_move'])
+                episode_stats['think_ms'] += stats.get('think_ms', 0)
+                episode_stats['nodes_visited'] += stats.get('nodes_visited', 0)
+                episode_stats['batches_eval'] += stats.get('batches_eval', 0)
+                episode_stats['tt_hits'] += stats.get('tt_hits', 0)
+                episode_stats['tt_lookups'] += stats.get('tt_lookups', 0)
+                # Keep the latest move_scores and tt_size for reference
+                episode_stats['move_scores'] = list(stats.get('move_scores', []))
+                episode_stats['tt_size'] = stats.get('tt_size', 0)
             else:
                 action_mask = self.env.action_masks()
                 action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
@@ -116,7 +148,8 @@ class Benchmarker:
         result = {
             "score": int(self.env.game.score),
             "max_tile": int(2 ** self.env.game.max_tile),
-            "steps": steps
+            "steps": steps,
+            "search_stats": episode_stats,
         }
         if verbose:
             print(f"Episode N │ Score: {result['score']:,} │ Max tile: {result['max_tile']:,} │ Steps: {result['steps']}")
@@ -149,17 +182,39 @@ class Benchmarker:
 
     def benchmark(self, n_runs: int, run_name: str):
         """Run benchmark loop."""
-        stats = []
+        stats: List[Dict[str, Any]] = []
         print(f"\nStarting benchmark for {n_runs} runs...")
-        
-        iterator = tqdm(range(n_runs), desc="Benchmarking", unit="game")
-        
+
+        # Quick warm-up to estimate per-episode time for a human-readable ETA
+        if n_runs > 1:
+            t0 = time.perf_counter()
+            _ = self.run_episode()
+            t1 = time.perf_counter()
+            warmup_s = t1 - t0
+            est_total_s = warmup_s * n_runs
+            print(f"  Warm-up episode: {warmup_s:.2f}s — estimated total: {est_total_s/60:.1f}m")
+            # Don't count warm-up in stats
+        else:
+            warmup_s = None
+
+        iterator = _tqdm_iter(range(n_runs), desc="Benchmarking", unit="game")
+        start_time = time.perf_counter()
+
         try:
-            for _ in iterator:
+            for i, _ in enumerate(iterator):
                 result = self.run_episode()
                 stats.append(result)
-                # Update progress bar with latest result
-                iterator.set_postfix({"Score": result['score'], "MaxTile": result['max_tile']})
+                elapsed = time.perf_counter() - start_time
+                throughput = (i + 1) / elapsed if elapsed > 0 else 0.0
+                avg_score = sum(s['score'] for s in stats) / len(stats)
+                postfix = {
+                    "Score": result['score'],
+                    "MaxTile": result['max_tile'],
+                    "Avg": f"{avg_score:.0f}",
+                    "GPS": f"{throughput:.2f}",
+                }
+                if hasattr(iterator, 'set_postfix'):
+                    iterator.set_postfix(postfix)
         except KeyboardInterrupt:
             print("\nBenchmark interrupted by user. Saving collected data...")
         
@@ -167,11 +222,37 @@ class Benchmarker:
             print("No runs completed.")
             return
 
+        # Data integrity sanity check
+        if len(stats) != n_runs:
+            print(f"WARNING: Expected {n_runs} runs, but only collected {len(stats)}. Data may be incomplete.")
+
         # Aggregate stats
         scores = [s['score'] for s in stats]
         max_tiles = [s['max_tile'] for s in stats]
         steps = [s['steps'] for s in stats]
         
+        total_elapsed = time.perf_counter() - start_time
+
+        # Aggregate search metrics (only if using expectimax)
+        search_metrics = {}
+        if self.use_expectimax:
+            think_times = [s['search_stats']['think_ms'] for s in stats if s.get('search_stats')]
+            nodes_vis = [s['search_stats']['nodes_visited'] for s in stats if s.get('search_stats')]
+            batches = [s['search_stats']['batches_eval'] for s in stats if s.get('search_stats')]
+            tt_lookups = [s['search_stats']['tt_lookups'] for s in stats if s.get('search_stats')]
+            tt_hits = [s['search_stats']['tt_hits'] for s in stats if s.get('search_stats')]
+            
+            if think_times:
+                avg_think = np.mean(think_times)
+                avg_nodes = np.mean(nodes_vis)
+                search_metrics = {
+                    "avg_think_ms": round(float(avg_think), 3),
+                    "avg_nodes_visited": round(float(avg_nodes), 1),
+                    "avg_batches_eval": round(float(np.mean(batches)), 1) if batches else 0.0,
+                    "avg_nodes_per_sec": round(float(avg_nodes / (avg_think / 1000)), 1) if avg_think > 0 else 0.0,
+                    "avg_tt_hit_rate": round(float(np.mean([h / l * 100 if l > 0 else 0 for h, l in zip(tt_hits, tt_lookups)])), 2) if tt_lookups else 0.0,
+                }
+
         summary = {
             "config": {
                 "use_expectimax": self.use_expectimax,
@@ -184,6 +265,9 @@ class Benchmarker:
                 "min_score": to_py(np.min(scores)),
                 "max_score": to_py(np.max(scores)),
                 "avg_steps": to_py(np.mean(steps)),
+                "total_time_s": round(total_elapsed, 3),
+                "games_per_sec": round(len(stats) / total_elapsed, 3) if total_elapsed > 0 else 0.0,
+                **search_metrics,
             },
             "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
             "raw_data": stats
@@ -201,18 +285,19 @@ class Benchmarker:
         plot_path = output_dir / "score_distribution.png"
 
         # Report
-        print("\n" + "="*30)
-        print("       BENCHMARK RESULTS       ")
-        print("="*30)
+        print("\n" + "="*40)
+        print("           BENCHMARK RESULTS            ")
+        print("="*40)
         print(f"Runs Completed: {len(stats)}")
+        print(f"Total Time:     {total_elapsed:.1f}s ({summary['metrics']['games_per_sec']:.2f} games/s)")
         print(f"Average Score:  {summary['metrics']['avg_score']:.2f} +/- {summary['metrics']['std_score']:.2f}")
         print(f"Average Steps:  {summary['metrics']['avg_steps']:.2f}")
-        print("-" * 30)
+        print("-" * 40)
         print("Max Tile Distribution:")
         for tile, count in summary['max_tile_dist'].items():
             percentage = (count / len(stats)) * 100
             print(f"  {tile}: {count} ({percentage:.1f}%)")
-        print("="*30)
+        print("="*40)
         
         # Save JSON
         try:
@@ -300,17 +385,49 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
             print(f"\n=== Benchmarking seed {seed_n} ({os.path.basename(seed_path)}) ===")
             bencher = Benchmarker(model_file, search_depth > 0, search_depth, device)
 
-            stats = []
-            iterator = tqdm(range(n_runs), desc=f"Seed {seed_n}", unit="game")
-            for _ in iterator:
+            stats: List[Dict[str, Any]] = []
+            iterator = _tqdm_iter(range(n_runs), desc=f"Seed {seed_n}", unit="game")
+            seed_start = time.perf_counter()
+            for i, _ in enumerate(iterator):
                 result = bencher.run_episode(verbose=verbose)
                 stats.append(result)
-                iterator.set_postfix({"Score": result['score'], "MaxTile": result['max_tile']})
+                elapsed = time.perf_counter() - seed_start
+                throughput = (i + 1) / elapsed if elapsed > 0 else 0.0
+                avg_score = sum(s['score'] for s in stats) / len(stats)
+                postfix = {
+                    "Score": result['score'],
+                    "MaxTile": result['max_tile'],
+                    "Avg": f"{avg_score:.0f}",
+                    "GPS": f"{throughput:.2f}",
+                }
+                if hasattr(iterator, 'set_postfix'):
+                    iterator.set_postfix(postfix)
 
             # Save per-seed results
             scores = [s['score'] for s in stats]
             max_tiles = [s['max_tile'] for s in stats]
             steps = [s['steps'] for s in stats]
+            seed_elapsed = time.perf_counter() - seed_start
+
+            # Aggregate search metrics for this seed
+            seed_search_metrics = {}
+            if search_depth > 0:
+                think_times = [s['search_stats']['think_ms'] for s in stats if s.get('search_stats')]
+                nodes_vis = [s['search_stats']['nodes_visited'] for s in stats if s.get('search_stats')]
+                batches = [s['search_stats']['batches_eval'] for s in stats if s.get('search_stats')]
+                tt_lookups = [s['search_stats']['tt_lookups'] for s in stats if s.get('search_stats')]
+                tt_hits = [s['search_stats']['tt_hits'] for s in stats if s.get('search_stats')]
+                
+                if think_times:
+                    avg_think = np.mean(think_times)
+                    avg_nodes = np.mean(nodes_vis)
+                    seed_search_metrics = {
+                        "avg_think_ms": round(float(avg_think), 3),
+                        "avg_nodes_visited": round(float(avg_nodes), 1),
+                        "avg_batches_eval": round(float(np.mean(batches)), 1) if batches else 0.0,
+                        "avg_nodes_per_sec": round(float(avg_nodes / (avg_think / 1000)), 1) if avg_think > 0 else 0.0,
+                        "avg_tt_hit_rate": round(float(np.mean([h / l * 100 if l > 0 else 0 for h, l in zip(tt_hits, tt_lookups)])), 2) if tt_lookups else 0.0,
+                    }
 
             seed_summary = {
                 "config": {"use_expectimax": search_depth > 0, "search_depth": search_depth, "n_runs": len(stats)},
@@ -318,9 +435,12 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
                     "avg_score": to_py(np.mean(scores)), "std_score": to_py(np.std(scores)),
                     "min_score": to_py(np.min(scores)), "max_score": to_py(np.max(scores)),
                     "avg_steps": to_py(np.mean(steps)),
+                    "total_time_s": round(seed_elapsed, 3),
+                    "games_per_sec": round(len(stats) / seed_elapsed, 3) if seed_elapsed > 0 else 0.0,
+                    **seed_search_metrics,
                 },
                 "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
-                "raw_data": [{"score": s['score'], "max_tile": s['max_tile'], "steps": s['steps']} for s in stats]
+                "raw_data": stats
             }
 
             with open(out_file, "w") as f:

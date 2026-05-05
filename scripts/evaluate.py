@@ -46,6 +46,11 @@ def main():
         default=3,
         help="The search depth for the Expectimax algorithm (default: 3)."
     )
+    parser.add_argument(
+        "--no-stats",
+        action="store_true",
+        help="Disable enhanced stats panel (faster rendering)."
+    )
 
     args = parser.parse_args()
 
@@ -53,7 +58,8 @@ def main():
         vis = Visualizer(
             model_path=args.model_path,
             use_expectimax=args.use_expectimax,
-            search_depth=args.depth
+            search_depth=args.depth,
+            show_stats=not args.no_stats
         )
         vis.run()
     except (FileNotFoundError, ValueError) as e:
