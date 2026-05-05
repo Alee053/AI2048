@@ -31,8 +31,8 @@ _impl = _load_searcher_impl()
 class ExpectimaxSearcher:
     """Python wrapper that converts C++ SearchStats to a dict."""
 
-    def __init__(self) -> None:
-        self._impl = _impl.ExpectimaxSearcher()
+    def __init__(self, target_batch_size: int = 32768) -> None:
+        self._impl = _impl.ExpectimaxSearcher(target_batch_size)
 
     def clear_tt(self) -> None:
         """Explicitly wipe the persistent transposition table."""
