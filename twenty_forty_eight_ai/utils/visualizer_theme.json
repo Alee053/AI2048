@@ -25,7 +25,8 @@
     "UILabel":
     {
         "bg_colour": "@normal_bg",
-        "text_colour": "@normal_text"
+        "text_colour": "@normal_text",
+        "text_alignment": "left"
     },
     "UIButton":
     {
@@ -63,7 +64,8 @@
         "text_colour": "#FFFFFF",
         "font": {
             "name": "pygame_font",
-            "size": "18"
+            "size": "18",
+            "bold": "true"
         }
     },
     "UILabel.history_row":

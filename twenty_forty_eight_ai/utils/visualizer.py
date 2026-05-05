@@ -156,7 +156,7 @@ class Visualizer:
         # ===== SEARCH section =====
         y_offset = 8
         self.search_header = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 18)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 24)),
             text="SEARCH",
             manager=self.manager,
             container=self.side_panel,
@@ -211,7 +211,7 @@ class Visualizer:
         self.tt_divider.background_colour = pygame.Color("#555555")
         y_offset += 4
         self.tt_header = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 18)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 24)),
             text="TT CACHE",
             manager=self.manager,
             container=self.side_panel,
@@ -252,7 +252,7 @@ class Visualizer:
         self.actions_divider.background_colour = pygame.Color("#555555")
         y_offset += 4
         self.actions_header = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, y_offset), (200, 18)),
+            relative_rect=pygame.Rect((10, y_offset), (300, 24)),
             text="ACTIONS",
             manager=self.manager,
             container=self.side_panel,
@@ -331,7 +331,7 @@ class Visualizer:
         self.history_divider.background_colour = pygame.Color("#555555")
         history_y += 4
         self.history_header = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((10, history_y), (200, 18)),
+            relative_rect=pygame.Rect((10, history_y), (300, 24)),
             text="HISTORY",
             manager=self.manager,
             container=self.side_panel,
@@ -567,6 +567,9 @@ class Visualizer:
 
         content_h = max(n * row_h, 1)
         self.history_container.set_scrollable_area_dimensions((inner_w, content_h))
+        if self.history_container.has_vertical_scroll_bar():
+            scroll_bar = self.history_container.vertical_scroll_bar
+            scroll_bar.set_scroll_from_start()
 
     def _update_stats_labels(self):
         """Update stats labels from current result or last move."""
