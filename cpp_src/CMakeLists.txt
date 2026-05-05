@@ -10,6 +10,7 @@ pybind11_add_module(_searcher_cpp
         bindings.cpp
         RandomUtil.cpp
         ExpectimaxSearcher.cpp
+        BoardEncoder.cpp
 )
 
 target_compile_features(_searcher_cpp PRIVATE cxx_std_17)
