@@ -1,7 +1,7 @@
 import os
 import queue
 import threading
-from typing import Optional, List
+from typing import List, Optional
 
 import numpy as np
 import pygame
@@ -55,7 +55,13 @@ THEME = {
 class Visualizer:
     """Pygame visualizer for PPO agent with event-driven async expectimax."""
 
-    def __init__(self, model_path: str, use_expectimax: bool = True, search_depth: int = 3, show_stats: bool = True):
+    def __init__(
+        self,
+        model_path: str,
+        use_expectimax: bool = True,
+        search_depth: int = 3,
+        show_stats: bool = True,
+    ):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
 
@@ -67,28 +73,35 @@ class Visualizer:
         self.think_time_history: List[float] = []
         self.nodes_history: List[float] = []
         self.cumulative = {
-            'total_moves': 0,
-            'total_time_ms': 0.0,
-            'total_nodes': 0,
-            'total_tt_lookups': 0,
-            'total_tt_hits': 0,
+            "total_moves": 0,
+            "total_time_ms": 0.0,
+            "total_nodes": 0,
+            "total_tt_lookups": 0,
+            "total_tt_hits": 0,
         }
 
         sparkline_w = (THEME["window_size"][0] - 80) // 3
         sparkline_h = THEME["bottom_strip_height"] - 30
         from ..utils.sparkline import SparklineRenderer
+
         if self.show_stats:
             self.score_sparkline = SparklineRenderer(
-                width=sparkline_w, height=sparkline_h,
-                color=(245, 166, 35), bg_color=(26, 26, 26)
+                width=sparkline_w,
+                height=sparkline_h,
+                color=(245, 166, 35),
+                bg_color=(26, 26, 26),
             )
             self.think_sparkline = SparklineRenderer(
-                width=sparkline_w, height=sparkline_h,
-                color=(0, 200, 255), bg_color=(26, 26, 26)
+                width=sparkline_w,
+                height=sparkline_h,
+                color=(0, 200, 255),
+                bg_color=(26, 26, 26),
             )
             self.nodes_sparkline = SparklineRenderer(
-                width=sparkline_w, height=sparkline_h,
-                color=(100, 255, 100), bg_color=(26, 26, 26)
+                width=sparkline_w,
+                height=sparkline_h,
+                color=(100, 255, 100),
+                bg_color=(26, 26, 26),
             )
         else:
             self.score_sparkline = None
@@ -127,15 +140,15 @@ class Visualizer:
         panel_w = THEME["side_panel_width"]
         panel_h = THEME["side_panel_height"]
         self.side_panel = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((panel_x, 20), (panel_w, panel_h)),
-            manager=self.manager
+            relative_rect=pygame.Rect((panel_x, 0), (panel_w, panel_h)),
+            manager=self.manager,
         )
 
         # ===== Stats block (amber top border 3px) =====
         self.stats_top_border = pygame_gui.elements.UIPanel(
             relative_rect=pygame.Rect((0, 0), (panel_w, 3)),
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         self.stats_top_border.background_colour = pygame.Color("#F5A623")
 
@@ -145,35 +158,35 @@ class Visualizer:
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="Move #0",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         y_offset += 26
         self.think_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="think: 0.0ms",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         y_offset += 26
         self.nodes_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="nodes: 0",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         y_offset += 26
         self.batches_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="batches: 0",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         y_offset += 26
         self.best_move_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="best: -- (0.00)",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
 
         # ===== TT Cache Stats block =====
@@ -183,7 +196,7 @@ class Visualizer:
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="TT size: 0",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         y_offset += 26
 
@@ -191,7 +204,7 @@ class Visualizer:
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="lookups: 0",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
         y_offset += 26
 
@@ -199,7 +212,7 @@ class Visualizer:
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="hit rate: 0%",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
 
         # ===== Action scores block =====
@@ -207,7 +220,7 @@ class Visualizer:
 
         self.score_bars: List[pygame_gui.elements.UIProgressBar] = []
         self.score_labels: List[pygame_gui.elements.UILabel] = []
-        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+        action_names = ["UP", "RIGHT", "DOWN", "LEFT"]
 
         for i, name in enumerate(action_names):
             row_y = y_offset + i * 24
@@ -215,18 +228,18 @@ class Visualizer:
                 relative_rect=pygame.Rect((10, row_y), (50, 20)),
                 text=name,
                 manager=self.manager,
-                container=self.side_panel
+                container=self.side_panel,
             )
             bar = pygame_gui.elements.UIProgressBar(
                 relative_rect=pygame.Rect((65, row_y), (240, 16)),
                 manager=self.manager,
-                container=self.side_panel
+                container=self.side_panel,
             )
             score_lbl = pygame_gui.elements.UILabel(
                 relative_rect=pygame.Rect((310, row_y), (70, 20)),
                 text="--",
                 manager=self.manager,
-                container=self.side_panel
+                container=self.side_panel,
             )
             self.score_bars.append(bar)
             self.score_labels.append(score_lbl)
@@ -241,16 +254,18 @@ class Visualizer:
 
         self.new_game_button = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect((10, button_y), (button_w, button_h)),
-            text='New Game',
+            text="New Game",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
 
         self.pause_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect((10 + button_w + button_gap, button_y), (button_w, button_h)),
-            text='Pause',
+            relative_rect=pygame.Rect(
+                (10 + button_w + button_gap, button_y), (button_w, button_h)
+            ),
+            text="Pause",
             manager=self.manager,
-            container=self.side_panel
+            container=self.side_panel,
         )
 
         self.paused = False
@@ -263,7 +278,7 @@ class Visualizer:
             html_text="No moves yet.",
             manager=self.manager,
             container=self.side_panel,
-            wrap_to_height=False
+            wrap_to_height=False,
         )
 
         # Setup RL
@@ -277,7 +292,11 @@ class Visualizer:
         self.search_thread = threading.Thread(target=self._search_worker, daemon=True)
         self.search_thread.start()
 
-        mode = f"PPO + Expectimax (depth={search_depth})" if use_expectimax else "Raw PPO Model"
+        mode = (
+            f"PPO + Expectimax (depth={search_depth})"
+            if use_expectimax
+            else "Raw PPO Model"
+        )
         print(f"Visualizer running with: {mode}")
 
     def _evaluate_batch(self, boards_list: List[np.ndarray]) -> List[float]:
@@ -313,20 +332,26 @@ class Visualizer:
             for c in range(4):
                 tile_value = int(board[r, c])
                 if tile_value > 0:
-                    tile_value = 2 ** tile_value
-                color = THEME["tile_colors"].get(tile_value, THEME["tile_colors"]["default"])
+                    tile_value = 2**tile_value
+                color = THEME["tile_colors"].get(
+                    tile_value, THEME["tile_colors"]["default"]
+                )
 
                 rect = pygame.Rect(
                     board_offset_x + c * tile_size + padding / 2,
                     board_offset_y + r * tile_size + padding / 2,
                     tile_size - padding,
-                    tile_size - padding
+                    tile_size - padding,
                 )
                 pygame.draw.rect(self.screen, color, rect, border_radius=6)
 
                 if tile_value != 0:
                     font = self._get_font_for_tile(tile_value)
-                    text_color = THEME["text_color_dark"] if tile_value < 8 else THEME["text_color_light"]
+                    text_color = (
+                        THEME["text_color_dark"]
+                        if tile_value < 8
+                        else THEME["text_color_light"]
+                    )
                     text_surf = font.render(str(tile_value), True, text_color)
                     text_rect = text_surf.get_rect(center=rect.center)
                     self.screen.blit(text_surf, text_rect)
@@ -346,9 +371,7 @@ class Visualizer:
 
             try:
                 stats = self.searcher.find_best_move(
-                    board_copy,
-                    self.search_depth,
-                    self._evaluate_batch
+                    board_copy, self.search_depth, self._evaluate_batch
                 )
                 try:
                     self._result_queue.put_nowait((stats, self._game_id))
@@ -395,11 +418,11 @@ class Visualizer:
             self.think_sparkline.update_data([])
             self.nodes_sparkline.update_data([])
         self.cumulative = {
-            'total_moves': 0,
-            'total_time_ms': 0.0,
-            'total_nodes': 0,
-            'total_tt_lookups': 0,
-            'total_tt_hits': 0,
+            "total_moves": 0,
+            "total_time_ms": 0.0,
+            "total_nodes": 0,
+            "total_tt_lookups": 0,
+            "total_tt_hits": 0,
         }
         if self.search_thread and self.search_thread.is_alive():
             self.search_thread.join(timeout=0.5)
@@ -407,7 +430,7 @@ class Visualizer:
 
     def _toggle_pause(self):
         self.paused = not self.paused
-        self.pause_button.set_text('Resume' if self.paused else 'Pause')
+        self.pause_button.set_text("Resume" if self.paused else "Pause")
         if not self.paused:
             self._start_search_if_idle()
 
@@ -418,35 +441,35 @@ class Visualizer:
         if result:
             stats = result
             self.move_history.append(stats)
-            self.cumulative['total_moves'] += 1
-            self.cumulative['total_time_ms'] += stats.get('think_ms', 0)
-            self.cumulative['total_nodes'] += stats.get('nodes_visited', 0)
-            self.cumulative['total_tt_lookups'] += stats.get('tt_lookups', 0)
-            self.cumulative['total_tt_hits'] += stats.get('tt_hits', 0)
+            self.cumulative["total_moves"] += 1
+            self.cumulative["total_time_ms"] += stats.get("think_ms", 0)
+            self.cumulative["total_nodes"] += stats.get("nodes_visited", 0)
+            self.cumulative["total_tt_lookups"] += stats.get("tt_lookups", 0)
+            self.cumulative["total_tt_hits"] += stats.get("tt_hits", 0)
 
             self.score_history.append(float(self.env.game.score))
-            self.think_time_history.append(stats.get('think_ms', 0.0))
-            self.nodes_history.append(float(stats.get('nodes_visited', 0)))
+            self.think_time_history.append(stats.get("think_ms", 0.0))
+            self.nodes_history.append(float(stats.get("nodes_visited", 0)))
             self.score_history = self.score_history[-100:]
             self.think_time_history = self.think_time_history[-100:]
             self.nodes_history = self.nodes_history[-100:]
 
         if terminated:
-            self._draw_game_over(self.env.game.score, 2 ** self.env.game.max_tile)
+            self._draw_game_over(self.env.game.score, 2**self.env.game.max_tile)
 
     def _update_history_display(self):
         """Rebuild history HTML text and update UITextBox."""
-        if not hasattr(self, 'history_text'):
+        if not hasattr(self, "history_text"):
             return
 
         lines = []
         history = list(reversed(self.move_history[-50:]))
         for i, mh in enumerate(history):
             global_idx = len(self.move_history) - i
-            best = mh.get('best_move', 0)
-            arrow = ['↑', '→', '↓', '←'][best]
-            ms = mh.get('think_ms', 0)
-            nodes = mh.get('nodes_visited', 0)
+            best = mh.get("best_move", 0)
+            arrow = ["↑", "→", "↓", "←"][best]
+            ms = mh.get("think_ms", 0)
+            nodes = mh.get("nodes_visited", 0)
             lines.append(f"#{global_idx} {arrow} {ms:.0f}ms, {nodes:,} nodes")
 
         html = "<br>".join(lines) if lines else "No moves yet."
@@ -454,26 +477,33 @@ class Visualizer:
 
     def _update_stats_labels(self):
         """Update stats labels from current result or last move."""
-        last_s = self.move_history[-1] if self.move_history else {
-            'think_ms': 0, 'nodes_visited': 0, 'batches_eval': 0,
-            'best_move': 0, 'move_scores': [-1e9] * 4
-        }
+        last_s = (
+            self.move_history[-1]
+            if self.move_history
+            else {
+                "think_ms": 0,
+                "nodes_visited": 0,
+                "batches_eval": 0,
+                "best_move": 0,
+                "move_scores": [-1e9] * 4,
+            }
+        )
 
-        n = self.cumulative['total_moves']
+        n = self.cumulative["total_moves"]
         self.move_label.set_text(f"Move #{n}")
         self.think_label.set_text(f"think: {last_s.get('think_ms', 0):.1f}ms")
         self.nodes_label.set_text(f"nodes: {last_s.get('nodes_visited', 0):,}")
         self.batches_label.set_text(f"batches: {last_s.get('batches_eval', 0)}")
 
-        scores = last_s.get('move_scores', [-1e9] * 4)
-        best = last_s.get('best_move', 0)
-        action_names = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+        scores = last_s.get("move_scores", [-1e9] * 4)
+        best = last_s.get("best_move", 0)
+        action_names = ["UP", "RIGHT", "DOWN", "LEFT"]
         best_score = scores[best] if best < len(scores) else 0.0
         self.best_move_label.set_text(f"best: {action_names[best]} ({best_score:.2f})")
 
-        tt_size = last_s.get('tt_size', 0)
-        tt_lookups = last_s.get('tt_lookups', 0)
-        tt_hits = last_s.get('tt_hits', 0)
+        tt_size = last_s.get("tt_size", 0)
+        tt_lookups = last_s.get("tt_lookups", 0)
+        tt_hits = last_s.get("tt_hits", 0)
         hit_rate = (tt_hits / tt_lookups * 100) if tt_lookups > 0 else 0
 
         self.tt_size_label.set_text(f"TT size: {tt_size:,}")
@@ -498,14 +528,24 @@ class Visualizer:
         big_font = pygame.font.Font(None, 72)
         small_font = pygame.font.Font(None, 36)
         game_over_surf = big_font.render("Game Over", True, THEME["font_color"])
-        score_surf = small_font.render(f"Final Score: {score}", True, THEME["font_color"])
-        tile_surf = small_font.render(f"Max Tile: {max_tile}", True, THEME["font_color"])
+        score_surf = small_font.render(
+            f"Final Score: {score}", True, THEME["font_color"]
+        )
+        tile_surf = small_font.render(
+            f"Max Tile: {max_tile}", True, THEME["font_color"]
+        )
         self.screen.blit(overlay, (0, 0))
         board_cx = THEME["board_offset"][0] + THEME["board_size"] // 2
         board_cy = THEME["board_offset"][1] + THEME["board_size"] // 2
-        self.screen.blit(game_over_surf, game_over_surf.get_rect(center=(board_cx, board_cy - 40)))
-        self.screen.blit(score_surf, score_surf.get_rect(center=(board_cx, board_cy + 30)))
-        self.screen.blit(tile_surf, tile_surf.get_rect(center=(board_cx, board_cy + 70)))
+        self.screen.blit(
+            game_over_surf, game_over_surf.get_rect(center=(board_cx, board_cy - 40))
+        )
+        self.screen.blit(
+            score_surf, score_surf.get_rect(center=(board_cx, board_cy + 30))
+        )
+        self.screen.blit(
+            tile_surf, tile_surf.get_rect(center=(board_cx, board_cy + 70))
+        )
 
     def run(self):
         obs, _ = self.env.reset()
@@ -532,7 +572,7 @@ class Visualizer:
 
             if not self.paused and not self.terminated:
                 if self._current_result is not None and not self._searching:
-                    action = self._current_result['best_move']
+                    action = self._current_result["best_move"]
                     result = self._current_result
                     self._current_result = None
                     self._execute_action(action, result)
@@ -551,7 +591,11 @@ class Visualizer:
                 strip_h = THEME["bottom_strip_height"]
                 sparkline_w = self.score_sparkline.width
 
-                pygame.draw.rect(self.screen, THEME["bottom_strip_bg"], pygame.Rect(0, strip_y, 1280, strip_h))
+                pygame.draw.rect(
+                    self.screen,
+                    THEME["bottom_strip_bg"],
+                    pygame.Rect(0, strip_y, 1280, strip_h),
+                )
 
                 font = pygame.font.Font(None, 20)
                 labels = [
@@ -564,8 +608,12 @@ class Visualizer:
                     self.screen.blit(surf, pos)
 
                 self.screen.blit(self.score_sparkline.render(), (20, strip_y + 22))
-                self.screen.blit(self.think_sparkline.render(), (40 + sparkline_w, strip_y + 22))
-                self.screen.blit(self.nodes_sparkline.render(), (60 + 2 * sparkline_w, strip_y + 22))
+                self.screen.blit(
+                    self.think_sparkline.render(), (40 + sparkline_w, strip_y + 22)
+                )
+                self.screen.blit(
+                    self.nodes_sparkline.render(), (60 + 2 * sparkline_w, strip_y + 22)
+                )
 
                 self._update_stats_labels()
                 self._update_history_display()
