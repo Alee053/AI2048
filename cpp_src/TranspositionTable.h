@@ -37,13 +37,23 @@ public:
     TranspositionTable(const TranspositionTable&) = delete;
     TranspositionTable& operator=(const TranspositionTable&) = delete;
 
+    // Scramble 64-bit key into a well-distributed 64-bit hash.
+    // Uses splitmix64 to avoid clustering when low bits of canonical boards collide.
+    static uint64_t hash_key(uint64_t x) {
+        x += 0x9e3779b97f4a7c15ULL;
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+        x = x ^ (x >> 31);
+        return x;
+    }
+
     // Probe the table. Returns true on a hit and writes the cached score into out_score.
     // A hit requires:
     //   1. key matches exactly,
     //   2. node type matches,
     //   3. cached depth >= requested depth.
     bool probe(uint64_t key, uint8_t depth, NodeType type, float& out_score) const {
-        uint32_t idx = static_cast<uint32_t>(key & TT_MASK);
+        uint32_t idx = static_cast<uint32_t>(hash_key(key) & TT_MASK);
         const TTEntry& entry = table[idx];
         if (entry.key == key && entry.type == static_cast<uint8_t>(type) && entry.depth >= depth) {
             out_score = entry.score;
@@ -57,7 +67,7 @@ public:
     //   - key collision (different board or type) -> overwrite (stale data)
     //   - same key & same type & new depth >= old depth -> overwrite
     void store(uint64_t key, uint8_t depth, NodeType type, float score) {
-        uint32_t idx = static_cast<uint32_t>(key & TT_MASK);
+        uint32_t idx = static_cast<uint32_t>(hash_key(key) & TT_MASK);
         TTEntry& entry = table[idx];
 
         bool replace = false;

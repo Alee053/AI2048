@@ -14,12 +14,13 @@ float get_log_reward(int merge_score) {
     return std::log2(static_cast<float>(merge_score));
 }
 
-float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, uint64_t /*board_hash*/,
+float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
                                                  std::vector<uint64_t>& batch_queue) {
     tt_lookups++;
     uint64_t canon = BoardEncoder::canonicalize(board);
     float cached_score = 0.0f;
-    if (transposition_table.probe(canon, static_cast<uint8_t>(depth), NodeType::CHANCE, cached_score)) {
+    bool probe_result = transposition_table.probe(canon, static_cast<uint8_t>(depth), NodeType::CHANCE, cached_score);
+    if (probe_result) {
         tt_hits++;
         return cached_score;
     }
@@ -82,7 +83,8 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
         uint64_t canon = BoardEncoder::canonicalize(board);
         tt_lookups++;
         float cached_score = 0.0f;
-        if (transposition_table.probe(canon, 0, NodeType::MAX, cached_score)) {
+        bool probe_result = transposition_table.probe(canon, 0, NodeType::MAX, cached_score);
+        if (probe_result) {
             tt_hits++;
             return cached_score;
         }
@@ -199,7 +201,9 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     int resolved_count = 0;
     float global_alpha = -1e9f;
 
+    int pass = 0;
     while (resolved_count < static_cast<int>(root_moves.size())) {
+        pass++;
         batch_queue.clear();
         resolved_count = 0;
 
@@ -209,7 +213,7 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
                 continue;
             }
 
-            float future_value = chance_node_substitute(rm.post_board, depth, 0, batch_queue);
+            float future_value = chance_node_substitute(rm.post_board, depth, BoardEncoder::canonicalize(rm.post_board), batch_queue);
 
             if (!std::isinf(future_value)) {
                 move_scores[rm.move_id] = rm.immediate_reward + future_value;
@@ -227,18 +231,17 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
             // Convert canonical boards back to Board for Python callback
             std::vector<Board> boards_for_python;
             boards_for_python.reserve(batch_queue.size());
-            for (uint64_t canon : batch_queue) {
-                boards_for_python.push_back(BoardEncoder::unpack(canon));
+            for (size_t bq_idx = 0; bq_idx < batch_queue.size(); ++bq_idx) {
+                boards_for_python.push_back(BoardEncoder::unpack(batch_queue[bq_idx]));
             }
 
             // Single Python crossing
             std::vector<float> values = batch_eval_func(boards_for_python);
             batches_eval++;
 
-            // Store in TT at depth 0 (both node types share leaf values)
+            // Store in TT at depth 0 (leaf values are always accessed via MAX node probe)
             for (size_t i = 0; i < batch_queue.size(); ++i) {
                 transposition_table.store(batch_queue[i], 0, NodeType::MAX, values[i]);
-                transposition_table.store(batch_queue[i], 0, NodeType::CHANCE, values[i]);
             }
         }
     }
