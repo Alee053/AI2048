@@ -7,17 +7,17 @@
             "panel_bg": "#1A1A1A",
             "label_bg": "#1A1A1A",
             "accent": "#F5A623",
-            "positive": "#76E4A3",
+            "positive": "#64FF64",
             "negative": "#E74C3C",
             "normal_text": "#FFFFFF",
             "muted_text": "#888888",
             "hover_text": "#FFFFFF",
-            "button_background": "#333333",
+            "button_background": "#1A1A1A",
             "button_hover": "#F5A623",
-            "button_selected": "#444444",
+            "button_selected": "#262626",
             "button_text": "#FFFFFF",
             "progress_filled": "#F5A623",
-            "progress_unfilled": "#333333"
+            "progress_unfilled": "#1A1A1A"
         },
         "fonts":
         {
