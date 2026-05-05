@@ -81,7 +81,7 @@ def aggregate_depth(depth_results: list) -> dict:
     n_seeds = len(depth_results)
     n_episodes = depth_results[0]["config"]["n_runs"]
 
-    return {
+    result = {
         "mean_score": np.mean(avg_scores),
         "std_score": np.mean(std_scores),  # avg of per-seed stds
         "min_score": np.mean(min_scores),
@@ -90,6 +90,15 @@ def aggregate_depth(depth_results: list) -> dict:
         "n_seeds": n_seeds,
         "n_episodes": n_episodes,
     }
+
+    # Aggregate search metrics if present
+    search_keys = ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]
+    for key in search_keys:
+        vals = [r["metrics"][key] for r in depth_results if key in r["metrics"]]
+        if vals:
+            result[key] = np.mean(vals)
+
+    return result
 
 
 def compute_ci(mean: float, std: float, n: int, z: float = 1.96) -> tuple:
@@ -151,6 +160,10 @@ def main():
                 "max_score": result["metrics"]["max_score"],
                 "avg_steps": result["metrics"]["avg_steps"],
             }
+            # Include search metrics if present
+            for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+                if key in result["metrics"]:
+                    row[key] = result["metrics"][key]
             row.update(win_rates)
             row.update(tile_eq_pcts)
             summary_rows.append(row)
@@ -169,6 +182,11 @@ def main():
             "max_score": agg["max_score"],
             "avg_steps": agg["mean_steps"],
         }
+        # Aggregate search metrics across seeds
+        for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+            vals = [r["metrics"][key] for r in depth_results if key in r["metrics"]]
+            if vals:
+                agg_row[key] = round(np.mean(vals), 3 if key == "avg_think_ms" else 2 if key == "avg_tt_hit_rate" else 1)
         # Compute aggregate win rates from pooled raw data
         all_raw = [r for res in depth_results for r in res.get("raw_data", [])]
         agg_win_rates = compute_win_rates(all_raw, REPORT_THRESHOLDS)
@@ -178,7 +196,7 @@ def main():
         summary_rows.append(agg_row)
 
         # Cross-depth CI table
-        cross_depth_rows.append({
+        ci_row = {
             "depth": depth,
             "mean_score": agg["mean_score"],
             "std_score": agg["std_score"],
@@ -186,7 +204,12 @@ def main():
             "ci_upper": ci_upper,
             "n_seeds": agg["n_seeds"],
             "n_episodes": agg["n_seeds"] * agg["n_episodes"],
-        })
+        }
+        # Include search metrics in CI table
+        for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+            if key in agg:
+                ci_row[key] = agg[key]
+        cross_depth_rows.append(ci_row)
 
     # Write summary.csv
     csv_path = output_dir / "summary.csv"
@@ -201,7 +224,11 @@ def main():
     # Write cross-depth CI table
     ci_csv_path = output_dir / "cross_depth_ci_table.csv"
     if cross_depth_rows:
+        # Dynamically build fieldnames from all keys present in rows
         ci_fields = ["depth", "mean_score", "std_score", "ci_lower", "ci_upper", "n_seeds", "n_episodes"]
+        for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+            if any(key in row for row in cross_depth_rows):
+                ci_fields.append(key)
         with open(ci_csv_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=ci_fields)
             writer.writeheader()

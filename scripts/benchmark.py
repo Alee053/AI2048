@@ -111,7 +111,16 @@ class Benchmarker:
         done = False
         steps = 0
 
-        episode_stats = None
+        # Accumulate search stats across all moves in the episode
+        episode_stats = {
+            'think_ms': 0.0,
+            'nodes_visited': 0,
+            'batches_eval': 0,
+            'tt_size': 0,
+            'tt_hits': 0,
+            'tt_lookups': 0,
+            'move_scores': [],
+        }
         while not done:
             if self.searcher:
                 stats = self.searcher.find_best_move(
@@ -120,15 +129,14 @@ class Benchmarker:
                     self._evaluate_batch
                 )
                 action = int(stats['best_move'])
-                episode_stats = {
-                    'think_ms': stats.get('think_ms', 0),
-                    'nodes_visited': stats.get('nodes_visited', 0),
-                    'batches_eval': stats.get('batches_eval', 0),
-                    'tt_size': stats.get('tt_size', 0),
-                    'tt_hits': stats.get('tt_hits', 0),
-                    'tt_lookups': stats.get('tt_lookups', 0),
-                    'move_scores': list(stats.get('move_scores', [])),
-                }
+                episode_stats['think_ms'] += stats.get('think_ms', 0)
+                episode_stats['nodes_visited'] += stats.get('nodes_visited', 0)
+                episode_stats['batches_eval'] += stats.get('batches_eval', 0)
+                episode_stats['tt_hits'] += stats.get('tt_hits', 0)
+                episode_stats['tt_lookups'] += stats.get('tt_lookups', 0)
+                # Keep the latest move_scores and tt_size for reference
+                episode_stats['move_scores'] = list(stats.get('move_scores', []))
+                episode_stats['tt_size'] = stats.get('tt_size', 0)
             else:
                 action_mask = self.env.action_masks()
                 action, _ = self.model.predict(obs, action_masks=action_mask, deterministic=True)
@@ -214,12 +222,37 @@ class Benchmarker:
             print("No runs completed.")
             return
 
+        # Data integrity sanity check
+        if len(stats) != n_runs:
+            print(f"WARNING: Expected {n_runs} runs, but only collected {len(stats)}. Data may be incomplete.")
+
         # Aggregate stats
         scores = [s['score'] for s in stats]
         max_tiles = [s['max_tile'] for s in stats]
         steps = [s['steps'] for s in stats]
         
         total_elapsed = time.perf_counter() - start_time
+
+        # Aggregate search metrics (only if using expectimax)
+        search_metrics = {}
+        if self.use_expectimax:
+            think_times = [s['search_stats']['think_ms'] for s in stats if s.get('search_stats')]
+            nodes_vis = [s['search_stats']['nodes_visited'] for s in stats if s.get('search_stats')]
+            batches = [s['search_stats']['batches_eval'] for s in stats if s.get('search_stats')]
+            tt_lookups = [s['search_stats']['tt_lookups'] for s in stats if s.get('search_stats')]
+            tt_hits = [s['search_stats']['tt_hits'] for s in stats if s.get('search_stats')]
+            
+            if think_times:
+                avg_think = np.mean(think_times)
+                avg_nodes = np.mean(nodes_vis)
+                search_metrics = {
+                    "avg_think_ms": round(float(avg_think), 3),
+                    "avg_nodes_visited": round(float(avg_nodes), 1),
+                    "avg_batches_eval": round(float(np.mean(batches)), 1) if batches else 0.0,
+                    "avg_nodes_per_sec": round(float(avg_nodes / (avg_think / 1000)), 1) if avg_think > 0 else 0.0,
+                    "avg_tt_hit_rate": round(float(np.mean([h / l * 100 if l > 0 else 0 for h, l in zip(tt_hits, tt_lookups)])), 2) if tt_lookups else 0.0,
+                }
+
         summary = {
             "config": {
                 "use_expectimax": self.use_expectimax,
@@ -234,6 +267,7 @@ class Benchmarker:
                 "avg_steps": to_py(np.mean(steps)),
                 "total_time_s": round(total_elapsed, 3),
                 "games_per_sec": round(len(stats) / total_elapsed, 3) if total_elapsed > 0 else 0.0,
+                **search_metrics,
             },
             "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
             "raw_data": stats
@@ -373,6 +407,27 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
             scores = [s['score'] for s in stats]
             max_tiles = [s['max_tile'] for s in stats]
             steps = [s['steps'] for s in stats]
+            seed_elapsed = time.perf_counter() - seed_start
+
+            # Aggregate search metrics for this seed
+            seed_search_metrics = {}
+            if search_depth > 0:
+                think_times = [s['search_stats']['think_ms'] for s in stats if s.get('search_stats')]
+                nodes_vis = [s['search_stats']['nodes_visited'] for s in stats if s.get('search_stats')]
+                batches = [s['search_stats']['batches_eval'] for s in stats if s.get('search_stats')]
+                tt_lookups = [s['search_stats']['tt_lookups'] for s in stats if s.get('search_stats')]
+                tt_hits = [s['search_stats']['tt_hits'] for s in stats if s.get('search_stats')]
+                
+                if think_times:
+                    avg_think = np.mean(think_times)
+                    avg_nodes = np.mean(nodes_vis)
+                    seed_search_metrics = {
+                        "avg_think_ms": round(float(avg_think), 3),
+                        "avg_nodes_visited": round(float(avg_nodes), 1),
+                        "avg_batches_eval": round(float(np.mean(batches)), 1) if batches else 0.0,
+                        "avg_nodes_per_sec": round(float(avg_nodes / (avg_think / 1000)), 1) if avg_think > 0 else 0.0,
+                        "avg_tt_hit_rate": round(float(np.mean([h / l * 100 if l > 0 else 0 for h, l in zip(tt_hits, tt_lookups)])), 2) if tt_lookups else 0.0,
+                    }
 
             seed_summary = {
                 "config": {"use_expectimax": search_depth > 0, "search_depth": search_depth, "n_runs": len(stats)},
@@ -380,9 +435,12 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
                     "avg_score": to_py(np.mean(scores)), "std_score": to_py(np.std(scores)),
                     "min_score": to_py(np.min(scores)), "max_score": to_py(np.max(scores)),
                     "avg_steps": to_py(np.mean(steps)),
+                    "total_time_s": round(seed_elapsed, 3),
+                    "games_per_sec": round(len(stats) / seed_elapsed, 3) if seed_elapsed > 0 else 0.0,
+                    **seed_search_metrics,
                 },
                 "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
-                "raw_data": [{"score": s['score'], "max_tile": s['max_tile'], "steps": s['steps']} for s in stats]
+                "raw_data": stats
             }
 
             with open(out_file, "w") as f:
