@@ -77,6 +77,7 @@ class Visualizer:
             "total_moves": 0,
             "total_time_ms": 0.0,
             "total_nodes": 0,
+            "total_batches": 0,
             "total_tt_lookups": 0,
             "total_tt_hits": 0,
         }
@@ -499,6 +500,7 @@ class Visualizer:
             "total_moves": 0,
             "total_time_ms": 0.0,
             "total_nodes": 0,
+            "total_batches": 0,
             "total_tt_lookups": 0,
             "total_tt_hits": 0,
         }
@@ -523,6 +525,7 @@ class Visualizer:
             self.cumulative["total_moves"] += 1
             self.cumulative["total_time_ms"] += stats.get("think_ms", 0)
             self.cumulative["total_nodes"] += stats.get("nodes_visited", 0)
+            self.cumulative["total_batches"] += stats.get("batches_eval", 0)
             self.cumulative["total_tt_lookups"] += stats.get("tt_lookups", 0)
             self.cumulative["total_tt_hits"] += stats.get("tt_hits", 0)
 
@@ -609,9 +612,9 @@ class Visualizer:
 
         n = self.cumulative["total_moves"]
         self.move_label.set_text(f"Move #{n}")
-        self.think_label.set_text(f"think: {last_s.get('think_ms', 0):.1f}ms")
-        self.nodes_label.set_text(f"nodes: {last_s.get('nodes_visited', 0):,}")
-        self.batches_label.set_text(f"batches: {last_s.get('batches_eval', 0)}")
+        self.think_label.set_text(f"think: {last_s.get('think_ms', 0):.1f}ms ({self.cumulative['total_time_ms']:.1f}ms)")
+        self.nodes_label.set_text(f"nodes: {last_s.get('nodes_visited', 0):,} ({self.cumulative['total_nodes']:,})")
+        self.batches_label.set_text(f"batches: {last_s.get('batches_eval', 0)} ({self.cumulative['total_batches']:,})")
 
         scores = last_s.get("move_scores", [-1e9] * 4)
         best = last_s.get("best_move", 0)
@@ -625,8 +628,9 @@ class Visualizer:
         hit_rate = (tt_hits / tt_lookups * 100) if tt_lookups > 0 else 0
 
         self.tt_size_label.set_text(f"TT size: {tt_size:,}")
-        self.tt_lookups_label.set_text(f"lookups: {tt_lookups:,} / {tt_hits:,}")
-        self.tt_hits_label.set_text(f"hit rate: {hit_rate:.0f}%")
+        self.tt_lookups_label.set_text(f"lookups: {tt_lookups:,} / {tt_hits:,} (tot {self.cumulative['total_tt_lookups']:,})")
+        total_hit_rate = (self.cumulative["total_tt_hits"] / self.cumulative["total_tt_lookups"] * 100) if self.cumulative["total_tt_lookups"] > 0 else 0
+        self.tt_hits_label.set_text(f"hit rate: {hit_rate:.0f}% (tot {total_hit_rate:.0f}%)")
 
         max_score = max(scores) if max(scores) > -1e8 else 1.0
         for i, (bar, score_label) in enumerate(zip(self.score_bars, self.score_labels)):
