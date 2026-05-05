@@ -129,6 +129,13 @@ class Visualizer:
         self.clock = pygame.time.Clock()
         theme_path = os.path.join(os.path.dirname(__file__), "visualizer_theme.json")
         self.manager = pygame_gui.UIManager(THEME["window_size"], theme_path=theme_path)
+        self.manager.preload_fonts([
+            {"name": "noto_sans", "point_size": 14, "style": "regular"},
+            {"name": "noto_sans", "point_size": 16, "style": "regular"},
+            {"name": "noto_sans", "point_size": 20, "style": "bold"},
+            {"name": "noto_sans", "point_size": 22, "style": "regular"},
+            {"name": "noto_sans", "point_size": 13, "style": "regular"},
+        ])
 
         # Load fonts
         self.fonts = {

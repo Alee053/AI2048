@@ -11,11 +11,11 @@
             "unfilled_bar": "#1A1A1A"
         }
     },
-"fonts":
+    "fonts":
     {
-        "small": { "name": "fira_code", "size": "14", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
-        "medium": { "name": "fira_code", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
-        "large": { "name": "fira_code", "size": "20", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" }
+        "small": { "name": "noto_sans", "size": "14", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
+        "medium": { "name": "noto_sans", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
+        "large": { "name": "noto_sans", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" }
     },
     "UIPanel":
     {
@@ -26,7 +26,9 @@
     {
         "bg_colour": "@normal_bg",
         "text_colour": "@normal_text",
-        "text_alignment": "left"
+        "misc_data": {
+            "text_horiz_alignment": "left"
+        }
     },
     "UIButton":
     {
@@ -63,17 +65,23 @@
     {
         "text_colour": "#FFFFFF",
         "font": {
-            "name": "fira_code",
-            "size": "18",
-            "bold": "true"
+            "name": "noto_sans",
+            "size": "20",
+            "bold": "1"
+        },
+        "misc_data": {
+            "text_horiz_alignment": "left"
         }
     },
     "UILabel.history_row":
     {
         "text_colour": "#CCCCCC",
         "font": {
-            "name": "fira_code",
-            "size": "14"
+            "name": "noto_sans",
+            "size": "13"
+        },
+        "misc_data": {
+            "text_horiz_alignment": "left"
         }
     },
     "UIScrollingContainer":
