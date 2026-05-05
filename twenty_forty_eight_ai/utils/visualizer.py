@@ -346,6 +346,7 @@ class Visualizer:
         )
         self.history_labels: List[pygame_gui.elements.UILabel] = []
         self.history_row_height = 18
+        self._last_history_count = 0
 
         # Setup RL
         self.env = Game2048Env()
@@ -479,6 +480,7 @@ class Visualizer:
         for lbl in self.history_labels:
             lbl.kill()
         self.history_labels.clear()
+        self._last_history_count = 0
         self.score_history.clear()
         self.think_time_history.clear()
         self.nodes_history.clear()
@@ -534,6 +536,22 @@ class Visualizer:
 
         history = list(reversed(self.move_history[-50:]))
         n = len(history)
+
+        if n == self._last_history_count and len(self.history_labels) >= n:
+            for i, mh in enumerate(history):
+                global_idx = len(self.move_history) - i
+                best = mh.get("best_move", 0)
+                direction = ["UP", "RIGHT", "DOWN", "LEFT"][best]
+                ms = mh.get("think_ms", 0)
+                nodes = mh.get("nodes_visited", 0)
+                max_tile_raw = mh.get("max_tile", 0)
+                tile_str = f"  tile:{2**max_tile_raw}" if max_tile_raw > 0 else ""
+                self.history_labels[i].set_text(
+                    f"#{global_idx}  {direction}  {ms:.0f}ms  {nodes:,} nodes{tile_str}"
+                )
+            return
+
+        self._last_history_count = n
         row_h = self.history_row_height
         container_rect = self.history_container.get_container().get_rect()
         inner_w = max(container_rect.width - 4, 300)
@@ -567,9 +585,6 @@ class Visualizer:
 
         content_h = max(n * row_h, 1)
         self.history_container.set_scrollable_area_dimensions((inner_w, content_h))
-        if self.history_container.has_vertical_scroll_bar():
-            scroll_bar = self.history_container.vertical_scroll_bar
-            scroll_bar.set_scroll_from_start()
 
     def _update_stats_labels(self):
         """Update stats labels from current result or last move."""

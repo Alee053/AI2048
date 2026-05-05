@@ -11,11 +11,11 @@
             "unfilled_bar": "#1A1A1A"
         }
     },
-    "fonts":
+"fonts":
     {
-        "small": { "name": "pygame_font", "size": "13", "regular_path": "", "bold_path": "", "italic_path": "" },
-        "medium": { "name": "pygame_font", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "" },
-        "large": { "name": "pygame_font", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "" }
+        "small": { "name": "fira_code", "size": "14", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
+        "medium": { "name": "fira_code", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
+        "large": { "name": "fira_code", "size": "20", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" }
     },
     "UIPanel":
     {
@@ -63,7 +63,7 @@
     {
         "text_colour": "#FFFFFF",
         "font": {
-            "name": "pygame_font",
+            "name": "fira_code",
             "size": "18",
             "bold": "true"
         }
@@ -72,8 +72,8 @@
     {
         "text_colour": "#CCCCCC",
         "font": {
-            "name": "pygame_font",
-            "size": "13"
+            "name": "fira_code",
+            "size": "14"
         }
     },
     "UIScrollingContainer":
