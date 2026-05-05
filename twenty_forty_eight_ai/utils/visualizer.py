@@ -551,7 +551,7 @@ class Visualizer:
                 strip_h = THEME["bottom_strip_height"]
                 sparkline_w = self.score_sparkline.width
 
-                pygame.draw.rect(self.screen, (30, 30, 30), pygame.Rect(0, strip_y, 1280, strip_h))
+                pygame.draw.rect(self.screen, THEME["bottom_strip_bg"], pygame.Rect(0, strip_y, 1280, strip_h))
 
                 font = pygame.font.Font(None, 20)
                 labels = [
