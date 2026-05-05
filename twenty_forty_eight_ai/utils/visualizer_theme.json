@@ -1,5 +1,4 @@
 {
-    "_comment": "SEE docs/pygame-gui/THEME-CHEATSHEET.md for pygame_gui theme rules. Key gotchas: (1) Element IDs are lowercase (label, panel, button), not class names. (2) Colors go inside 'colours' sub-dict using 'normal_text'/'dark_bg' keys. (3) Misc data uses 'misc' key, not 'misc_data'. (4) Class overrides use bare class ID (amber, section_header), not 'label.amber'. (5) Bold uses '1', not 'true'.",
     "defaults":
     {
         "colours":
