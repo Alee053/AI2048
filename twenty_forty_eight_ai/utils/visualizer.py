@@ -160,7 +160,7 @@ class Visualizer:
             text="SEARCH",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="section_header"),
+            object_id=ObjectID(class_id="section_header"),
         )
         y_offset += 20
         self.move_label = pygame_gui.elements.UILabel(
@@ -175,7 +175,7 @@ class Visualizer:
             text="think: 0.0ms",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="amber"),
+            object_id=ObjectID(class_id="amber"),
         )
         y_offset += 22
         self.nodes_label = pygame_gui.elements.UILabel(
@@ -183,7 +183,7 @@ class Visualizer:
             text="nodes: 0",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="cyan"),
+            object_id=ObjectID(class_id="cyan"),
         )
         y_offset += 22
         self.batches_label = pygame_gui.elements.UILabel(
@@ -191,7 +191,7 @@ class Visualizer:
             text="batches: 0",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="green"),
+            object_id=ObjectID(class_id="green"),
         )
         y_offset += 22
         self.best_move_label = pygame_gui.elements.UILabel(
@@ -215,7 +215,7 @@ class Visualizer:
             text="TT CACHE",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="section_header"),
+            object_id=ObjectID(class_id="section_header"),
         )
         y_offset += 20
         self.tt_size_label = pygame_gui.elements.UILabel(
@@ -223,7 +223,7 @@ class Visualizer:
             text="TT size: 0",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="muted"),
+            object_id=ObjectID(class_id="muted"),
         )
         y_offset += 22
         self.tt_lookups_label = pygame_gui.elements.UILabel(
@@ -231,7 +231,7 @@ class Visualizer:
             text="lookups: 0",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="muted"),
+            object_id=ObjectID(class_id="muted"),
         )
         y_offset += 22
         self.tt_hits_label = pygame_gui.elements.UILabel(
@@ -239,7 +239,7 @@ class Visualizer:
             text="hit rate: 0%",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="muted"),
+            object_id=ObjectID(class_id="muted"),
         )
 
         # ===== ACTIONS section =====
@@ -256,7 +256,7 @@ class Visualizer:
             text="ACTIONS",
             manager=self.manager,
             container=self.side_panel,
-            object_id=pygame_gui.core.object_id.ObjectID(class_id="section_header"),
+            object_id=ObjectID(class_id="section_header"),
         )
         y_offset += 20
 
@@ -535,7 +535,8 @@ class Visualizer:
         history = list(reversed(self.move_history[-50:]))
         n = len(history)
         row_h = self.history_row_height
-        inner_w = self.history_container.get_container().get_rect().width - 4
+        container_rect = self.history_container.get_container().get_rect()
+        inner_w = max(container_rect.width - 4, 300)
 
         while len(self.history_labels) < n:
             idx = len(self.history_labels)
