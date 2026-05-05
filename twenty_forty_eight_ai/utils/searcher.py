@@ -34,6 +34,10 @@ class ExpectimaxSearcher:
     def __init__(self) -> None:
         self._impl = _impl.ExpectimaxSearcher()
 
+    def clear_tt(self) -> None:
+        """Explicitly wipe the persistent transposition table."""
+        self._impl.clear_tt()
+
     def find_best_move(
         self,
         board: "np.ndarray",

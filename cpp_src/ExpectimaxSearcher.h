@@ -1,5 +1,6 @@
 #pragma once
 #include "Fast2048.h"
+#include "TranspositionTable.h"
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -37,14 +38,17 @@ public:
 
     SearchStats find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func);
 
+    // Explicitly wipe the persistent transposition table (e.g. when swapping models).
+    void clear_tt() { transposition_table.clear(); }
+
 private:
     static constexpr size_t BATCH_SIZE = 512;
     Fast2048 game_instance;
 
-    // Key: uint64_t Zobrist hash of the board
-    std::unordered_map<uint64_t, float> transposition_table;
+    // Persistent global transposition table — survives across find_best_move calls.
+    TranspositionTable transposition_table;
 
-    // Counters
+    // Counters (reset every find_best_move so stats reflect the current move)
     size_t tt_lookups = 0;
     size_t tt_hits = 0;
     size_t batches_eval = 0;
@@ -54,7 +58,7 @@ private:
                        std::vector<Board>& leaves_queue,
                        std::map<int, std::unordered_set<Board, BoardHash>>& visited);
 
-    float chance_node_substitute(const Board& board, int depth,
+    float chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
                                  const std::unordered_map<Board, float, BoardHash>& leaf_cache,
                                  float alpha, float beta);
     float max_node_substitute(const Board& board, int depth, uint64_t board_hash,

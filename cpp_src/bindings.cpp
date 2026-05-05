@@ -35,5 +35,7 @@ PYBIND11_MODULE(searcher, m) {
         .def(py::init<>())
         .def("find_best_move", &ExpectimaxSearcher::find_best_move,
              "Returns SearchStats with best move and search statistics.",
-             py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"));
+             py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"))
+        .def("clear_tt", &ExpectimaxSearcher::clear_tt,
+             "Explicitly clears the persistent transposition table.");
 }

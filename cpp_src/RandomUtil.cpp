@@ -62,3 +62,9 @@ uint64_t RandomUtil::zobrist_reseed(uint64_t hash, int row, int col, int tile_va
     int v = std::max(0, std::min(tile_value, 16));
     return hash ^ zobrist_table[row][col][v];
 }
+
+uint64_t RandomUtil::update_board_hash(uint64_t hash, int row, int col, int old_value, int new_value) {
+    int old_v = std::max(0, std::min(old_value, 16));
+    int new_v = std::max(0, std::min(new_value, 16));
+    return hash ^ zobrist_table[row][col][old_v] ^ zobrist_table[row][col][new_v];
+}
