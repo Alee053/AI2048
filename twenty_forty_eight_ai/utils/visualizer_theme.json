@@ -41,5 +41,41 @@
     {
         "bg_colour": "@normal_bg",
         "text_colour": "@normal_text"
+    },
+    "UILabel.amber":
+    {
+        "text_colour": "#F5A623"
+    },
+    "UILabel.cyan":
+    {
+        "text_colour": "#00C8FF"
+    },
+    "UILabel.green":
+    {
+        "text_colour": "#64FF64"
+    },
+    "UILabel.muted":
+    {
+        "text_colour": "#AAAAAA"
+    },
+    "UILabel.section_header":
+    {
+        "text_colour": "#FFFFFF",
+        "font": {
+            "name": "pygame_font",
+            "size": "18"
+        }
+    },
+    "UILabel.history_row":
+    {
+        "text_colour": "#CCCCCC",
+        "font": {
+            "name": "pygame_font",
+            "size": "13"
+        }
+    },
+    "UIScrollingContainer":
+    {
+        "bg_colour": "#1A1A1A"
     }
 }
