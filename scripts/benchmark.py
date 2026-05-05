@@ -27,8 +27,21 @@ import sys
 import os
 import time
 from typing import List, Dict, Any
-from tqdm import tqdm
 from pathlib import Path
+
+# tqdm is lightweight; auto-disable if not a TTY (CI, logs, pipes)
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None  # type: ignore
+
+
+def _tqdm_iter(iterable, **kwargs):
+    """Lightweight tqdm wrapper that disables itself in non-TTY environments."""
+    if tqdm is None:
+        return iterable
+    disable = not sys.stdout.isatty()
+    return tqdm(iterable, disable=disable, **kwargs)
 
 # Attempt to import Matplotlib for plotting
 try:
@@ -161,17 +174,39 @@ class Benchmarker:
 
     def benchmark(self, n_runs: int, run_name: str):
         """Run benchmark loop."""
-        stats = []
+        stats: List[Dict[str, Any]] = []
         print(f"\nStarting benchmark for {n_runs} runs...")
-        
-        iterator = tqdm(range(n_runs), desc="Benchmarking", unit="game")
-        
+
+        # Quick warm-up to estimate per-episode time for a human-readable ETA
+        if n_runs > 1:
+            t0 = time.perf_counter()
+            _ = self.run_episode()
+            t1 = time.perf_counter()
+            warmup_s = t1 - t0
+            est_total_s = warmup_s * n_runs
+            print(f"  Warm-up episode: {warmup_s:.2f}s — estimated total: {est_total_s/60:.1f}m")
+            # Don't count warm-up in stats
+        else:
+            warmup_s = None
+
+        iterator = _tqdm_iter(range(n_runs), desc="Benchmarking", unit="game")
+        start_time = time.perf_counter()
+
         try:
-            for _ in iterator:
+            for i, _ in enumerate(iterator):
                 result = self.run_episode()
                 stats.append(result)
-                # Update progress bar with latest result
-                iterator.set_postfix({"Score": result['score'], "MaxTile": result['max_tile']})
+                elapsed = time.perf_counter() - start_time
+                throughput = (i + 1) / elapsed if elapsed > 0 else 0.0
+                avg_score = sum(s['score'] for s in stats) / len(stats)
+                postfix = {
+                    "Score": result['score'],
+                    "MaxTile": result['max_tile'],
+                    "Avg": f"{avg_score:.0f}",
+                    "GPS": f"{throughput:.2f}",
+                }
+                if hasattr(iterator, 'set_postfix'):
+                    iterator.set_postfix(postfix)
         except KeyboardInterrupt:
             print("\nBenchmark interrupted by user. Saving collected data...")
         
@@ -184,6 +219,7 @@ class Benchmarker:
         max_tiles = [s['max_tile'] for s in stats]
         steps = [s['steps'] for s in stats]
         
+        total_elapsed = time.perf_counter() - start_time
         summary = {
             "config": {
                 "use_expectimax": self.use_expectimax,
@@ -196,6 +232,8 @@ class Benchmarker:
                 "min_score": to_py(np.min(scores)),
                 "max_score": to_py(np.max(scores)),
                 "avg_steps": to_py(np.mean(steps)),
+                "total_time_s": round(total_elapsed, 3),
+                "games_per_sec": round(len(stats) / total_elapsed, 3) if total_elapsed > 0 else 0.0,
             },
             "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
             "raw_data": stats
@@ -213,18 +251,19 @@ class Benchmarker:
         plot_path = output_dir / "score_distribution.png"
 
         # Report
-        print("\n" + "="*30)
-        print("       BENCHMARK RESULTS       ")
-        print("="*30)
+        print("\n" + "="*40)
+        print("           BENCHMARK RESULTS            ")
+        print("="*40)
         print(f"Runs Completed: {len(stats)}")
+        print(f"Total Time:     {total_elapsed:.1f}s ({summary['metrics']['games_per_sec']:.2f} games/s)")
         print(f"Average Score:  {summary['metrics']['avg_score']:.2f} +/- {summary['metrics']['std_score']:.2f}")
         print(f"Average Steps:  {summary['metrics']['avg_steps']:.2f}")
-        print("-" * 30)
+        print("-" * 40)
         print("Max Tile Distribution:")
         for tile, count in summary['max_tile_dist'].items():
             percentage = (count / len(stats)) * 100
             print(f"  {tile}: {count} ({percentage:.1f}%)")
-        print("="*30)
+        print("="*40)
         
         # Save JSON
         try:
@@ -312,12 +351,23 @@ def benchmark_multi_seed(model_dir: str, n_runs: int, search_depth: int, device:
             print(f"\n=== Benchmarking seed {seed_n} ({os.path.basename(seed_path)}) ===")
             bencher = Benchmarker(model_file, search_depth > 0, search_depth, device)
 
-            stats = []
-            iterator = tqdm(range(n_runs), desc=f"Seed {seed_n}", unit="game")
-            for _ in iterator:
+            stats: List[Dict[str, Any]] = []
+            iterator = _tqdm_iter(range(n_runs), desc=f"Seed {seed_n}", unit="game")
+            seed_start = time.perf_counter()
+            for i, _ in enumerate(iterator):
                 result = bencher.run_episode(verbose=verbose)
                 stats.append(result)
-                iterator.set_postfix({"Score": result['score'], "MaxTile": result['max_tile']})
+                elapsed = time.perf_counter() - seed_start
+                throughput = (i + 1) / elapsed if elapsed > 0 else 0.0
+                avg_score = sum(s['score'] for s in stats) / len(stats)
+                postfix = {
+                    "Score": result['score'],
+                    "MaxTile": result['max_tile'],
+                    "Avg": f"{avg_score:.0f}",
+                    "GPS": f"{throughput:.2f}",
+                }
+                if hasattr(iterator, 'set_postfix'):
+                    iterator.set_postfix(postfix)
 
             # Save per-seed results
             scores = [s['score'] for s in stats]

@@ -483,6 +483,9 @@ class Visualizer:
         self._game_id += 1
         self._searching = False
         self._current_result = None
+        self.terminated = False
+        self.paused = False
+        self.pause_button.set_text("Pause")
         self.env.reset()
         self.move_history.clear()
         for lbl in self.history_labels:
@@ -739,6 +742,11 @@ class Visualizer:
 
                 self._update_stats_labels()
                 self._update_history_display()
+
+            if self.terminated:
+                self._draw_game_over(
+                    int(self.env.game.score), int(2 ** self.env.game.max_tile)
+                )
 
             self.manager.update(time_delta)
             self.manager.draw_ui(self.screen)
