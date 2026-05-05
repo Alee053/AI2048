@@ -28,9 +28,9 @@ def test_theme_json_colors_are_consistent():
     """All background colors in theme JSON must match graph bg."""
     theme_path = Path(__file__).parent.parent / "twenty_forty_eight_ai" / "utils" / "visualizer_theme.json"
     data = json.loads(theme_path.read_text())
-    colours = data["theme"]["colours"]
-    bg_keys = ["dark_bg", "panel_bg", "label_bg", "button_background", "progress_unfilled"]
-    for key in bg_keys:
-        assert colours[key] == "#1A1A1A", f"{key} must be #1A1A1A"
-    assert colours["positive"] == "#64FF64"
-    assert colours["button_selected"] == "#262626"
+    colours = data.get("defaults", {}).get("colours", data.get("colours", {}))
+    assert colours.get("dark_bg") == "#1A1A1A", f"dark_bg must be #1A1A1A"
+    assert colours.get("normal_bg") == "#1A1A1A", f"normal_bg must be #1A1A1A"
+    assert colours.get("normal_text") == "#FFFFFF", f"normal_text must be #FFFFFF"
+    assert colours.get("filled_bar") == "#F5A623", f"filled_bar must be #F5A623"
+    assert colours.get("unfilled_bar") == "#1A1A1A", f"unfilled_bar must be #1A1A1A"

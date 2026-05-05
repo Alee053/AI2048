@@ -1,67 +1,45 @@
 {
-    "theme":
+    "defaults":
     {
         "colours":
         {
             "dark_bg": "#1A1A1A",
-            "panel_bg": "#1A1A1A",
-            "label_bg": "#1A1A1A",
-            "accent": "#F5A623",
-            "positive": "#64FF64",
-            "negative": "#E74C3C",
+            "normal_bg": "#1A1A1A",
             "normal_text": "#FFFFFF",
             "muted_text": "#888888",
-            "hover_text": "#FFFFFF",
-            "button_background": "#1A1A1A",
-            "button_hover": "#F5A623",
-            "button_selected": "#262626",
-            "button_text": "#FFFFFF",
-            "progress_filled": "#F5A623",
-            "progress_unfilled": "#1A1A1A"
-        },
-        "fonts":
-        {
-            "small": { "name": "pygame_font", "size": "13", "regular_path": "", "bold_path": "", "italic_path": "" },
-            "medium": { "name": "pygame_font", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "" },
-            "large": { "name": "pygame_font", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "" }
-        },
-        "widgets":
-        {
-            "UIPanel":
-            {
-                "bg_colour": "@panel_bg",
-                "border_width": "0"
-            },
-            "UILabel":
-            {
-                "builder_width": "200",
-                "builder_height": "24",
-                "bg_colour": "@label_bg",
-                "text_colour": "@normal_text",
-                "font": {"name": "pygame_font", "size": "14"}
-            },
-            "UIButton":
-            {
-                "builder_width": "100",
-                "builder_height": "40",
-                "bg_colour": "@button_background",
-                "hover_colour": "@button_hover",
-                "text_colour": "@button_text",
-                "font": {"name": "pygame_font", "size": "14"}
-            },
-            "UIProgressBar":
-            {
-                "filled_bar": "@progress_filled",
-                "unfilled_bar": "@progress_unfilled"
-            },
-            "UITextBox":
-            {
-                "builder_width": "200",
-                "builder_height": "24",
-                "bg_colour": "@label_bg",
-                "text_colour": "@normal_text",
-                "font": {"name": "pygame_font", "size": "13"}
-            }
+            "filled_bar": "#F5A623",
+            "unfilled_bar": "#1A1A1A"
         }
+    },
+    "fonts":
+    {
+        "small": { "name": "pygame_font", "size": "13", "regular_path": "", "bold_path": "", "italic_path": "" },
+        "medium": { "name": "pygame_font", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "" },
+        "large": { "name": "pygame_font", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "" }
+    },
+    "UIPanel":
+    {
+        "bg_colour": "@normal_bg",
+        "border_width": "0"
+    },
+    "UILabel":
+    {
+        "bg_colour": "@normal_bg",
+        "text_colour": "@normal_text"
+    },
+    "UIButton":
+    {
+        "bg_colour": "@normal_bg",
+        "text_colour": "@normal_text"
+    },
+    "UIProgressBar":
+    {
+        "filled_bar": "@filled_bar",
+        "unfilled_bar": "@unfilled_bar"
+    },
+    "UITextBox":
+    {
+        "bg_colour": "@normal_bg",
+        "text_colour": "@normal_text"
     }
 }
