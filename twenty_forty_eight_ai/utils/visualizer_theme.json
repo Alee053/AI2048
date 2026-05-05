@@ -17,12 +17,21 @@
         "medium": { "name": "noto_sans", "size": "16", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" },
         "large": { "name": "noto_sans", "size": "22", "regular_path": "", "bold_path": "", "italic_path": "", "bold_italic_path": "" }
     },
-    "UIPanel":
+    "panel":
     {
         "bg_colour": "@normal_bg",
         "border_width": "0"
     },
-    "UILabel":
+    "label":
+    {
+        "bg_colour": "@normal_bg",
+        "text_colour": "@normal_text",
+        "misc_data": {
+            "text_horiz_alignment": "left",
+            "text_vert_alignment": "top"
+        }
+    },
+    "button":
     {
         "bg_colour": "@normal_bg",
         "text_colour": "@normal_text",
@@ -30,38 +39,33 @@
             "text_horiz_alignment": "left"
         }
     },
-    "UIButton":
-    {
-        "bg_colour": "@normal_bg",
-        "text_colour": "@normal_text"
-    },
-    "UIProgressBar":
+    "progress_bar":
     {
         "filled_bar": "@filled_bar",
         "unfilled_bar": "@unfilled_bar"
     },
-    "UITextBox":
+    "text_box":
     {
         "bg_colour": "@normal_bg",
         "text_colour": "@normal_text"
     },
-    "UILabel.amber":
+    "label.amber":
     {
         "text_colour": "#F5A623"
     },
-    "UILabel.cyan":
+    "label.cyan":
     {
         "text_colour": "#00C8FF"
     },
-    "UILabel.green":
+    "label.green":
     {
         "text_colour": "#64FF64"
     },
-    "UILabel.muted":
+    "label.muted":
     {
         "text_colour": "#AAAAAA"
     },
-    "UILabel.section_header":
+    "label.section_header":
     {
         "text_colour": "#FFFFFF",
         "font": {
@@ -70,10 +74,11 @@
             "bold": "1"
         },
         "misc_data": {
-            "text_horiz_alignment": "left"
+            "text_horiz_alignment": "left",
+            "text_vert_alignment": "top"
         }
     },
-    "UILabel.history_row":
+    "label.history_row":
     {
         "text_colour": "#CCCCCC",
         "font": {
@@ -81,10 +86,11 @@
             "size": "13"
         },
         "misc_data": {
-            "text_horiz_alignment": "left"
+            "text_horiz_alignment": "left",
+            "text_vert_alignment": "top"
         }
     },
-    "UIScrollingContainer":
+    "scrolling_container":
     {
         "bg_color": "#1A1A1A"
     }
