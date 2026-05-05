@@ -5,9 +5,12 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <iostream>
 
 ExpectimaxSearcher::ExpectimaxSearcher(size_t target_batch_size)
-    : target_batch_size_(target_batch_size) {}
+    : target_batch_size_(target_batch_size) {
+    std::cerr << "[CTOR] target_batch_size=" << target_batch_size_ << "\n";
+}
 
 float get_log_reward(int merge_score) {
     if (merge_score <= 0) return 0.0f;
@@ -16,6 +19,10 @@ float get_log_reward(int merge_score) {
 
 float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
                                                  std::vector<uint64_t>& batch_queue) {
+    nodes_visited++;
+    if (nodes_visited > 1000000000ULL) {
+        throw std::runtime_error("Exceeded 1B nodes_visited");
+    }
     tt_lookups++;
     uint64_t canon = BoardEncoder::canonicalize(board);
     float cached_score = 0.0f;
@@ -46,27 +53,29 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
             return UNRESOLVED;
         }
 
-        // Place a '2' tile (value == 1 in log2 space)
         Board next_board_2 = board;
         next_board_2[cell.first][cell.second] = 1;
         uint64_t canon_2 = BoardEncoder::canonicalize(next_board_2);
         float val_2 = max_node_substitute(next_board_2, depth - 1, canon_2, batch_queue, -1e9f, 1e9f);
         if (std::isinf(val_2) && val_2 < 0) {
             any_unresolved = true;
-            continue;
+        } else {
+            total_value += 0.9f * val_2;
         }
-        total_value += 0.9f * val_2;
 
-        // Place a '4' tile (value == 2 in log2 space)
+        if (batch_queue.size() >= target_batch_size_) {
+            return UNRESOLVED;
+        }
+
         Board next_board_4 = board;
         next_board_4[cell.first][cell.second] = 2;
         uint64_t canon_4 = BoardEncoder::canonicalize(next_board_4);
         float val_4 = max_node_substitute(next_board_4, depth - 1, canon_4, batch_queue, -1e9f, 1e9f);
         if (std::isinf(val_4) && val_4 < 0) {
             any_unresolved = true;
-            continue;
+        } else {
+            total_value += 0.1f * val_4;
         }
-        total_value += 0.1f * val_4;
     }
 
     if (any_unresolved) return UNRESOLVED;
@@ -79,6 +88,10 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
 float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uint64_t /*board_hash*/,
                                               std::vector<uint64_t>& batch_queue,
                                               float alpha, float beta) {
+    nodes_visited++;
+    if (nodes_visited > 1000000000ULL) {
+        throw std::runtime_error("Exceeded 1B nodes_visited");
+    }
     if (depth == 0) {
         uint64_t canon = BoardEncoder::canonicalize(board);
         tt_lookups++;
@@ -89,7 +102,9 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
             return cached_score;
         }
         batch_queue.push_back(canon);
-        nodes_visited++;
+        if (nodes_visited <= 10 || batch_queue.size() <= 3) {
+            std::cerr << "[ENQUEUE] depth=" << depth << " canon=" << canon << "\n";
+        }
         return UNRESOLVED;
     }
 
@@ -101,11 +116,22 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
         return cached_score;
     }
 
+    if (depth > 0 && depth <= 3) {
+        static int probe_log_limit = 10;
+        if (probe_log_limit > 0) {
+            std::cerr << "[PROBE_MISS] depth=" << (int)depth << " canon=" << canon << "\n";
+            probe_log_limit--;
+        }
+    }
+
     float max_value = -1e9f;
     bool any_move_possible = false;
     bool any_unresolved = false;
 
     for (int move = 0; move < 4; ++move) {
+        if (batch_queue.size() >= target_batch_size_) {
+            return UNRESOLVED;
+        }
         game_instance.set_board(board);
         auto [merge_score, moved] = game_instance.move_simulated(move);
 
@@ -118,12 +144,11 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
         float future_value = chance_node_substitute(child_board, depth, 0, batch_queue);
         if (std::isinf(future_value) && future_value < 0) {
             any_unresolved = true;
-            continue;
-        }
-
-        float total_value = immediate_reward + future_value;
-        if (total_value > max_value) {
-            max_value = total_value;
+        } else {
+            float total_value = immediate_reward + future_value;
+            if (total_value > max_value) {
+                max_value = total_value;
+            }
         }
 
         // Alpha-beta pruning: only active when no unresolved children
@@ -204,6 +229,8 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     int pass = 0;
     while (resolved_count < static_cast<int>(root_moves.size())) {
         pass++;
+        size_t queue_at_start = batch_queue.size();
+        size_t nodes_at_start = nodes_visited;
         batch_queue.clear();
         resolved_count = 0;
 
@@ -222,11 +249,25 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
             }
         }
 
-        if (resolved_count < static_cast<int>(root_moves.size()) && !batch_queue.empty()) {
+        if (resolved_count < static_cast<int>(root_moves.size())) {
+            if (batch_queue.empty()) {
+                // DEBUG: should never happen
+                throw std::runtime_error("Empty batch_queue with unresolved moves — infinite loop detected");
+            }
+            static int dedup_log = 3;
+            if (dedup_log > 0) {
+                std::cerr << "[DEDUP] before: " << batch_queue.size() << " entries, first few: ";
+                for (size_t i = 0; i < std::min(batch_queue.size(), (size_t)5); ++i) std::cerr << batch_queue[i] << " ";
+                std::cerr << "\n";
+                dedup_log--;
+            }
             // Deduplicate
             std::sort(batch_queue.begin(), batch_queue.end());
             auto last = std::unique(batch_queue.begin(), batch_queue.end());
             batch_queue.erase(last, batch_queue.end());
+            if (dedup_log < 3) {
+                std::cerr << "[DEDUP] after: " << batch_queue.size() << " entries\n";
+            }
 
             // Convert canonical boards back to Board for Python callback
             std::vector<Board> boards_for_python;
@@ -236,15 +277,39 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
             }
 
             // Single Python crossing
-            std::vector<float> values = batch_eval_func(boards_for_python);
+std::vector<float> values = batch_eval_func(boards_for_python);
             batches_eval++;
 
-            // Store in TT at depth 0 (leaf values are always accessed via MAX node probe)
+            static int debug_limit = 3;
+            if (debug_limit > 0) {
+                debug_limit--;
+                for (size_t i = 0; i < batch_queue.size(); ++i) {
+                    std::cerr << "[PY_RET] canon=" << batch_queue[i] << " value=" << values[i] << "\n";
+                }
+            }
+
+            constexpr uint8_t LEAF_DEPTH = 255;
+            static int store_log_limit = 3;
             for (size_t i = 0; i < batch_queue.size(); ++i) {
-                transposition_table.store(batch_queue[i], 0, NodeType::MAX, values[i]);
+                if (store_log_limit > 0) {
+                    std::cerr << "[STORE] canon=" << batch_queue[i] << " depth=255 type=MAX val=" << values[i] << "\n";
+                    std::cerr << "[STORE] canon=" << batch_queue[i] << " depth=255 type=CHANCE val=" << values[i] << "\n";
+                }
+                transposition_table.store(batch_queue[i], LEAF_DEPTH, NodeType::MAX, values[i]);
+                if (store_log_limit > 0) store_log_limit--;
+                transposition_table.store(batch_queue[i], LEAF_DEPTH, NodeType::CHANCE, values[i]);
             }
         }
     }
+
+    auto loop_end = std::chrono::high_resolution_clock::now();
+    double loop_ms = std::chrono::duration<double, std::milli>(loop_end - search_start).count();
+    std::cerr << "[SLOW] depth=" << depth << " passes=" << pass
+              << " nodes=" << nodes_visited << " batches=" << batches_eval
+              << " tt_size=" << transposition_table.occupancy()
+              << " collisions=" << transposition_table.collision_count()
+              << " same_key_overwrites=" << transposition_table.same_key_overwrite_count()
+              << " time=" << loop_ms << "ms\n";
 
     // --- Step 3: Extract best move ---
     float best_score = -1e9f;
@@ -269,5 +334,6 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     stats.tt_lookups = tt_lookups;
     stats.tt_hits = tt_hits;
 
+    std::cerr << "[RESULT] best_move=" << best_move << " tt_hits=" << tt_hits << "/" << tt_lookups << " resolved=" << resolved_count << "/" << root_moves.size() << "\n";
     return stats;
 }
