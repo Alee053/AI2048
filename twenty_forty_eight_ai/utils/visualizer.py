@@ -152,36 +152,47 @@ class Visualizer:
         )
         self.stats_top_border.background_colour = pygame.Color("#F5A623")
 
-        # Stats labels
-        y_offset = 10
+        # ===== SEARCH section =====
+        y_offset = 8
+        self.search_header = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, y_offset), (200, 18)),
+            text="SEARCH",
+            manager=self.manager,
+            container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="section_header"),
+        )
+        y_offset += 20
         self.move_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="Move #0",
             manager=self.manager,
             container=self.side_panel,
         )
-        y_offset += 26
+        y_offset += 22
         self.think_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="think: 0.0ms",
             manager=self.manager,
             container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="amber"),
         )
-        y_offset += 26
+        y_offset += 22
         self.nodes_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="nodes: 0",
             manager=self.manager,
             container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="cyan"),
         )
-        y_offset += 26
+        y_offset += 22
         self.batches_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="batches: 0",
             manager=self.manager,
             container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="green"),
         )
-        y_offset += 26
+        y_offset += 22
         self.best_move_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="best: -- (0.00)",
@@ -189,34 +200,64 @@ class Visualizer:
             container=self.side_panel,
         )
 
-        # ===== TT Cache Stats block =====
-        y_offset += 28
-
+        # ===== TT CACHE section =====
+        y_offset += 26
+        self.tt_divider = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((0, y_offset), (panel_w, 1)),
+            manager=self.manager,
+            container=self.side_panel,
+        )
+        self.tt_divider.background_colour = pygame.Color("#555555")
+        y_offset += 4
+        self.tt_header = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, y_offset), (200, 18)),
+            text="TT CACHE",
+            manager=self.manager,
+            container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="section_header"),
+        )
+        y_offset += 20
         self.tt_size_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="TT size: 0",
             manager=self.manager,
             container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="muted"),
         )
-        y_offset += 26
-
+        y_offset += 22
         self.tt_lookups_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="lookups: 0",
             manager=self.manager,
             container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="muted"),
         )
-        y_offset += 26
-
+        y_offset += 22
         self.tt_hits_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((10, y_offset), (300, 22)),
             text="hit rate: 0%",
             manager=self.manager,
             container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="muted"),
         )
 
-        # ===== Action scores block =====
-        y_offset += 36
+        # ===== ACTIONS section =====
+        y_offset += 26
+        self.actions_divider = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((0, y_offset), (panel_w, 1)),
+            manager=self.manager,
+            container=self.side_panel,
+        )
+        self.actions_divider.background_colour = pygame.Color("#555555")
+        y_offset += 4
+        self.actions_header = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, y_offset), (200, 18)),
+            text="ACTIONS",
+            manager=self.manager,
+            container=self.side_panel,
+            object_id=pygame_gui.core.object_id.ObjectID(class_id="section_header"),
+        )
+        y_offset += 20
 
         self.score_bars: List[pygame_gui.elements.UIProgressBar] = []
         self.score_labels: List[pygame_gui.elements.UILabel] = []
@@ -245,6 +286,15 @@ class Visualizer:
             self.score_labels.append(score_lbl)
 
         y_offset += 24 * 4 + 10
+
+        y_offset += 4
+        self.buttons_divider = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((0, y_offset), (panel_w, 1)),
+            manager=self.manager,
+            container=self.side_panel,
+        )
+        self.buttons_divider.background_colour = pygame.Color("#555555")
+        y_offset += 4
 
         # ===== Buttons =====
         button_y = y_offset
