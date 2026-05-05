@@ -6,6 +6,7 @@ from typing import List, Optional
 import numpy as np
 import pygame
 import pygame_gui
+from pygame_gui.core.object_id import ObjectID
 import torch
 from sb3_contrib import MaskablePPO
 
@@ -320,16 +321,31 @@ class Visualizer:
 
         self.paused = False
 
-        # ===== Scrollable history via UITextBox =====
-        history_y = button_y + button_h + 10
-        history_h = 160
-        self.history_text = pygame_gui.elements.UITextBox(
-            relative_rect=pygame.Rect((10, history_y), (panel_w - 20, history_h)),
-            html_text="No moves yet.",
+        # ===== HISTORY section =====
+        history_y = button_y + button_h + 6
+        self.history_divider = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((0, history_y), (panel_w, 1)),
             manager=self.manager,
             container=self.side_panel,
-            wrap_to_height=False,
         )
+        self.history_divider.background_colour = pygame.Color("#555555")
+        history_y += 4
+        self.history_header = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((10, history_y), (200, 18)),
+            text="HISTORY",
+            manager=self.manager,
+            container=self.side_panel,
+            object_id=ObjectID(class_id="section_header"),
+        )
+        history_y += 20
+        history_h = panel_h - history_y - 4
+        self.history_container = pygame_gui.elements.UIScrollingContainer(
+            relative_rect=pygame.Rect((10, history_y), (panel_w - 20, history_h)),
+            manager=self.manager,
+            container=self.side_panel,
+        )
+        self.history_labels: List[pygame_gui.elements.UILabel] = []
+        self.history_row_height = 18
 
         # Setup RL
         self.env = Game2048Env()
@@ -460,6 +476,9 @@ class Visualizer:
         self._current_result = None
         self.env.reset()
         self.move_history.clear()
+        for lbl in self.history_labels:
+            lbl.kill()
+        self.history_labels.clear()
         self.score_history.clear()
         self.think_time_history.clear()
         self.nodes_history.clear()
@@ -489,7 +508,8 @@ class Visualizer:
         self.terminated = terminated
 
         if result:
-            stats = result
+            stats = result.copy()
+            stats["max_tile"] = int(self.env.game.max_tile)
             self.move_history.append(stats)
             self.cumulative["total_moves"] += 1
             self.cumulative["total_time_ms"] += stats.get("think_ms", 0)
@@ -508,22 +528,44 @@ class Visualizer:
             self._draw_game_over(self.env.game.score, 2**self.env.game.max_tile)
 
     def _update_history_display(self):
-        """Rebuild history HTML text and update UITextBox."""
-        if not hasattr(self, "history_text"):
+        """Update history scrollable container with move rows."""
+        if not hasattr(self, "history_container"):
             return
 
-        lines = []
         history = list(reversed(self.move_history[-50:]))
+        n = len(history)
+        row_h = self.history_row_height
+        inner_w = self.history_container.get_container().get_rect().width - 4
+
+        while len(self.history_labels) < n:
+            idx = len(self.history_labels)
+            lbl = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect((0, idx * row_h), (max(inner_w, 300), row_h)),
+                text="",
+                manager=self.manager,
+                container=self.history_container,
+                object_id=ObjectID(class_id="history_row"),
+            )
+            self.history_labels.append(lbl)
+
+        while len(self.history_labels) > n:
+            lbl = self.history_labels.pop()
+            lbl.kill()
+
         for i, mh in enumerate(history):
             global_idx = len(self.move_history) - i
             best = mh.get("best_move", 0)
-            arrow = ["↑", "→", "↓", "←"][best]
+            direction = ["UP", "RIGHT", "DOWN", "LEFT"][best]
             ms = mh.get("think_ms", 0)
             nodes = mh.get("nodes_visited", 0)
-            lines.append(f"#{global_idx} {arrow} {ms:.0f}ms, {nodes:,} nodes")
+            max_tile_raw = mh.get("max_tile", 0)
+            tile_str = f"  tile:{2**max_tile_raw}" if max_tile_raw > 0 else ""
+            self.history_labels[i].set_text(
+                f"#{global_idx}  {direction}  {ms:.0f}ms  {nodes:,} nodes{tile_str}"
+            )
 
-        html = "<br>".join(lines) if lines else "No moves yet."
-        self.history_text.set_text(html)
+        content_h = max(n * row_h, 1)
+        self.history_container.set_scrollable_area_dimensions((inner_w, content_h))
 
     def _update_stats_labels(self):
         """Update stats labels from current result or last move."""
