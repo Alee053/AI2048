@@ -202,54 +202,50 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
         });
     }
 
-    // --- Step 2: Multi-pass deferred batching loop ---
-    std::vector<uint64_t> batch_queue;
-    batch_queue.reserve(target_batch_size_);
-
+    // --- Step 2: Per-move deferred batching ---
     float move_scores[4] = {UNRESOLVED, UNRESOLVED, UNRESOLVED, UNRESOLVED};
     int resolved_count = 0;
-    float global_alpha = -1e9f;
 
-    int pass = 0;
-    constexpr int MAX_PASSES = 100;
-    while (resolved_count < static_cast<int>(root_moves.size()) && pass < MAX_PASSES) {
-        pass++;
-        batch_queue.clear();
-        resolved_count = 0;
+    for (const auto& rm : root_moves) {
+        if (!std::isinf(move_scores[rm.move_id])) {
+            resolved_count++;
+            continue;
+        }
 
-        for (const auto& rm : root_moves) {
-            if (!std::isinf(move_scores[rm.move_id])) {
-                resolved_count++;
-                continue;
-            }
+        std::vector<uint64_t> batch_queue;
+        batch_queue.reserve(target_batch_size_);
 
-            float future_value = chance_node_substitute(rm.post_board, depth, BoardEncoder::canonicalize(rm.post_board), batch_queue);
+        while (std::isinf(move_scores[rm.move_id])) {
+            batch_queue.clear();
+
+            float future_value = chance_node_substitute(
+                rm.post_board, depth,
+                BoardEncoder::canonicalize(rm.post_board),
+                batch_queue
+            );
 
             if (!std::isinf(future_value)) {
                 move_scores[rm.move_id] = rm.immediate_reward + future_value;
                 resolved_count++;
-                global_alpha = std::max(global_alpha, move_scores[rm.move_id]);
+                break;
             }
-        }
 
-        if (resolved_count < static_cast<int>(root_moves.size())) {
             if (batch_queue.empty()) {
-                throw std::runtime_error("Empty batch_queue with unresolved moves — possible infinite loop");
+                throw std::runtime_error(
+                    "Empty batch_queue with unresolved move — possible infinite loop"
+                );
             }
 
-            // Deduplicate
             std::sort(batch_queue.begin(), batch_queue.end());
             auto last = std::unique(batch_queue.begin(), batch_queue.end());
             batch_queue.erase(last, batch_queue.end());
 
-            // Convert canonical boards back to Board for Python callback
             std::vector<Board> boards_for_python;
             boards_for_python.reserve(batch_queue.size());
             for (size_t bq_idx = 0; bq_idx < batch_queue.size(); ++bq_idx) {
                 boards_for_python.push_back(BoardEncoder::unpack(batch_queue[bq_idx]));
             }
 
-            // Single Python crossing
             std::vector<float> values = batch_eval_func(boards_for_python);
             batches_eval++;
 
@@ -259,10 +255,6 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
                 transposition_table.store(batch_queue[i], LEAF_DEPTH, NodeType::CHANCE, values[i]);
             }
         }
-    }
-
-    if (pass >= MAX_PASSES) {
-        std::cerr << "[WARNING] Search reached MAX_PASSES=" << MAX_PASSES << " for depth=" << depth << "\n";
     }
 
     // --- Step 3: Extract best move ---
