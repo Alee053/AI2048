@@ -205,6 +205,7 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     // --- Step 2: Per-move deferred batching ---
     float move_scores[4] = {UNRESOLVED, UNRESOLVED, UNRESOLVED, UNRESOLVED};
     int resolved_count = 0;
+    constexpr int MAX_ITERATIONS_PER_MOVE = 100;
 
     for (const auto& rm : root_moves) {
         if (!std::isinf(move_scores[rm.move_id])) {
@@ -215,7 +216,15 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
         std::vector<uint64_t> batch_queue;
         batch_queue.reserve(target_batch_size_);
 
+        int iter = 0;
         while (std::isinf(move_scores[rm.move_id])) {
+            if (++iter > MAX_ITERATIONS_PER_MOVE) {
+                std::cerr << "[WARNING] Move " << rm.move_id
+                          << " reached MAX_ITERATIONS_PER_MOVE="
+                          << MAX_ITERATIONS_PER_MOVE
+                          << " for depth=" << depth << "\n";
+                break;
+            }
             batch_queue.clear();
 
             float future_value = chance_node_substitute(
