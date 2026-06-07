@@ -73,4 +73,9 @@ class ExpectimaxSearcher:
             'tt_size': int(stats.tt_size),
             'tt_lookups': int(stats.tt_lookups),
             'tt_hits': int(stats.tt_hits),
+            'tt_collisions': int(stats.tt_collisions),
+            'tt_same_key_overwrites': int(stats.tt_same_key_overwrites),
+            'moves_resolved': int(stats.moves_resolved),
+            'moves_unresolved': int(stats.moves_unresolved),
+            'cap_hits': int(stats.cap_hits),
         }

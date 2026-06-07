@@ -122,6 +122,11 @@ public:
         same_key_overwrite_count_ = 0;
     }
 
+    void reset_counters() {
+        collision_count_ = 0;
+        same_key_overwrite_count_ = 0;
+    }
+
     size_t occupancy() const { return num_entries_; }
     size_t collision_count() const { return collision_count_; }
     size_t same_key_overwrite_count() const { return same_key_overwrite_count_; }

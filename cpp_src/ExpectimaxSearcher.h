@@ -19,6 +19,11 @@ struct SearchStats {
     size_t tt_size;
     size_t tt_lookups;
     size_t tt_hits;
+    size_t tt_collisions;
+    size_t tt_same_key_overwrites;
+    int moves_resolved;
+    int moves_unresolved;
+    int cap_hits;
 };
 
 class ExpectimaxSearcher {

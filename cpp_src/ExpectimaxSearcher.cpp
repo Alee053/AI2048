@@ -154,6 +154,10 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     tt_hits = 0;
     batches_eval = 0;
     nodes_visited = 0;
+    transposition_table.reset_counters();
+    int moves_resolved_this_call = 0;
+    int moves_unresolved_this_call = 0;
+    int cap_hits_this_call = 0;
     search_start = std::chrono::high_resolution_clock::now();
 
     // --- Step 0: Generate root moves ---
@@ -183,6 +187,11 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
         empty_stats.tt_size = transposition_table.occupancy();
         empty_stats.tt_lookups = 0;
         empty_stats.tt_hits = 0;
+        empty_stats.tt_collisions = 0;
+        empty_stats.tt_same_key_overwrites = 0;
+        empty_stats.moves_resolved = 0;
+        empty_stats.moves_unresolved = 0;
+        empty_stats.cap_hits = 0;
         return empty_stats;
     }
 
@@ -219,6 +228,7 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
         int iter = 0;
         while (std::isinf(move_scores[rm.move_id])) {
             if (++iter > MAX_ITERATIONS_PER_MOVE) {
+                cap_hits_this_call++;
                 std::cerr << "[WARNING] Move " << rm.move_id
                           << " reached MAX_ITERATIONS_PER_MOVE="
                           << MAX_ITERATIONS_PER_MOVE
@@ -270,6 +280,11 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     float best_score = -1e9f;
     int best_move = root_moves[0].move_id;
     for (const auto& rm : root_moves) {
+        if (std::isinf(move_scores[rm.move_id])) {
+            moves_unresolved_this_call++;
+        } else {
+            moves_resolved_this_call++;
+        }
         if (move_scores[rm.move_id] > best_score) {
             best_score = move_scores[rm.move_id];
             best_move = rm.move_id;
@@ -288,6 +303,11 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     stats.tt_size = transposition_table.occupancy();
     stats.tt_lookups = tt_lookups;
     stats.tt_hits = tt_hits;
+    stats.tt_collisions = transposition_table.collision_count();
+    stats.tt_same_key_overwrites = transposition_table.same_key_overwrite_count();
+    stats.moves_resolved = moves_resolved_this_call;
+    stats.moves_unresolved = moves_unresolved_this_call;
+    stats.cap_hits = cap_hits_this_call;
 
     return stats;
 }

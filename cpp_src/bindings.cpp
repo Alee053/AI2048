@@ -28,6 +28,11 @@ PYBIND11_MODULE(searcher, m) {
         .def_readonly("tt_size", &SearchStats::tt_size)
         .def_readonly("tt_lookups", &SearchStats::tt_lookups)
         .def_readonly("tt_hits", &SearchStats::tt_hits)
+        .def_readonly("tt_collisions", &SearchStats::tt_collisions)
+        .def_readonly("tt_same_key_overwrites", &SearchStats::tt_same_key_overwrites)
+        .def_readonly("moves_resolved", &SearchStats::moves_resolved)
+        .def_readonly("moves_unresolved", &SearchStats::moves_unresolved)
+        .def_readonly("cap_hits", &SearchStats::cap_hits)
         .def_property_readonly("move_scores", [](const SearchStats& s) {
             return std::array<float, 4>{s.move_scores[0], s.move_scores[1], s.move_scores[2], s.move_scores[3]};
         });
