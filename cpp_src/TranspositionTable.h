@@ -14,6 +14,7 @@ struct TTEntry {
     float    score; // Evaluated Expectimax score
     uint8_t  depth; // Search depth remaining (uint8_t is plenty for 2048)
     uint8_t  type;  // 0 = MAX, 1 = CHANCE
+    uint8_t  generation; // Age tag (5 bits used, 0..31, & 0x1F wrap)
 };
 
 // 4-way associative bucket (64 bytes total, fits perfectly in a typical CPU cache line)
