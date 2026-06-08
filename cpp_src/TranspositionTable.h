@@ -128,6 +128,10 @@ public:
         same_key_overwrite_count_ = 0;
     }
 
+    void begin_new_search() {
+        current_generation_ = (current_generation_ + 1) & 0x1F;
+    }
+
     size_t occupancy() const { return num_entries_; }
     size_t collision_count() const { return collision_count_; }
     size_t same_key_overwrite_count() const { return same_key_overwrite_count_; }
@@ -137,4 +141,5 @@ private:
     size_t num_entries_ = 0;
     size_t collision_count_ = 0;
     size_t same_key_overwrite_count_ = 0;
+    uint8_t current_generation_ = 0;
 };
