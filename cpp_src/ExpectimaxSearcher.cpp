@@ -155,6 +155,7 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     batches_eval = 0;
     nodes_visited = 0;
     transposition_table.reset_counters();
+    transposition_table.begin_new_search();   // age the TT for cross-search eviction
     int moves_resolved_this_call = 0;
     int moves_unresolved_this_call = 0;
     int cap_hits_this_call = 0;
