@@ -75,11 +75,12 @@ public:
         uint32_t idx = static_cast<uint32_t>(hash_key(key, static_cast<uint8_t>(type)) & BUCKET_MASK);
         TTBucket& bucket = table[idx];
 
-        // 1. If key already exists in any slot, overwrite it.
+        // 1. If key already exists in any slot, overwrite it (and refresh generation).
         for (int i = 0; i < 4; ++i) {
             if (bucket.entries[i].key == key && bucket.entries[i].type == static_cast<uint8_t>(type)) {
                 bucket.entries[i].score = score;
                 bucket.entries[i].depth = depth;
+                bucket.entries[i].generation = current_generation_;
                 same_key_overwrite_count_++;
                 return;
             }
@@ -92,28 +93,50 @@ public:
                 bucket.entries[i].score = score;
                 bucket.entries[i].depth = depth;
                 bucket.entries[i].type  = static_cast<uint8_t>(type);
+                bucket.entries[i].generation = current_generation_;
                 num_entries_++;
                 return;
             }
         }
 
-        // 3. All slots full: replace the one with the smallest depth.
-        // Use collision_count to cycle through slots on equal depth to avoid ping-ponging.
+        // 3. All slots full: two-pass victim selection.
+        // Pass 1 (cross-search eviction): prefer a slot whose generation
+        // differs from the current one. Among such slots, pick the one
+        // with the largest age (oldest generation). Tie-break on smallest depth.
         collision_count_++;
-        int replace_idx = collision_count_ % 4;
-        uint8_t min_depth = bucket.entries[replace_idx].depth;
-
+        int replace_idx = -1;
+        uint8_t best_age = 0;
         for (int i = 0; i < 4; ++i) {
-            if (bucket.entries[i].depth < min_depth) {
-                min_depth = bucket.entries[i].depth;
+            if (bucket.entries[i].generation == current_generation_) continue;
+            uint8_t age = static_cast<uint8_t>(
+                (current_generation_ - bucket.entries[i].generation) & 0x1F
+            );
+            if (replace_idx == -1 || age > best_age ||
+                (age == best_age && bucket.entries[i].depth < bucket.entries[replace_idx].depth)) {
                 replace_idx = i;
+                best_age = age;
             }
         }
-        
+
+        // Pass 2 (intra-search fallback): if all entries are current-generation,
+        // evict the smallest depth. Cycle on equal depth to avoid ping-ponging.
+        if (replace_idx == -1) {
+            replace_idx = collision_count_ % 4;
+            uint8_t min_depth = bucket.entries[replace_idx].depth;
+
+            for (int i = 0; i < 4; ++i) {
+                if (bucket.entries[i].depth < min_depth) {
+                    min_depth = bucket.entries[i].depth;
+                    replace_idx = i;
+                }
+            }
+        }
+
         bucket.entries[replace_idx].key   = key;
         bucket.entries[replace_idx].score = score;
         bucket.entries[replace_idx].depth = depth;
         bucket.entries[replace_idx].type  = static_cast<uint8_t>(type);
+        bucket.entries[replace_idx].generation = current_generation_;
     }
 
     void clear() {
