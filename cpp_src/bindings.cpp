@@ -1,6 +1,7 @@
 ﻿#include <pybind11/pybind11.h>
 #include "Fast2048.h"
 #include "ExpectimaxSearcher.h"
+#include "BoardEncoder.h"
 #include <pybind11/stl.h>
 #include <pybind11/functional.h>
 
@@ -27,13 +28,26 @@ PYBIND11_MODULE(searcher, m) {
         .def_readonly("tt_size", &SearchStats::tt_size)
         .def_readonly("tt_lookups", &SearchStats::tt_lookups)
         .def_readonly("tt_hits", &SearchStats::tt_hits)
+        .def_readonly("tt_collisions", &SearchStats::tt_collisions)
+        .def_readonly("tt_same_key_overwrites", &SearchStats::tt_same_key_overwrites)
+        .def_readonly("moves_resolved", &SearchStats::moves_resolved)
+        .def_readonly("moves_unresolved", &SearchStats::moves_unresolved)
+        .def_readonly("cap_hits", &SearchStats::cap_hits)
         .def_property_readonly("move_scores", [](const SearchStats& s) {
             return std::array<float, 4>{s.move_scores[0], s.move_scores[1], s.move_scores[2], s.move_scores[3]};
         });
 
+    py::class_<BoardEncoder>(m, "BoardEncoder")
+        .def_static("pack", &BoardEncoder::pack)
+        .def_static("unpack", &BoardEncoder::unpack)
+        .def_static("canonicalize_board", static_cast<uint64_t(*)(const Board&)>(&BoardEncoder::canonicalize))
+        .def_static("canonicalize_packed", static_cast<uint64_t(*)(uint64_t)>(&BoardEncoder::canonicalize));
+
     py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
-        .def(py::init<>())
+        .def(py::init<size_t>(), py::arg("target_batch_size") = 32768)
         .def("find_best_move", &ExpectimaxSearcher::find_best_move,
              "Returns SearchStats with best move and search statistics.",
-             py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"));
+             py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"))
+        .def("clear_tt", &ExpectimaxSearcher::clear_tt,
+             "Explicitly clears the persistent transposition table.");
 }

@@ -15,6 +15,9 @@ public:
     static uint64_t compute_board_hash(const std::array<std::array<int, 4>, 4>& board);
     static uint64_t zobrist_reseed(uint64_t hash, int row, int col, int tile_value);
 
+    // Incremental Zobrist update: change (row,col) from old_value to new_value
+    static uint64_t update_board_hash(uint64_t hash, int row, int col, int old_value, int new_value);
+
 private:
     RandomUtil();
 

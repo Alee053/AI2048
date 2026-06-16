@@ -119,6 +119,11 @@ class Benchmarker:
             'tt_size': 0,
             'tt_hits': 0,
             'tt_lookups': 0,
+            'tt_collisions': 0,
+            'tt_same_key_overwrites': 0,
+            'moves_resolved': 0,
+            'moves_unresolved': 0,
+            'cap_hits': 0,
             'move_scores': [],
         }
         while not done:
@@ -134,6 +139,11 @@ class Benchmarker:
                 episode_stats['batches_eval'] += stats.get('batches_eval', 0)
                 episode_stats['tt_hits'] += stats.get('tt_hits', 0)
                 episode_stats['tt_lookups'] += stats.get('tt_lookups', 0)
+                episode_stats['tt_collisions'] += stats.get('tt_collisions', 0)
+                episode_stats['tt_same_key_overwrites'] += stats.get('tt_same_key_overwrites', 0)
+                episode_stats['moves_resolved'] += stats.get('moves_resolved', 0)
+                episode_stats['moves_unresolved'] += stats.get('moves_unresolved', 0)
+                episode_stats['cap_hits'] += stats.get('cap_hits', 0)
                 # Keep the latest move_scores and tt_size for reference
                 episode_stats['move_scores'] = list(stats.get('move_scores', []))
                 episode_stats['tt_size'] = stats.get('tt_size', 0)
@@ -241,7 +251,12 @@ class Benchmarker:
             batches = [s['search_stats']['batches_eval'] for s in stats if s.get('search_stats')]
             tt_lookups = [s['search_stats']['tt_lookups'] for s in stats if s.get('search_stats')]
             tt_hits = [s['search_stats']['tt_hits'] for s in stats if s.get('search_stats')]
-            
+            tt_collisions = [s['search_stats'].get('tt_collisions', 0) for s in stats if s.get('search_stats')]
+            tt_same_key_overwrites = [s['search_stats'].get('tt_same_key_overwrites', 0) for s in stats if s.get('search_stats')]
+            moves_resolved = [s['search_stats'].get('moves_resolved', 0) for s in stats if s.get('search_stats')]
+            moves_unresolved = [s['search_stats'].get('moves_unresolved', 0) for s in stats if s.get('search_stats')]
+            cap_hits = [s['search_stats'].get('cap_hits', 0) for s in stats if s.get('search_stats')]
+
             if think_times:
                 avg_think = np.mean(think_times)
                 avg_nodes = np.mean(nodes_vis)
@@ -251,6 +266,11 @@ class Benchmarker:
                     "avg_batches_eval": round(float(np.mean(batches)), 1) if batches else 0.0,
                     "avg_nodes_per_sec": round(float(avg_nodes / (avg_think / 1000)), 1) if avg_think > 0 else 0.0,
                     "avg_tt_hit_rate": round(float(np.mean([h / l * 100 if l > 0 else 0 for h, l in zip(tt_hits, tt_lookups)])), 2) if tt_lookups else 0.0,
+                    "avg_tt_collisions": round(float(np.mean(tt_collisions)), 1) if tt_collisions else 0.0,
+                    "avg_tt_same_key_overwrites": round(float(np.mean(tt_same_key_overwrites)), 1) if tt_same_key_overwrites else 0.0,
+                    "avg_moves_resolved": round(float(np.mean(moves_resolved)), 2) if moves_resolved else 0.0,
+                    "avg_moves_unresolved": round(float(np.mean(moves_unresolved)), 2) if moves_unresolved else 0.0,
+                    "avg_cap_hits": round(float(np.mean(cap_hits)), 1) if cap_hits else 0.0,
                 }
 
         summary = {
@@ -297,6 +317,19 @@ class Benchmarker:
         for tile, count in summary['max_tile_dist'].items():
             percentage = (count / len(stats)) * 100
             print(f"  {tile}: {count} ({percentage:.1f}%)")
+        if self.use_expectimax and search_metrics:
+            print("-" * 40)
+            print("Search Diagnostics (per move, averaged):")
+            print(f"  think_ms:            {search_metrics.get('avg_think_ms', 0):.2f}")
+            print(f"  nodes_visited:       {search_metrics.get('avg_nodes_visited', 0):.1f}")
+            print(f"  batches_eval:        {search_metrics.get('avg_batches_eval', 0):.1f}")
+            print(f"  nodes_per_sec:       {search_metrics.get('avg_nodes_per_sec', 0):.1f}")
+            print(f"  tt_hit_rate (%):     {search_metrics.get('avg_tt_hit_rate', 0):.2f}")
+            print(f"  tt_collisions:       {search_metrics.get('avg_tt_collisions', 0):.1f}")
+            print(f"  tt_same_key_overwrites: {search_metrics.get('avg_tt_same_key_overwrites', 0):.1f}")
+            print(f"  moves_resolved:      {search_metrics.get('avg_moves_resolved', 0):.2f} / 4")
+            print(f"  moves_unresolved:    {search_metrics.get('avg_moves_unresolved', 0):.2f} / 4")
+            print(f"  cap_hits:            {search_metrics.get('avg_cap_hits', 0):.1f}")
         print("="*40)
         
         # Save JSON

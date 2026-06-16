@@ -47,3 +47,8 @@ explicit = true
 # 2. Tell uv to ONLY look for PyTorch in that custom registry
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
