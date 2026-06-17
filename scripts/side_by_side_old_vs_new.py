@@ -231,6 +231,18 @@ def new_find_best_move(board: np.ndarray, depth: int, batch_eval_fn: Callable) -
     return int(stats.best_move), move_scores
 
 
+def new_find_best_move_fresh_tt(board: np.ndarray, depth: int, batch_eval_fn: Callable) -> tuple[int, list[float]]:
+    """NEW with persistent TT disabled (clear_tt between calls). This matches
+    the OLD's per-search behavior. If scores and moves now agree with the OLD,
+    the persistent TT (with cross-search aging) was the cause of the difference."""
+    impl = _load_searcher_impl()
+    s = impl.ExpectimaxSearcher(32768)
+    s.clear_tt()
+    stats = s.find_best_move(board, depth, batch_eval_fn)
+    move_scores = list(stats.move_scores)
+    return int(stats.best_move), move_scores
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -267,6 +279,9 @@ def main():
     ap.add_argument("--boards", type=int, default=10,
                     help="Number of synthetic boards to compare on")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--fresh-tt", action="store_true",
+                    help="Also run NEW with clear_tt() between boards. If this matches the OLD, "
+                         "the persistent TT (with cross-search aging) was the cause of the difference.")
     args = ap.parse_args()
 
     model = MaskablePPO.load(args.model, device=args.device)
@@ -287,8 +302,11 @@ def main():
 
     same_move = 0
     same_score = 0
+    same_move_fresh = 0
+    same_score_fresh = 0
     print(f"\nComparing OLD vs NEW on {len(boards)} random boards at depth {args.depth}\n")
-    print(f"{'#':>2}  {'OLD':>5}  {'NEW':>5}  match  {'OLD_score':>11}  {'NEW_score':>11}  diff")
+    header = f"{'#':>2}  {'OLD':>5}  {'NEW':>5}  {'NEWf':>5}  match  match_f  {'OLD_score':>11}  {'NEW_score':>11}  {'NEWf_score':>11}"
+    print(header)
     for i, board in enumerate(boards):
         t0 = time.perf_counter()
         old_move, old_scores = old_find_best_move(board, args.depth, eval_old)
@@ -296,17 +314,33 @@ def main():
         t0 = time.perf_counter()
         new_move, new_scores = new_find_best_move(board, args.depth, eval_new)
         new_t = time.perf_counter() - t0
+        fresh_move = None
+        fresh_scores = None
+        if args.fresh_tt:
+            t0 = time.perf_counter()
+            fresh_move, fresh_scores = new_find_best_move_fresh_tt(board, args.depth, eval_new)
+            fresh_t = time.perf_counter() - t0
         match = "==" if old_move == new_move else "!!"
+        match_f = ("==" if old_move == fresh_move else "!!") if fresh_move is not None else "  "
         if old_move == new_move:
             same_move += 1
+        if fresh_move is not None and old_move == fresh_move:
+            same_move_fresh += 1
         os = old_scores[old_move] if old_move >= 0 else -1e9
         ns = new_scores[new_move] if new_move >= 0 else -1e9
+        fs = fresh_scores[old_move] if (fresh_scores and old_move >= 0) else -1e9
         if abs(os - ns) < 0.01:
             same_score += 1
-        print(f"{i:>2}  {old_move:>5}  {new_move:>5}  {match}     {os:>11.4f}  {ns:>11.4f}  {ns-os:>+8.4f}"
+        if fresh_scores and abs(os - fs) < 0.01:
+            same_score_fresh += 1
+        fresh_str = f"  {fresh_move:>5}  {match_f}  {fs:>11.4f}" if fresh_move is not None else ""
+        print(f"{i:>2}  {old_move:>5}  {new_move:>5}  {match}     {os:>11.4f}  {ns:>11.4f}  {ns-os:>+8.4f}{fresh_str}"
               f"   (old {old_t:.1f}s, new {new_t:.1f}s)")
-    print(f"\nMove agreement: {same_move}/{len(boards)} = {100*same_move/len(boards):.0f}%")
-    print(f"Score-of-chosen-move agreement (within 0.01): {same_score}/{len(boards)} = {100*same_score/len(boards):.0f}%")
+    print(f"\nMove agreement (OLD vs NEW):       {same_move}/{len(boards)} = {100*same_move/len(boards):.0f}%")
+    print(f"Score agreement (OLD vs NEW):      {same_score}/{len(boards)} = {100*same_score/len(boards):.0f}%")
+    if args.fresh_tt:
+        print(f"Move agreement (OLD vs NEW fresh-tt): {same_move_fresh}/{len(boards)} = {100*same_move_fresh/len(boards):.0f}%")
+        print(f"Score agreement (OLD vs NEW fresh-tt): {same_score_fresh}/{len(boards)} = {100*same_score_fresh/len(boards):.0f}%")
 
 
 if __name__ == "__main__":
