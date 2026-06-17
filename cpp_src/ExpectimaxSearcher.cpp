@@ -30,6 +30,11 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
     bool probe_result = transposition_table.probe(canon, static_cast<uint8_t>(depth), NodeType::CHANCE, cached_score);
     if (probe_result) {
         tt_hits++;
+        if (trace_enabled_) {
+            trace_log_ << "kind=chance depth=" << depth << " board=0x" << std::hex << canon
+                       << " value=" << std::setprecision(9) << std::fixed << cached_score
+                       << std::dec << " src=tt_hit\n";
+        }
         return cached_score;
     }
 
@@ -79,7 +84,13 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
         }
     }
 
-    if (any_unresolved) return UNRESOLVED;
+    if (any_unresolved) {
+        if (trace_enabled_) {
+            trace_log_ << "kind=chance depth=" << depth << " board=0x" << std::hex << canon
+                       << " value=unresolved" << std::dec << " src=unresolved\n";
+        }
+        return UNRESOLVED;
+    }
 
     // Expectimax chance node: E[V] = sum_c ( (1/N) * (0.9*V(c,2) + 0.1*V(c,4)) )
     //                        = (1/N) * sum_c (0.9*V(c,2) + 0.1*V(c,4))
@@ -90,6 +101,11 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
     chance_value_sum_ += result;
     chance_value_count_ += 1;
     transposition_table.store(canon, static_cast<uint8_t>(depth), NodeType::CHANCE, result);
+    if (trace_enabled_) {
+        trace_log_ << "kind=chance depth=" << depth << " board=0x" << std::hex << canon
+                   << " value=" << std::setprecision(9) << std::fixed << result
+                   << std::dec << " src=computed\n";
+    }
     return result;
 }
 
@@ -106,12 +122,21 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
         bool probe_result = transposition_table.probe(canon, 0, NodeType::MAX, cached_score);
         if (probe_result) {
             tt_hits++;
+            if (trace_enabled_) {
+                trace_log_ << "kind=max depth=0 board=0x" << std::hex << canon
+                           << " value=" << std::setprecision(9) << std::fixed << cached_score
+                           << std::dec << " src=tt_hit\n";
+            }
             return cached_score;
         }
         // Diagnostic: record the unique leaf for post-search comparison with the OLD's
         // gather_leaves() output. Stored under the canonical key, not the raw board.
         leaves_[canon] = 0.0f;  // value will be filled in after the batch eval
         batch_queue.push_back(canon);
+        if (trace_enabled_) {
+            trace_log_ << "kind=max depth=0 board=0x" << std::hex << canon
+                       << " value=unresolved" << std::dec << " src=tt_miss\n";
+        }
         return UNRESOLVED;
     }
 
@@ -120,6 +145,11 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
     float cached_score = 0.0f;
     if (transposition_table.probe(canon, static_cast<uint8_t>(depth), NodeType::MAX, cached_score)) {
         tt_hits++;
+        if (trace_enabled_) {
+            trace_log_ << "kind=max depth=" << depth << " board=0x" << std::hex << canon
+                       << " value=" << std::setprecision(9) << std::fixed << cached_score
+                       << std::dec << " src=tt_hit\n";
+        }
         return cached_score;
     }
 
@@ -129,6 +159,10 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
 
     for (int move = 0; move < 4; ++move) {
         if (batch_queue.size() >= target_batch_size_) {
+            if (trace_enabled_) {
+                trace_log_ << "kind=max depth=" << depth << " board=0x" << std::hex << canon
+                           << " value=unresolved" << std::dec << " src=batch_full\n";
+            }
             return UNRESOLVED;
         }
         game_instance.set_board(board);
@@ -163,10 +197,21 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
         alpha = std::max(alpha, max_value);
     }
 
-    if (any_unresolved) return UNRESOLVED;
+    if (any_unresolved) {
+        if (trace_enabled_) {
+            trace_log_ << "kind=max depth=" << depth << " board=0x" << std::hex << canon
+                       << " value=unresolved" << std::dec << " src=unresolved\n";
+        }
+        return UNRESOLVED;
+    }
 
     float result = any_move_possible ? max_value : 0.0f;
     transposition_table.store(canon, static_cast<uint8_t>(depth), NodeType::MAX, result);
+    if (trace_enabled_) {
+        trace_log_ << "kind=max depth=" << depth << " board=0x" << std::hex << canon
+                   << " value=" << std::setprecision(9) << std::fixed << result
+                   << std::dec << " src=computed\n";
+    }
     return result;
 }
 

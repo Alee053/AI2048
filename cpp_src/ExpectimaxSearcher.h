@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <functional>
 #include <chrono>
+#include <fstream>
 
 using BatchEvalFunc = std::function<std::vector<float>(const std::vector<std::array<std::array<int, 4>, 4>>&)>;
 using Board = std::array<std::array<int, 4>, 4>;
@@ -48,6 +49,21 @@ public:
 
     void clear_tt() { transposition_table.clear(); }
 
+    // Diagnostic: enable search-tree trace logging. When enabled, every
+    // chance_node and max_node call writes one line to the trace file:
+    //   "kind=<chance|max> depth=<N> board=0x<hex> value=<f> src=<computed|tt_hit|tt_miss|unresolved>\n"
+    // Use to compare against a pure-Python reimplementation of the OLD
+    // algorithm to pinpoint where the aggregation diverges.
+    void set_trace_log(const std::string& path) {
+        trace_log_.open(path, std::ios::out | std::ios::trunc);
+        trace_enabled_ = trace_log_.is_open();
+    }
+    void close_trace_log() {
+        if (trace_log_.is_open()) trace_log_.close();
+        trace_enabled_ = false;
+    }
+    bool trace_enabled() const { return trace_enabled_; }
+
     // Diagnostic: dump the (canonical_key, value) pairs of all unique leaves the
     // last find_best_move evaluated. Keys are 64-bit packed canonical boards
     // (BoardEncoder::canonicalize output); values are the model outputs.
@@ -82,6 +98,12 @@ private:
     // Reset at the start of each find_best_move.
     std::unordered_map<uint64_t, float> leaves_;
     std::chrono::high_resolution_clock::time_point search_start;
+
+    // Diagnostic: search-tree trace logging. Off by default. Open with
+    // set_trace_log(path), close with close_trace_log(). Lines are written
+    // for every chance_node and max_node call.
+    std::ofstream trace_log_;
+    bool trace_enabled_ = false;
 
     float chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
                                  std::vector<uint64_t>& batch_queue);
