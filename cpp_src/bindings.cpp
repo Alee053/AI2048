@@ -33,6 +33,11 @@ PYBIND11_MODULE(searcher, m) {
         .def_readonly("moves_resolved", &SearchStats::moves_resolved)
         .def_readonly("moves_unresolved", &SearchStats::moves_unresolved)
         .def_readonly("cap_hits", &SearchStats::cap_hits)
+        .def_readonly("alpha_beta_cuts", &SearchStats::alpha_beta_cuts)
+        .def_readonly("chance_nodes_evaluated", &SearchStats::chance_nodes_evaluated)
+        .def_readonly("max_nodes_evaluated", &SearchStats::max_nodes_evaluated)
+        .def_readonly("chance_value_sum", &SearchStats::chance_value_sum)
+        .def_readonly("chance_value_count", &SearchStats::chance_value_count)
         .def_property_readonly("move_scores", [](const SearchStats& s) {
             return std::array<float, 4>{s.move_scores[0], s.move_scores[1], s.move_scores[2], s.move_scores[3]};
         });
