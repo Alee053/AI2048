@@ -56,6 +56,13 @@ PYBIND11_MODULE(searcher, m) {
              py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"))
         .def("clear_tt", &ExpectimaxSearcher::clear_tt,
              "Explicitly clears the persistent transposition table.")
+        .def("set_trace_log", &ExpectimaxSearcher::set_trace_log,
+             "Diagnostic: enable search-tree trace logging to the given file path.",
+             py::arg("path"))
+        .def("close_trace_log", &ExpectimaxSearcher::close_trace_log,
+             "Diagnostic: close the trace log file.")
+        .def("trace_enabled", &ExpectimaxSearcher::trace_enabled,
+             "Diagnostic: whether trace logging is currently enabled.")
         .def("dump_leaves", &ExpectimaxSearcher::dump_leaves,
              "Diagnostic: dump (canonical_key, value) for all unique leaves "
              "the last find_best_move evaluated. Format: hex_key value, one per line.")
