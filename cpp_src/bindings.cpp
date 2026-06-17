@@ -38,6 +38,7 @@ PYBIND11_MODULE(searcher, m) {
         .def_readonly("max_nodes_evaluated", &SearchStats::max_nodes_evaluated)
         .def_readonly("chance_value_sum", &SearchStats::chance_value_sum)
         .def_readonly("chance_value_count", &SearchStats::chance_value_count)
+        .def_readonly("unique_leaves_evaluated", &SearchStats::unique_leaves_evaluated)
         .def_property_readonly("move_scores", [](const SearchStats& s) {
             return std::array<float, 4>{s.move_scores[0], s.move_scores[1], s.move_scores[2], s.move_scores[3]};
         });
@@ -54,5 +55,10 @@ PYBIND11_MODULE(searcher, m) {
              "Returns SearchStats with best move and search statistics.",
              py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"))
         .def("clear_tt", &ExpectimaxSearcher::clear_tt,
-             "Explicitly clears the persistent transposition table.");
+             "Explicitly clears the persistent transposition table.")
+        .def("dump_leaves", &ExpectimaxSearcher::dump_leaves,
+             "Diagnostic: dump (canonical_key, value) for all unique leaves "
+             "the last find_best_move evaluated. Format: hex_key value, one per line.")
+        .def("last_unique_leaves", &ExpectimaxSearcher::last_unique_leaves,
+             "Diagnostic: number of unique leaves the last find_best_move evaluated.");
 }

@@ -6,6 +6,9 @@
 #include <cmath>
 #include <limits>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <utility>
 
 ExpectimaxSearcher::ExpectimaxSearcher(size_t target_batch_size)
     : target_batch_size_(target_batch_size) {
@@ -105,6 +108,9 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
             tt_hits++;
             return cached_score;
         }
+        // Diagnostic: record the unique leaf for post-search comparison with the OLD's
+        // gather_leaves() output. Stored under the canonical key, not the raw board.
+        leaves_[canon] = 0.0f;  // value will be filled in after the batch eval
         batch_queue.push_back(canon);
         return UNRESOLVED;
     }
@@ -174,6 +180,7 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     max_nodes_evaluated_ = 0;
     chance_value_sum_ = 0.0;
     chance_value_count_ = 0;
+    leaves_.clear();  // Diagnostic: reset leaf capture
     transposition_table.reset_counters();
     transposition_table.begin_new_search();   // age the TT for cross-search eviction
     int moves_resolved_this_call = 0;
@@ -293,6 +300,8 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
             for (size_t i = 0; i < batch_queue.size(); ++i) {
                 transposition_table.store(batch_queue[i], LEAF_DEPTH, NodeType::MAX, values[i]);
                 transposition_table.store(batch_queue[i], LEAF_DEPTH, NodeType::CHANCE, values[i]);
+                // Diagnostic: fill in the captured leaf's value
+                leaves_[batch_queue[i]] = values[i];
             }
         }
     }
@@ -334,6 +343,22 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     stats.max_nodes_evaluated = max_nodes_evaluated_;
     stats.chance_value_sum = chance_value_sum_;
     stats.chance_value_count = chance_value_count_;
+    stats.unique_leaves_evaluated = leaves_.size();
 
     return stats;
+}
+
+std::string ExpectimaxSearcher::dump_leaves() const {
+    // Format: one line per leaf: "0x<hex_canonical_key> <value>\n"
+    // Stable ordering by canonical key for easy diffing.
+    std::vector<std::pair<uint64_t, float>> sorted(leaves_.begin(), leaves_.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::ostringstream oss;
+    oss << "leaves_count=" << sorted.size() << "\n";
+    for (const auto& [k, v] : sorted) {
+        oss << "0x" << std::hex << k << " " << std::setprecision(9) << std::fixed << v << "\n";
+        oss << std::dec;  // reset to decimal
+    }
+    return oss.str();
 }

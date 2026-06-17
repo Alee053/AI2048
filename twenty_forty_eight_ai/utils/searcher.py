@@ -83,4 +83,5 @@ class ExpectimaxSearcher:
             'max_nodes_evaluated': int(stats.max_nodes_evaluated),
             'chance_value_sum': float(stats.chance_value_sum),
             'chance_value_count': int(stats.chance_value_count),
+            'unique_leaves_evaluated': int(stats.unique_leaves_evaluated),
         }

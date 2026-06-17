@@ -4,6 +4,7 @@
 #include "BoardEncoder.h"
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <functional>
 #include <chrono>
 
@@ -33,6 +34,10 @@ struct SearchStats {
     size_t max_nodes_evaluated = 0;
     double chance_value_sum = 0.0;   // sum of chance-node return values (sanity check the divisor)
     size_t chance_value_count = 0;   // number of chance-node returns
+    // Diagnostic: unique leaves evaluated (canonical packed-board key count).
+    // Lets us compare the OLD's "all reachable leaves" with the NEW's "leaves
+    // the search actually evaluated" without dumping every individual leaf.
+    size_t unique_leaves_evaluated = 0;
 };
 
 class ExpectimaxSearcher {
@@ -42,6 +47,19 @@ public:
     SearchStats find_best_move(const Board& board, int depth, const BatchEvalFunc& batch_eval_func);
 
     void clear_tt() { transposition_table.clear(); }
+
+    // Diagnostic: dump the (canonical_key, value) pairs of all unique leaves the
+    // last find_best_move evaluated. Keys are 64-bit packed canonical boards
+    // (BoardEncoder::canonicalize output); values are the model outputs.
+    // One line per leaf, format: "<hex_key> <value>\n". Enables direct comparison
+    // with the OLD's gather_leaves() output (after canonicalizing each board).
+    // Resets internal state, so call AFTER find_best_move if you want this run's
+    // data; the next find_best_move will start a fresh capture.
+    std::string dump_leaves() const;
+
+    // Diagnostic: number of unique leaves the last find_best_move evaluated.
+    // Same number as dump_leaves().size() but cheap to query.
+    size_t last_unique_leaves() const { return leaves_.size(); }
 
 private:
     static constexpr float UNRESOLVED = -std::numeric_limits<float>::infinity();
@@ -60,6 +78,9 @@ private:
     size_t max_nodes_evaluated_ = 0;
     double chance_value_sum_ = 0.0;
     size_t chance_value_count_ = 0;
+    // Captured leaves (canonical key -> value) for the current/last find_best_move.
+    // Reset at the start of each find_best_move.
+    std::unordered_map<uint64_t, float> leaves_;
     std::chrono::high_resolution_clock::time_point search_start;
 
     float chance_node_substitute(const Board& board, int depth, uint64_t board_hash,

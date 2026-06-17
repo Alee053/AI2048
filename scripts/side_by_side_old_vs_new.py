@@ -224,8 +224,55 @@ def old_find_best_move_debug(board: np.ndarray, depth: int, batch_eval_fn: Calla
         if score > best_score:
             best_score = score
             best_move = move
-    leaf_keys = {tuple(b.flatten().tolist()) for b in leaves}
-    return (best_move if best_move != -1 else 0), move_scores, leaf_keys, leaf_cache
+    # Return leaves in canonical form for direct comparison with the NEW's dump.
+    leaf_keys_canon = {canonicalize_python(b) for b in leaves}
+    return (best_move if best_move != -1 else 0), move_scores, leaf_keys_canon, leaves
+
+
+# Pure-Python canonical form of a 4x4 board (16-cell, log2 values).
+# Mirrors BoardEncoder::canonicalize in C++: pack 4 bits per cell, then take the
+# minimum over 8 D4 symmetries (4 rotations x 2 reflections).
+def pack_python(board: np.ndarray) -> int:
+    p = 0
+    for r in range(4):
+        for c in range(4):
+            p |= (int(board[r, c]) & 0xF) << ((r * 4 + c) * 4)
+    return p
+
+
+def symmetries_python(p: int) -> list[int]:
+    """All 8 D4 symmetries of a packed 4x4 board (cell-major 4 bits)."""
+    def rot90(p: int) -> int:
+        # (r,c) -> (c, 3-r) ; cell-major: index = r*4+c
+        out = 0
+        for r in range(4):
+            for c in range(4):
+                v = (p >> ((r * 4 + c) * 4)) & 0xF
+                out |= v << ((c * 4 + (3 - r)) * 4)
+        return out
+
+    def reflect_h(p: int) -> int:
+        out = 0
+        for r in range(4):
+            for c in range(4):
+                v = (p >> ((r * 4 + c) * 4)) & 0xF
+                out |= v << ((r * 4 + (3 - c)) * 4)
+        return out
+
+    out = [p]
+    for _ in range(3):
+        out.append(rot90(out[-1]))
+    reflected = reflect_h(out[0])
+    out.append(reflected)
+    r = reflected
+    for _ in range(3):
+        r = rot90(r)
+        out.append(r)
+    return out
+
+
+def canonicalize_python(board: np.ndarray) -> int:
+    return min(symmetries_python(pack_python(board)))
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +314,16 @@ def new_find_best_move_debug(board: np.ndarray, depth: int, batch_eval_fn: Calla
     s = impl.ExpectimaxSearcher(32768)
     stats = s.find_best_move(board, depth, batch_eval_fn)
     move_scores = list(stats.move_scores)
+    leaves_dump = s.dump_leaves()
+    leaves_set = {}
+    for line in leaves_dump.splitlines()[1:]:
+        key_str, val_str = line.split(" ", 1)
+        leaves_set[int(key_str, 16)] = float(val_str)
     return (int(stats.best_move), move_scores,
             int(stats.batches_eval), int(stats.nodes_visited), int(stats.tt_lookups),
             int(stats.tt_hits), int(stats.tt_collisions),
-            int(stats.chance_nodes_evaluated), int(stats.max_nodes_evaluated))
+            int(stats.chance_nodes_evaluated), int(stats.max_nodes_evaluated),
+            leaves_set, int(stats.unique_leaves_evaluated))
 
 
 def new_find_best_move_fresh_tt(board: np.ndarray, depth: int, batch_eval_fn: Callable) -> tuple[int, list[float]]:
@@ -355,16 +408,19 @@ def main():
     for i, board in enumerate(boards):
         t0 = time.perf_counter()
         if args.debug:
-            old_move, old_scores, old_leaves, old_leaf_cache = old_find_best_move_debug(board, args.depth, eval_old)
+            old_move, old_scores, old_leaves_canon, old_leaves_raw = old_find_best_move_debug(board, args.depth, eval_old)
         else:
             old_move, old_scores = old_find_best_move(board, args.depth, eval_old)
-            old_leaves = old_leaf_cache = None
+            old_leaves_canon = old_leaves_raw = None
         old_t = time.perf_counter() - t0
         t0 = time.perf_counter()
         if args.debug:
-            new_move, new_scores, new_batches, new_nodes, new_lookups, new_hits, new_coll, new_chance, new_max = new_find_best_move_debug(board, args.depth, eval_new)
+            (new_move, new_scores, new_batches, new_nodes, new_lookups, new_hits,
+             new_coll, new_chance, new_max, new_leaves, new_unique_leaves) = new_find_best_move_debug(board, args.depth, eval_new)
         else:
             new_move, new_scores = new_find_best_move(board, args.depth, eval_new)
+            new_leaves = new_batches = None
+            new_unique_leaves = 0
         new_t = time.perf_counter() - t0
         fresh_move = None
         fresh_scores = None
@@ -388,9 +444,20 @@ def main():
         fresh_str = f"  {fresh_move:>5}  {match_f}  {fs:>11.4f}" if fresh_move is not None else ""
         debug_str = ""
         if args.debug:
-            debug_str = (f"   leaves={len(old_leaves):>5}  new[batches={new_batches:>3} "
-                         f"chance={new_chance:>9,} max={new_max:>9,} lookups={new_lookups:>9,} "
-                         f"hits={new_hits:>9,} coll={new_coll:>9,}]")
+            # Leaf-set comparison (OLD raw leaves canonicalized -> compare to NEW's canonical set)
+            new_leaf_keys = set(new_leaves.keys()) if new_leaves else set()
+            only_old = old_leaves_canon - new_leaf_keys if old_leaves_canon else set()
+            only_new = new_leaf_keys - (old_leaves_canon or set())
+            common = (old_leaves_canon & new_leaf_keys) if old_leaves_canon else set()
+            # Value-disagreement on common leaves
+            value_diffs = 0
+            max_value_diff = 0.0
+            for k in common:
+                # Get OLD's value for this canonical key from the eval_fn
+                # We don't have it cached; re-evaluate would slow things down. Skip for now.
+                pass
+            debug_str = (f"   old_leaves={len(old_leaves_canon):>5}  new_uniq={new_unique_leaves:>5}  "
+                         f"only_old={len(only_old):>4} only_new={len(only_new):>4}  common={len(common):>5}")
         print(f"{i:>2}  {old_move:>5}  {new_move:>5}  {match}     {os:>11.4f}  {ns:>11.4f}  {ns-os:>+8.4f}{fresh_str}"
               f"   (old {old_t:.1f}s, new {new_t:.1f}s){debug_str}")
     print(f"\nMove agreement (OLD vs NEW):       {same_move}/{len(boards)} = {100*same_move/len(boards):.0f}%")
