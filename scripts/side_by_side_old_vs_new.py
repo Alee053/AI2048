@@ -200,6 +200,34 @@ def old_find_best_move(board: np.ndarray, depth: int, batch_eval_fn: Callable) -
     return (best_move if best_move != -1 else 0), move_scores
 
 
+# A debug variant: also returns the leaves and the leaf-eval dict
+def old_find_best_move_debug(board: np.ndarray, depth: int, batch_eval_fn: Callable):
+    leaves: list[np.ndarray] = []
+    seen: set = set()
+    old_gather_leaves(board, depth, leaves, seen)
+    if leaves:
+        evals = batch_eval_fn(leaves)
+    else:
+        evals = []
+    leaf_cache = {tuple(b.flatten().tolist()): float(v) for b, v in zip(leaves, evals)}
+    best_score = -1e9
+    best_move = -1
+    move_scores = [-1e9, -1e9, -1e9, -1e9]
+    for move in range(4):
+        post, ms, moved = move_board_python(board, move)
+        if not moved:
+            continue
+        reward = get_log_reward(ms)
+        fv = old_chance_node(post, depth, leaf_cache)
+        score = reward + fv
+        move_scores[move] = score
+        if score > best_score:
+            best_score = score
+            best_move = move
+    leaf_keys = {tuple(b.flatten().tolist()) for b in leaves}
+    return (best_move if best_move != -1 else 0), move_scores, leaf_keys, leaf_cache
+
+
 # ---------------------------------------------------------------------------
 # NEW (current): the C++ binding already loaded by the main app
 # ---------------------------------------------------------------------------
@@ -229,6 +257,20 @@ def new_find_best_move(board: np.ndarray, depth: int, batch_eval_fn: Callable) -
     stats = s.find_best_move(board, depth, batch_eval_fn)
     move_scores = list(stats.move_scores)
     return int(stats.best_move), move_scores
+
+
+# Debug variant: returns (best_move, move_scores, batches_count, leaves_count)
+# by calling find_best_move twice — once for stats, once for the actual search
+# (we can't directly inspect the leaves from Python; this is best-effort).
+def new_find_best_move_debug(board: np.ndarray, depth: int, batch_eval_fn: Callable):
+    impl = _load_searcher_impl()
+    s = impl.ExpectimaxSearcher(32768)
+    stats = s.find_best_move(board, depth, batch_eval_fn)
+    move_scores = list(stats.move_scores)
+    return (int(stats.best_move), move_scores,
+            int(stats.batches_eval), int(stats.nodes_visited), int(stats.tt_lookups),
+            int(stats.tt_hits), int(stats.tt_collisions),
+            int(stats.chance_nodes_evaluated), int(stats.max_nodes_evaluated))
 
 
 def new_find_best_move_fresh_tt(board: np.ndarray, depth: int, batch_eval_fn: Callable) -> tuple[int, list[float]]:
@@ -282,6 +324,9 @@ def main():
     ap.add_argument("--fresh-tt", action="store_true",
                     help="Also run NEW with clear_tt() between boards. If this matches the OLD, "
                          "the persistent TT (with cross-search aging) was the cause of the difference.")
+    ap.add_argument("--debug", action="store_true",
+                    help="Compare leaf sets (OLD can dump them; NEW can't directly), and dump per-board "
+                         "search stats. Helps isolate whether the leaf sets differ or the search aggregation does.")
     args = ap.parse_args()
 
     model = MaskablePPO.load(args.model, device=args.device)
@@ -309,10 +354,17 @@ def main():
     print(header)
     for i, board in enumerate(boards):
         t0 = time.perf_counter()
-        old_move, old_scores = old_find_best_move(board, args.depth, eval_old)
+        if args.debug:
+            old_move, old_scores, old_leaves, old_leaf_cache = old_find_best_move_debug(board, args.depth, eval_old)
+        else:
+            old_move, old_scores = old_find_best_move(board, args.depth, eval_old)
+            old_leaves = old_leaf_cache = None
         old_t = time.perf_counter() - t0
         t0 = time.perf_counter()
-        new_move, new_scores = new_find_best_move(board, args.depth, eval_new)
+        if args.debug:
+            new_move, new_scores, new_batches, new_nodes, new_lookups, new_hits, new_coll, new_chance, new_max = new_find_best_move_debug(board, args.depth, eval_new)
+        else:
+            new_move, new_scores = new_find_best_move(board, args.depth, eval_new)
         new_t = time.perf_counter() - t0
         fresh_move = None
         fresh_scores = None
@@ -334,8 +386,13 @@ def main():
         if fresh_scores and abs(os - fs) < 0.01:
             same_score_fresh += 1
         fresh_str = f"  {fresh_move:>5}  {match_f}  {fs:>11.4f}" if fresh_move is not None else ""
+        debug_str = ""
+        if args.debug:
+            debug_str = (f"   leaves={len(old_leaves):>5}  new[batches={new_batches:>3} "
+                         f"chance={new_chance:>9,} max={new_max:>9,} lookups={new_lookups:>9,} "
+                         f"hits={new_hits:>9,} coll={new_coll:>9,}]")
         print(f"{i:>2}  {old_move:>5}  {new_move:>5}  {match}     {os:>11.4f}  {ns:>11.4f}  {ns-os:>+8.4f}{fresh_str}"
-              f"   (old {old_t:.1f}s, new {new_t:.1f}s)")
+              f"   (old {old_t:.1f}s, new {new_t:.1f}s){debug_str}")
     print(f"\nMove agreement (OLD vs NEW):       {same_move}/{len(boards)} = {100*same_move/len(boards):.0f}%")
     print(f"Score agreement (OLD vs NEW):      {same_score}/{len(boards)} = {100*same_score/len(boards):.0f}%")
     if args.fresh_tt:
