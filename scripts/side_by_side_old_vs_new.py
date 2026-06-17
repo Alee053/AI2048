@@ -151,13 +151,23 @@ def old_chance_node(board: np.ndarray, depth: int, leaf_cache: dict) -> float:
         total += 0.9 * old_max_node(nb2, depth - 1, leaf_cache)
         nb4 = board.copy(); nb4[r, c] = 2
         total += 0.1 * old_max_node(nb4, depth - 1, leaf_cache)
-    return total / len(empty)  # CORRECT divisor N (matches d575532)
+    result = total / len(empty)  # CORRECT divisor N (matches d575532)
+    if _old_trace_log is not None:
+        canon = canonicalize_python(board)
+        _old_trace_log.write(f"kind=chance depth={depth} board=0x{canon:x} "
+                              f"value={result:.9f} src=computed\n")
+    return result
 
 
 def old_max_node(board: np.ndarray, depth: int, leaf_cache: dict) -> float:
     if depth == 0:
         key = tuple(board.flatten().tolist())
-        return leaf_cache.get(key, -100.0)
+        val = leaf_cache.get(key, -100.0)
+        if _old_trace_log is not None:
+            canon = canonicalize_python(board)
+            _old_trace_log.write(f"kind=max depth=0 board=0x{canon:x} "
+                                  f"value={val:.9f} src=leaf_cache\n")
+        return val
     max_v = -1e9
     any_move = False
     for move in range(4):
@@ -170,7 +180,16 @@ def old_max_node(board: np.ndarray, depth: int, leaf_cache: dict) -> float:
         total = reward + fv
         if total > max_v:
             max_v = total
-    return max_v if any_move else 0.0
+    result = max_v if any_move else 0.0
+    if _old_trace_log is not None:
+        canon = canonicalize_python(board)
+        _old_trace_log.write(f"kind=max depth={depth} board=0x{canon:x} "
+                              f"value={result:.9f} src=computed\n")
+    return result
+
+
+# Module-level trace log handle for the OLD. None = no tracing.
+_old_trace_log = None
 
 
 def old_find_best_move(board: np.ndarray, depth: int, batch_eval_fn: Callable) -> tuple[int, list[float]]:
@@ -380,6 +399,15 @@ def main():
     ap.add_argument("--debug", action="store_true",
                     help="Compare leaf sets (OLD can dump them; NEW can't directly), and dump per-board "
                          "search stats. Helps isolate whether the leaf sets differ or the search aggregation does.")
+    ap.add_argument("--old-trace", default=None,
+                    help="Path to write the OLD's search-tree trace (chance_node, max_node values). "
+                         "Enables direct comparison with the NEW's C++ trace.")
+    ap.add_argument("--new-trace", default=None,
+                    help="Path to write the NEW's search-tree trace. Requires --debug. "
+                         "The NEW is traced via set_trace_log() on the C++ searcher.")
+    ap.add_argument("--trace-board", type=int, default=26,
+                    help="When --old-trace or --new-trace is set, only run the trace on this board index "
+                         "(0-based). Default 26, which has a 22-point gap.")
     args = ap.parse_args()
 
     model = MaskablePPO.load(args.model, device=args.device)
@@ -407,14 +435,51 @@ def main():
     print(header)
     for i, board in enumerate(boards):
         t0 = time.perf_counter()
-        if args.debug:
-            old_move, old_scores, old_leaves_canon, old_leaves_raw = old_find_best_move_debug(board, args.depth, eval_old)
-        else:
-            old_move, old_scores = old_find_best_move(board, args.depth, eval_old)
-            old_leaves_canon = old_leaves_raw = None
+        # Optionally open the OLD's trace log only for the chosen trace_board
+        old_trace_open = args.old_trace and i == args.trace_board
+        if old_trace_open:
+            global _old_trace_log
+            _old_trace_log = open(args.old_trace, "w")
+        try:
+            if args.debug:
+                old_move, old_scores, old_leaves_canon, old_leaves_raw = old_find_best_move_debug(board, args.depth, eval_old)
+            else:
+                old_move, old_scores = old_find_best_move(board, args.depth, eval_old)
+                old_leaves_canon = old_leaves_raw = None
+        finally:
+            if old_trace_open:
+                _old_trace_log.close()
+                _old_trace_log = None
         old_t = time.perf_counter() - t0
         t0 = time.perf_counter()
-        if args.debug:
+        new_trace_open = args.new_trace and i == args.trace_board
+        if new_trace_open:
+            # We need to instrument the C++ searcher. The Python wrapper
+            # exposes _impl which is the actual C++ class. Open the trace
+            # on a fresh searcher instance, run, close.
+            new_impl = _load_searcher_impl().ExpectimaxSearcher(32768)
+            new_impl.set_trace_log(args.new_trace)
+            try:
+                stats = new_impl.find_best_move(board, args.depth, eval_new)
+                new_move = int(stats.best_move)
+                new_scores = list(stats.move_scores)
+                if args.debug:
+                    new_batches = int(stats.batches_eval)
+                    new_nodes = int(stats.nodes_visited)
+                    new_lookups = int(stats.tt_lookups)
+                    new_hits = int(stats.tt_hits)
+                    new_coll = int(stats.tt_collisions)
+                    new_chance = int(stats.chance_nodes_evaluated)
+                    new_max = int(stats.max_nodes_evaluated)
+                    new_leaves_dump = new_impl.dump_leaves()
+                    new_leaves = {}
+                    for line in new_leaves_dump.splitlines()[1:]:
+                        k_str, v_str = line.split(" ", 1)
+                        new_leaves[int(k_str, 16)] = float(v_str)
+                    new_unique_leaves = int(stats.unique_leaves_evaluated)
+            finally:
+                new_impl.close_trace_log()
+        elif args.debug:
             (new_move, new_scores, new_batches, new_nodes, new_lookups, new_hits,
              new_coll, new_chance, new_max, new_leaves, new_unique_leaves) = new_find_best_move_debug(board, args.depth, eval_new)
         else:
