@@ -124,6 +124,11 @@ class Benchmarker:
             'moves_resolved': 0,
             'moves_unresolved': 0,
             'cap_hits': 0,
+            'alpha_beta_cuts': 0,
+            'chance_nodes_evaluated': 0,
+            'max_nodes_evaluated': 0,
+            'chance_value_sum': 0.0,
+            'chance_value_count': 0,
             'move_scores': [],
         }
         while not done:
@@ -144,6 +149,11 @@ class Benchmarker:
                 episode_stats['moves_resolved'] += stats.get('moves_resolved', 0)
                 episode_stats['moves_unresolved'] += stats.get('moves_unresolved', 0)
                 episode_stats['cap_hits'] += stats.get('cap_hits', 0)
+                episode_stats['alpha_beta_cuts'] += stats.get('alpha_beta_cuts', 0)
+                episode_stats['chance_nodes_evaluated'] += stats.get('chance_nodes_evaluated', 0)
+                episode_stats['max_nodes_evaluated'] += stats.get('max_nodes_evaluated', 0)
+                episode_stats['chance_value_sum'] += stats.get('chance_value_sum', 0.0)
+                episode_stats['chance_value_count'] += stats.get('chance_value_count', 0)
                 # Keep the latest move_scores and tt_size for reference
                 episode_stats['move_scores'] = list(stats.get('move_scores', []))
                 episode_stats['tt_size'] = stats.get('tt_size', 0)
