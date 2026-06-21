@@ -227,3 +227,48 @@ The diagnostic work is on `side-by-side-old-vs-new`. The chance-divisor fix and 
 6. `data/models/release/Hybrid-PPO-Expectimax-v1.zip` is replaced with the retrained model.
 
 Once these pass, the cross-search aging fix from PR #4 becomes safe to keep, and the search optimizations are no longer a net regression.
+---
+
+## 9. Work Plan: Retraining on `fix-regression`
+
+**Branch:** `fix-regression` (branched from `fix-chance-divisor`).
+**Goal:** Add D4 augmentation, retrain the value network, verify the acceptance criteria in §8, merge when done.
+**Diagnostic tooling lives on:** `side-by-side-old-vs-new` (untouched, historical record).
+
+### 9.1 Implementation Steps
+
+- [ ] **1. Add D4 augmentation to env observation wrapper** — in `twenty_forty_eight_ai/env/environment.py`, apply a random D4 symmetry transform (8 transforms: 4 rotations × 2 reflections) to each board on `reset()` and `step()`. Or augment the training data directly in `scripts/train.py`. Confirm the env still passes the existing test suite (maskable actions must rotate consistently with the board).
+- [ ] **2. Retrain `Hybrid-PPO-Expectimax-v1`** — re-run `scripts/train.py --config configs/train/hybrid_ppo_v1.yaml` (4–8 hours on a single GPU; exact time depends on the training config).
+- [ ] **3. Verify rotation-invariance** — write a small script that calls `model(canonicalize(board))` and `model(board)` on 100 random boards and asserts `|diff| < 0.01`. This is the regression test for the root cause; if it fails, the model needs more training.
+- [ ] **4. Replace the model** — overwrite `data/models/release/Hybrid-PPO-Expectimax-v1.zip` with the retrained weights. Commit the new model file to `fix-regression`.
+- [ ] **5. Run existing tests** — `uv run pytest tests/test_depth4_convergence.py tests/test_persistent_tt.py` must still pass (they don't depend on the model, but catch C++ regressions).
+- [ ] **6. Run the 30-game depth-3 benchmark** — `uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3 --n_runs 30 --device cuda`. Target score ≥24,000 (acceptance criterion §8.5). Compare against the OLD's 26,523 ± 12,750.
+- [ ] **7. Re-run the side-by-side diagnostic** — `uv run python scripts/side_by_side_old_vs_new.py --boards 30 --depth 3 --device cuda --debug`. With a rotation-invariant model, the leaf VALUES should now match between OLD and NEW (the canonical keys already match). Move agreement should rise from 33% to ~100%, score agreement from 3% to ~100%.
+- [ ] **8. Merge** — `fix-regression` → `fix-chance-divisor` → `master` (or directly `fix-regression` → `master` if you want to bypass the divisor fix).
+
+### 9.2 Estimated Effort
+
+| Step | Time |
+|------|------|
+| 1. Add D4 augmentation | ~30 min (code + test) |
+| 2. Retrain | 4–8 hours (GPU) |
+| 3. Verify | ~10 min (script + run) |
+| 4. Replace model | ~5 min |
+| 5. Run tests | ~10 min |
+| 6. Benchmark (depth 3, n=30) | ~90 min (CUDA) |
+| 7. Side-by-side | ~1 min |
+| 8. Merge | ~5 min |
+| **Total** | **~6–10 hours** |
+
+### 9.3 Branch Lineage (for context)
+
+```
+master (ada0806, post-PR-#4 merge)
+ └─ fix-chance-divisor (8ef9289) ── divisor bug fix
+      └─ fix-regression (current) ── retraining work
+side-by-side-old-vs-new (7cd0fe0) ── diagnostic tooling, untouched
+```
+
+### 9.4 Check-off
+
+Mark each step done by changing `[ ]` to `[x]` in the commit. Use a single commit per step (or batch related steps) so the history reads as a clear plan-then-execute log.
