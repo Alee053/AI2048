@@ -66,7 +66,9 @@ def objective(trial: optuna.Trial, config: dict) -> float:
 
     # Setup Environment
     trial_config = config['trial']
-    vec_env = make_vec_env(Game2048Env, n_envs=trial_config['n_envs'])
+    env_kwargs = dict(trial_config.get('env_kwargs', {}))
+    env_kwargs.setdefault('d4_augment', True)
+    vec_env = make_vec_env(Game2048Env, n_envs=trial_config['n_envs'], env_kwargs=env_kwargs)
     pruning_callback = TrialCallback(trial, report_freq=trial_config['report_freq'])
 
     # Train Model
