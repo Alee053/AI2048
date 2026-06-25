@@ -1,16 +1,16 @@
-# --- Run & Path Settings ---
+# s--- Run & Path Settings ---
 project_name: "2048-ppo-training"
-run_name: "NewArch-GradReward-v2"
-output_dir: "data/" # Base directory for models and studies
+run_name: "hybrid_ppo_v3"
+output_dir: "data" # Base directory for models and studies
 
 # --- Resume Settings ---
 load_model: false
 checkpoint_path: null # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model_100000000_steps.zip"
 
 # --- Training Parameters ---
-total_timesteps: 50_000_000
-n_envs: 16
-save_interval: 1_000_000
+total_timesteps: 100_000_000
+n_envs: 128
+save_interval: 5_000_000
 
 # --- PPO Hyperparameters---
 ppo_params:
@@ -21,8 +21,11 @@ ppo_params:
     type: "linear_decay"
     initial_value: 0.0002506795165161916
   clip_range: 0.2
-  batch_size: 512
+  batch_size: 4096
   n_epochs: 4
 
 # --- Agent Architecture ---
 features_dim: 256
+
+# export OMP_NUM_THREADS=1
+# export MKL_NUM_THREADS=1

@@ -13,10 +13,10 @@ Arguments:
 
 Examples:
     # Full 100-episode benchmark with depth-3 search
-    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --n_runs 100 --depth 3
+    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --n_runs 100 --depth 3
 
     # Quick test with raw policy
-    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --n_runs 10 --depth 0
+    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --n_runs 10 --depth 0
 """
 
 import argparse
