@@ -17,7 +17,7 @@ This project implements a **hybrid AI agent** for the game 2048 that combines:
 
 The core insight: **learned value functions can replace hand-crafted heuristics** in classical search algorithms, reducing search depth requirements while maintaining strong performance.
 
-**Key Result:** 58% win rate (reaching 2048+ tile) with depth-3 search, compared to 0% for the standalone RL policy.
+**Key Result (v3, D4-augmented):** ~90% win rate (reaching 2048+ tile) with depth-3 search, mean score ~44,000 on a 30-game benchmark — a 1.7× improvement over the v1 release (26,523 ± 12,750). At depth 4 the same model reached 74,020 (max tile 4096) in a single-game run, finishing cleanly with no cap hits.
 
 ---
 
@@ -45,21 +45,36 @@ uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.z
 
 ### **Ablation Study: Search Depth Impact**
 
-All benchmarks conducted over **100 episodes**.
+Raw-policy and depth-1/2 results use the v1 release model. Depth-3+ results are the v3 model (D4-augmented) on the same code; they are not directly comparable to the v1 rows because the model changed.
 
-| Configuration | Avg Score            | 2048+ Win Rate | Max Tile (Frequency) | Avg Moves |
-|---------------|----------------------|----------------|----------------------|-----------|
-| **Raw PPO Policy** | 7,995.6 ± 3502.67    | 0% | 1024 (18%) | 541 |
-| **+ Expectimax (d=1)** | 5,127.32 ± 2482.23   | 0% | 1024 (4%) | 372 |
-| **+ Expectimax (d=2)** | 14,014.08 ± 6496.21  | 13% | 2048 (13%) | 822 |
-| **+ Expectimax (d=3)** | **26,523 ± 12749.82** | **58%** | **4096 (8%)** | 1,393 |
+| Configuration | Model | Avg Score | 2048+ Win Rate | Max Tile (Frequency) | Notes |
+|---------------|-------|-----------|----------------|----------------------|-------|
+| **Raw PPO Policy** | v1 | 7,995.6 ± 3,502.67 | 0% | 1024 (18%) | 100 games |
+| **+ Expectimax (d=1)** | v1 | 5,127.32 ± 2,482.23 | 0% | 1024 (4%) | 100 games |
+| **+ Expectimax (d=2)** | v1 | 14,014.08 ± 6,496.21 | 13% | 2048 (13%) | 100 games |
+| **+ Expectimax (d=3)** | v1 | 26,523 ± 12,749.82 | 58% | 4096 (8%) | 100 games (pre-D4 baseline) |
+| **+ Expectimax (d=3)** | **v3 (D4-aug)** | **~44,000** | **~90%** | 4096 (high) | 30 games, current release |
+| **+ Expectimax (d=4)** | **v3 (D4-aug)** | **74,020** | 100% | 4096 (100%) | 1 game (n=1 sample) |
 
-While the raw policy struggles to reach terminal states (2048) due to the dense reward structure and horizon effects, it learns a highly robust value function that enables the search to succeed.
-<p align="center">
-  <img src="data/benchmarks/depth3_expectimax/score_distribution.png" width="600" alt="Score Distribution"/>
-  <br/>
-  <em>Score distribution at depth 3: Bimodal peaks at 2048 (50%) and 4096 (8%) tiles</em>
-</p>
+The v1→v3 jump at depth 3 is the regression fix documented in
+[`docs/DEPTH3-REGRESSION-ROOT-CAUSE.md`](docs/DEPTH3-REGRESSION-ROOT-CAUSE.md):
+the OLD model's value network was not invariant to the 8 D4 symmetries of the
+board, and the C++ searcher's canonicalize-then-unpack path returned the
+canonical form (not the search-time orientation), biasing every leaf
+evaluation. The fix retrains the value network with random D4 augmentation
+so that `model(canonicalize(b)) ≈ model(b)`, restoring accurate leaf
+evaluations under the C++ canonicalization. See "D4 Augmentation" below.
+
+**To reproduce the v3 depth-3 numbers** (30 games, ~3.5h on a T4 GPU):
+```bash
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n_runs 30 --depth 3 --device cuda --output v3_depth3
+```
+
+**To verify D4 invariance of the released model** (≤30s on GPU):
+```bash
+uv run python scripts/check_d4_invariance.py
+```
 
 
 
@@ -96,7 +111,7 @@ The project follows a **two-stage pipeline** optimized for both training efficie
 │ └──────────────┘          └────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                                    │
-                     Checkpoint: best_model.zip
+                      Checkpoint: final_model.zip
                                    ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      INFERENCE PHASE                        │
@@ -161,32 +176,21 @@ float max_node_substitute(const Board& board, int depth,
 ```
 
 ##### Transposition Table Efficacy:
-- **Dynamic Cache Hit Rate:** Observed ~80% hit rate in early-game states (low entropy), stabilizing to 40-60% in complex late-game states.
-- **Performance Gain:** Effectively pruning the search space by a factor of 2x-3x, allowing Depth-3 search to run within strict latency limits (<150ms/move).
+- **Dynamic Cache Hit Rate:** Average ~24% across full-game depth-4 search (rising over the episode as the persistent TT warms up). The TT key is the canonical D4 form of the board, so rotated boards share entries.
+- **Performance Gain:** Combined with alpha-beta-style pruning and the deferred-batching leaf eval, depth-3 search runs in ~7s/move on GPU, depth-4 in ~80s/move.
 ---
 
-#### **Batched Leaf Evaluation**
+#### **Batched Leaf Evaluation (Deferred Batching)**
 
-Instead of calling Python for every leaf node (slow), the searcher **batches all unique leaf states** and evaluates them in one forward pass:
+The C++ searcher uses **multi-pass deferred batching** instead of the OLD gather-all-first approach. On the first search pass, leaf evaluations return `UNRESOLVED`; the searcher collects those leaf keys into a batch queue, calls Python once with the full batch, then re-runs the search with cached values. This avoids the OLD's two-pass overhead and is more friendly to large `target_batch_size` (32k leaves typical).
 
-```cpp
-// Collect ALL unique leaf boards first
-std::vector<Board> leaves_to_evaluate;
-gather_leaves(root_board, depth, leaves_to_evaluate); // BFS traversal
-
-// Single batch call to Python (fast)
-std::vector<float> evaluations = batch_eval_func(leaves_to_evaluate);
-
-// Cache results for tree search
-std::map<Board, float> leaf_cache;
-for (size_t i = 0; i < leaves_to_evaluate.size(); ++i)
-    leaf_cache[leaves_to_evaluate[i]] = evaluations[i];
-```
+The C++ canonicalizes the board to a single D4 element before keying the batch, then `BoardEncoder::unpack`s back to a raw board for the model. This is safe **only if the value network is D4-invariant** — see "D4 Augmentation" below.
 
 **Batch Sizes:**
 - Depth 1: ~50-100 leaves
 - Depth 2: ~500-1,000 leaves
 - Depth 3: ~3,000-8,000 leaves
+- Depth 4: ~50,000-100,000 leaves per game (summed across moves)
 
 Inference Efficiency: On GPU-enabled systems, batched evaluation amortizes the Python Interpreter overhead and CUDA kernel launch costs across thousands of states, significantly reducing per-state inference latency.
 
@@ -200,33 +204,42 @@ Standard PPO wastes samples exploring invalid moves (e.g., moving left when tile
 
 ```python
 # environment.py - Dynamic action masks
-
 def action_masks(self) -> np.ndarray:
-    masks = np.zeros(4, dtype=bool)
-    for action in range(4):
-        masks[action] = self.game.is_move_valid(action)
-    return masks
+    canonical = np.array(
+        [self.game.is_move_valid(act) for act in range(4)], dtype=bool
+    )
+    return transform_action_mask(canonical, self._current_d4)
 ```
+
+The `transform_action_mask` call is the D4-augmentation hook: when training
+with `d4_augment=True`, the env presents the board under a random D4
+symmetry and the action mask is permuted to match. See "D4 Augmentation"
+below.
 
 ---
 
-#### **Reward Shaping: Log-Reward Scaling**
+#### **Reward Shaping: Merge + Free Cells + Snake Gradient**
 
-Instead of raw merge scores (which grow exponentially), we use **logarithmic scaling**:
+The reward function in `reward.py` combines three terms, computed on the
+canonical (untransformed) board so it is invariant to the D4 augmentation:
 
 ```python
-# reward.py - Log-scaled immediate rewards
+# reward.py - reward = log-merge + free-cells bonus + snake-gradient bonus
 
-def get_reward(merge_score: int) -> float:
-    if merge_score <= 0:
-        return 0.0
-    return np.log2(merge_score) # e.g., merging 1024+1024 → log2(2048) = 11
+def calculate_reward(board, merge_score, moved):
+    if not moved:
+        return -1.0
+    merge_reward = np.log2(merge_score) if merge_score > 0 else 0.0
+    free_cells_reward = np.sum(board == 0)
+    log_board = log2_where_nonzero(board)
+    snake = max(log_board * ROW_GRADIENT, log_board * COL_GRADIENT).sum()
+    return MERGE_COEF * merge_reward + FREE_COEF * free_cells_reward + GRADIENT_COEF * snake
 ```
 
 **Why this works:**
-- Raw scores: Merging 2048+2048 = 4096 (huge spike)
-- Log scores: log2(4096) = 12 (smooth progression)
-- Reduces variance in value function estimates
+- **Log merge score:** reduces variance as tile values grow exponentially.
+- **Free-cells bonus:** discourages filling the board (more empty cells = more moves available).
+- **Snake gradient:** soft prior toward keeping the max tile in a corner with descending values along a row/column.
 
 ---
 
@@ -271,12 +284,16 @@ def objective(trial):
     return evaluate_agent(model, n_episodes=50)
 ```
 
-**Final Hyperparameters (Best Trial #108):**
-- Learning Rate: `3.2e-4`
-- Discount Factor ($\\gamma$): `0.998`
-- GAE Lambda ($\\lambda$): `0.95`
-- Entropy Coefficient: `0.005`
-- Clip Range ($\\epsilon$): `0.2`
+**Final Hyperparameters (v3 release, `configs/train/hybrid_ppo_v3.yaml`):**
+- Learning Rate: `2.5e-4` (linear decay to 0)
+- Discount Factor ($\gamma$): `0.95`
+- GAE Lambda ($\lambda$): `0.95`
+- Entropy Coefficient: `6.7e-6`
+- Clip Range ($\epsilon$): `0.2`
+- Batch Size: `4096`
+- Epochs per update: `4`
+- Total timesteps: `100,000,000`
+- Parallel envs: `128`
 
 ---
 
@@ -619,8 +636,12 @@ Example config is provided in `configs/train/`:
 
 ```text
 configs/train/
-├─ hybrid_ppo_v1.yaml # Standard training (200M steps, tested)
-└─ resume_training.yaml # Resume training
+├─ hybrid_ppo_v1.yaml     # Original training (200M steps, v1 model)
+├─ hybrid_ppo_v2_sweep.yaml # Hyperparameter sweep
+├─ hybrid_ppo_v3.yaml     # D4-augmented training (100M steps, v3 model — current release)
+└─ resume_training.yaml   # Resume from a checkpoint
+configs/tune/
+└─ bayesian_opt_search.yaml # Optuna search space
 ```
 
 To create a custom config:
@@ -688,37 +709,113 @@ uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.
 
 ---
 
+## **D4 Augmentation**
+
+The C++ searcher's `BoardEncoder::canonicalize` is a positional optimisation
+that lets the transposition table share entries between boards that are
+rotations or reflections of each other. This is sound **only if the value
+network is D4-invariant** (i.e. it returns the same value for all 8
+symmetries of any given board). If the model is not invariant, the
+canonical form the C++ uses for batch-eval differs from the
+search-time orientation, and every leaf evaluation is biased.
+
+`Game2048Env` accepts an opt-in `d4_augment=True` flag that, on every
+`reset()` and `step()`, presents the board under a uniformly random D4
+symmetry and inverse-permutes the agent's action:
+
+```python
+# twenty_forty_eight_ai/env/d4_transforms.py
+ACTION_TO_CANONICAL = np.array([
+    [0, 1, 2, 3],   # ID
+    [3, 0, 1, 2],   # ROT90_CW
+    [2, 3, 0, 1],   # ROT180
+    [1, 2, 3, 0],   # ROT270_CW
+    [0, 3, 2, 1],   # REFLECT_H
+    [2, 1, 0, 3],   # REFLECT_V
+    [3, 2, 1, 0],   # TRANSPOSE
+    [1, 0, 3, 2],   # ANTI_TRANSPOSE
+], dtype=np.int64)
+```
+
+`scripts/train.py`, `scripts/profile_train.py`, and `scripts/tune.py` set
+`d4_augment=True` by default via `env_kwargs`, so the model learns
+invariance without per-script configuration. Benchmark, evaluate, and
+visualizer paths are untouched (the env defaults to `d4_augment=False`).
+
+**Verify on the released v3 model:**
+
+```bash
+uv run python scripts/check_d4_invariance.py
+```
+
+On 100 random mid-game boards the released v3 model has mean abs diff
+~0.35 and max diff ~1.65 across the 7 non-identity D4 elements. The OLD
+v1 release (pre-augmentation) had mean ~1.0, max ~6.0 on the same boards
+— a 3-4× improvement in D4 invariance. The 0.01 threshold from the
+regression doc is aspirational; the CustomCNN is not rotation-equivariant
+by design, so 100M steps gets the model close but not perfect. The
+residual error is small enough that the C++ search still picks strong
+moves (mean ~44k at depth 3, vs the OLD's 26,523).
+
+---
+
 ## **Project Structure**
 
 ```text
-├── cpp_src/                 # C++17 engine (pybind11 bindings)
-│   ├── Fast2048.cpp         # LUT-based game logic
-│   ├── ExpectimaxSearcher.cpp # Batched search with transposition table
-│   ├── bindings.cpp         # Python ↔ C++ interface
+├── cpp_src/                       # C++17 engine (pybind11 bindings)
+│   ├── Fast2048.cpp               # LUT-based game logic
+│   ├── ExpectimaxSearcher.cpp     # Multi-pass deferred-batching searcher + TT
+│   ├── BoardEncoder.cpp           # 16-bit pack/unpack/canonicalize
+│   ├── bindings.cpp               # Python ↔ C++ interface
 │   └── CMakeLists.txt
-├── twenty_forty_eight_ai/   # Python package
+├── twenty_forty_eight_ai/         # Python package
 │   ├── agent/
-│   │   ├── architecture.py  # Custom CNN (row/col/global heads)
-│   │   └── callbacks.py     # W&B logging, checkpointing
+│   │   ├── architecture.py        # Custom CNN (row/col/global heads)
+│   │   └── callbacks.py           # W&B logging, checkpointing
 │   ├── env/
-│   │   ├── environment.py   # Gymnasium wrapper
-│   │   └── reward.py        # Log-scaled reward function
+│   │   ├── environment.py         # Gymnasium wrapper (D4-augment opt-in)
+│   │   ├── d4_transforms.py       # D4 symmetries + action-permutation table
+│   │   ├── game.py                # Fast2048 (LUT-based)
+│   │   └── reward.py              # Merge + free-cells + snake-gradient
 │   └── utils/
-│       ├── tensor_utils.py  # Board→Tensor conversion
-│       └── searcher.py      # Python wrapper for C++ Expectimax
+│       ├── tensor_utils.py        # Board→Tensor conversion
+│       └── searcher.py            # Python wrapper for C++ Expectimax
 ├── scripts/
-│   ├── train.py             # PPO training loop (supports seed sweeps)
-│   ├── tune.py              # Optuna hyperparameter search
-│   ├── benchmark.py         # Headless evaluation (supports multi-seed)
-│   ├── aggregate.py         # Post-processing aggregator for sweeps
-│   └── evaluate.py          # Visual evaluation
+│   ├── train.py                   # PPO training (D4-augment on by default)
+│   ├── tune.py                    # Optuna hyperparameter search
+│   ├── benchmark.py               # Headless evaluation
+│   ├── aggregate.py               # Post-processing aggregator for sweeps
+│   ├── evaluate.py                # Visual evaluation (pygame)
+│   ├── profile_train.py           # Training profile run
+│   └── check_d4_invariance.py     # D4 invariance check for the value net
+├── tests/
+│   ├── test_d4_transforms.py      # D4 transform + env integration (79 tests)
+│   ├── test_depth4_convergence.py
+│   ├── test_persistent_tt.py
+│   ├── test_transposition_table.py
+│   ├── test_board_encoder.py
+│   ├── test_searcher_wrapper.py
+│   ├── test_seed_utils.py
+│   ├── test_sparkline.py
+│   ├── test_visualizer_config.py
+│   └── stress_depth4_real.py      # Real-model depth-4 stress test
 ├── data/
-│   ├── models/              
-│   │   └── release/         # Finalized/Production models
-│   └── benchmarks/          # JSON results + plots
-└── configs/
-    └── train/
-        └── hybrid_ppo_v1.yaml # Standard training configuration
+│   ├── models/
+│   │   └── release/
+│   │       └── Hybrid-PPO-Expectimax-v3.zip   # D4-augmented release
+│   └── benchmarks/                # (gitignored)
+├── configs/
+│   ├── train/
+│   │   ├── hybrid_ppo_v1.yaml     # v1 (no D4 aug)
+│   │   ├── hybrid_ppo_v2_sweep.yaml
+│   │   ├── hybrid_ppo_v3.yaml     # v3 (D4-augmented, current release)
+│   │   └── resume_training.yaml
+│   └── tune/
+│       └── bayesian_opt_search.yaml
+├── docs/
+│   ├── DEPTH3-REGRESSION-ROOT-CAUSE.md  # Diagnostic + retraining plan
+│   └── TODO-training-fixes.md
+└── twenty_forty_eight_ai.egg-info/        # build artifact (gitignored)
 ```
 
 ---
