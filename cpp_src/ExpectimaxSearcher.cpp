@@ -19,6 +19,7 @@ float get_log_reward(int merge_score) {
 float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
                                                  std::vector<uint64_t>& batch_queue) {
     nodes_visited++;
+    chance_nodes_evaluated_++;
 
     tt_lookups++;
     uint64_t canon = BoardEncoder::canonicalize(board);
@@ -77,7 +78,14 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
 
     if (any_unresolved) return UNRESOLVED;
 
-    float result = total_value / (2.0f * empty_cells.size());
+    // Expectimax chance node: E[V] = sum_c ( (1/N) * (0.9*V(c,2) + 0.1*V(c,4)) )
+    //                        = (1/N) * sum_c (0.9*V(c,2) + 0.1*V(c,4))
+    // so divide by N (the number of empty cells), not 2N.
+    // The earlier (2.0f * empty_cells.size()) divisor half-scaled the chance
+    // value and biased the search.
+    float result = total_value / static_cast<float>(empty_cells.size());
+    chance_value_sum_ += result;
+    chance_value_count_ += 1;
     transposition_table.store(canon, static_cast<uint8_t>(depth), NodeType::CHANCE, result);
     return result;
 }
@@ -86,6 +94,7 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
                                               std::vector<uint64_t>& batch_queue,
                                               float alpha, float beta) {
     nodes_visited++;
+    max_nodes_evaluated_++;
 
     if (depth == 0) {
         uint64_t canon = BoardEncoder::canonicalize(board);
@@ -135,8 +144,14 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
             }
         }
 
-        // Alpha-beta pruning: only active when no unresolved children
+        // Alpha-beta pruning: only active when no unresolved children.
+        // NOTE: in expectimax the chance-node parent *averages* its children,
+        // so a hard `max_value >= beta` cut at this max node can prune children
+        // whose contribution would have brought the parent average back into
+        // bounds. This is a known soundness caveat; tracked via alpha_beta_cuts_
+        // for diagnostic purposes. See fix-chance-divisor branch.
         if (!any_unresolved && max_value >= beta) {
+            alpha_beta_cuts_++;
             break;
         }
         alpha = std::max(alpha, max_value);
@@ -154,6 +169,11 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     tt_hits = 0;
     batches_eval = 0;
     nodes_visited = 0;
+    alpha_beta_cuts_ = 0;
+    chance_nodes_evaluated_ = 0;
+    max_nodes_evaluated_ = 0;
+    chance_value_sum_ = 0.0;
+    chance_value_count_ = 0;
     transposition_table.reset_counters();
     transposition_table.begin_new_search();   // age the TT for cross-search eviction
     int moves_resolved_this_call = 0;
@@ -309,6 +329,11 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     stats.moves_resolved = moves_resolved_this_call;
     stats.moves_unresolved = moves_unresolved_this_call;
     stats.cap_hits = cap_hits_this_call;
+    stats.alpha_beta_cuts = alpha_beta_cuts_;
+    stats.chance_nodes_evaluated = chance_nodes_evaluated_;
+    stats.max_nodes_evaluated = max_nodes_evaluated_;
+    stats.chance_value_sum = chance_value_sum_;
+    stats.chance_value_count = chance_value_count_;
 
     return stats;
 }

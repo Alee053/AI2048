@@ -78,4 +78,9 @@ class ExpectimaxSearcher:
             'moves_resolved': int(stats.moves_resolved),
             'moves_unresolved': int(stats.moves_unresolved),
             'cap_hits': int(stats.cap_hits),
+            'alpha_beta_cuts': int(stats.alpha_beta_cuts),
+            'chance_nodes_evaluated': int(stats.chance_nodes_evaluated),
+            'max_nodes_evaluated': int(stats.max_nodes_evaluated),
+            'chance_value_sum': float(stats.chance_value_sum),
+            'chance_value_count': int(stats.chance_value_count),
         }

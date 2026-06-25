@@ -36,7 +36,7 @@ The core insight: **learned value functions can replace hand-crafted heuristics*
 
 **Try it yourself:**
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
 ---
@@ -453,17 +453,17 @@ uv run python scripts/evaluate.py <model_path> [OPTIONS]
 
 Depth-3 Expectimax (recommended)
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
 Raw policy (no search)
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --no-search
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --no-search
 ```
 
 Shallow search (faster, worse performance)
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 1
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 1
 ```
 
 ---
@@ -487,19 +487,19 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 
 Full 100-episode benchmark with depth-3 search
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n_runs 100 --depth 3 --output depth3_final_eval
 ```
 
 Quick 10-episode test with raw policy
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n_runs 10 --depth 0 --output raw_policy_baseline
 ```
 
 CPU-only benchmark (no GPU required)
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n_runs 50 --depth 2 --device cpu --output depth2_cpu_test
 ```
 
@@ -677,12 +677,12 @@ uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 
 Evaluate with visualization:
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
 Run full benchmark suite:
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip \
+uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n_runs 100 --depth 3 --output depth3_expectimax_test
 ```
 

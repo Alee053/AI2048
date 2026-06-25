@@ -119,7 +119,15 @@ def train(config: dict):
     callbacks = [wandb_callback, checkpoint_callback]
 
     # Environment & Model
-    vec_env = make_vec_env(Game2048Env, n_envs=config['n_envs'])
+    # d4_augment=True is on by default for training: the model sees a
+    # uniformly random D4 symmetry on every reset/step, forcing it to
+    # learn invariance. This is what makes the C++ searcher's
+    # canonicalization safe. The flag is opt-in via env_kwargs so the
+    # env's default behavior (used by benchmark/evaluate/visualizer) is
+    # unchanged.
+    env_kwargs = dict(config.get('env_kwargs', {}))
+    env_kwargs.setdefault('d4_augment', True)
+    vec_env = make_vec_env(Game2048Env, n_envs=config['n_envs'], env_kwargs=env_kwargs)
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=config['features_dim']),

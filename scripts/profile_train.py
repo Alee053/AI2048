@@ -49,7 +49,9 @@ def time_component(name: str, fn, *args, **kwargs):
 
 def profile_pipeline(config: dict):
     """Run a profiled training burst and print stats."""
-    vec_env = make_vec_env(Game2048Env, n_envs=config["n_envs"])
+    env_kwargs = dict(config.get("env_kwargs", {}))
+    env_kwargs.setdefault("d4_augment", True)
+    vec_env = make_vec_env(Game2048Env, n_envs=config["n_envs"], env_kwargs=env_kwargs)
 
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,

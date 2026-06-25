@@ -24,6 +24,15 @@ struct SearchStats {
     int moves_resolved;
     int moves_unresolved;
     int cap_hits;
+    // Diagnostics for the chance-divisor fix and the alpha-beta correctness investigation
+    // (see the alpha_beta_cuts caveat in ExpectimaxSearcher.cpp — at a max node, the
+    //  `max_value >= beta` cut can prune children whose contribution would have brought
+    //  the parent chance node's average back into bounds).
+    size_t alpha_beta_cuts = 0;
+    size_t chance_nodes_evaluated = 0;
+    size_t max_nodes_evaluated = 0;
+    double chance_value_sum = 0.0;   // sum of chance-node return values (sanity check the divisor)
+    size_t chance_value_count = 0;   // number of chance-node returns
 };
 
 class ExpectimaxSearcher {
@@ -46,6 +55,11 @@ private:
     size_t tt_hits = 0;
     size_t batches_eval = 0;
     size_t nodes_visited = 0;
+    size_t alpha_beta_cuts_ = 0;
+    size_t chance_nodes_evaluated_ = 0;
+    size_t max_nodes_evaluated_ = 0;
+    double chance_value_sum_ = 0.0;
+    size_t chance_value_count_ = 0;
     std::chrono::high_resolution_clock::time_point search_start;
 
     float chance_node_substitute(const Board& board, int depth, uint64_t board_hash,

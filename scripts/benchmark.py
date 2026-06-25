@@ -13,10 +13,10 @@ Arguments:
 
 Examples:
     # Full 100-episode benchmark with depth-3 search
-    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --n_runs 100 --depth 3
+    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --n_runs 100 --depth 3
 
     # Quick test with raw policy
-    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --n_runs 10 --depth 0
+    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --n_runs 10 --depth 0
 """
 
 import argparse
@@ -124,6 +124,11 @@ class Benchmarker:
             'moves_resolved': 0,
             'moves_unresolved': 0,
             'cap_hits': 0,
+            'alpha_beta_cuts': 0,
+            'chance_nodes_evaluated': 0,
+            'max_nodes_evaluated': 0,
+            'chance_value_sum': 0.0,
+            'chance_value_count': 0,
             'move_scores': [],
         }
         while not done:
@@ -144,6 +149,11 @@ class Benchmarker:
                 episode_stats['moves_resolved'] += stats.get('moves_resolved', 0)
                 episode_stats['moves_unresolved'] += stats.get('moves_unresolved', 0)
                 episode_stats['cap_hits'] += stats.get('cap_hits', 0)
+                episode_stats['alpha_beta_cuts'] += stats.get('alpha_beta_cuts', 0)
+                episode_stats['chance_nodes_evaluated'] += stats.get('chance_nodes_evaluated', 0)
+                episode_stats['max_nodes_evaluated'] += stats.get('max_nodes_evaluated', 0)
+                episode_stats['chance_value_sum'] += stats.get('chance_value_sum', 0.0)
+                episode_stats['chance_value_count'] += stats.get('chance_value_count', 0)
                 # Keep the latest move_scores and tt_size for reference
                 episode_stats['move_scores'] = list(stats.get('move_scores', []))
                 episode_stats['tt_size'] = stats.get('tt_size', 0)
@@ -256,10 +266,20 @@ class Benchmarker:
             moves_resolved = [s['search_stats'].get('moves_resolved', 0) for s in stats if s.get('search_stats')]
             moves_unresolved = [s['search_stats'].get('moves_unresolved', 0) for s in stats if s.get('search_stats')]
             cap_hits = [s['search_stats'].get('cap_hits', 0) for s in stats if s.get('search_stats')]
+            alpha_beta_cuts = [s['search_stats'].get('alpha_beta_cuts', 0) for s in stats if s.get('search_stats')]
+            chance_nodes = [s['search_stats'].get('chance_nodes_evaluated', 0) for s in stats if s.get('search_stats')]
+            max_nodes = [s['search_stats'].get('max_nodes_evaluated', 0) for s in stats if s.get('search_stats')]
+            chance_value_sums = [s['search_stats'].get('chance_value_sum', 0.0) for s in stats if s.get('search_stats')]
+            chance_value_counts = [s['search_stats'].get('chance_value_count', 0) for s in stats if s.get('search_stats')]
 
             if think_times:
                 avg_think = np.mean(think_times)
                 avg_nodes = np.mean(nodes_vis)
+                # Aggregate chance value: sum the per-move sums/counts to get the
+                # true mean across all chance-node evaluations in all games.
+                total_cv_sum = float(np.sum(chance_value_sums))
+                total_cv_count = int(np.sum(chance_value_counts))
+                avg_chance_value = (total_cv_sum / total_cv_count) if total_cv_count > 0 else 0.0
                 search_metrics = {
                     "avg_think_ms": round(float(avg_think), 3),
                     "avg_nodes_visited": round(float(avg_nodes), 1),
@@ -271,6 +291,11 @@ class Benchmarker:
                     "avg_moves_resolved": round(float(np.mean(moves_resolved)), 2) if moves_resolved else 0.0,
                     "avg_moves_unresolved": round(float(np.mean(moves_unresolved)), 2) if moves_unresolved else 0.0,
                     "avg_cap_hits": round(float(np.mean(cap_hits)), 1) if cap_hits else 0.0,
+                    # Diagnostic fields (added on fix-chance-divisor branch)
+                    "avg_alpha_beta_cuts": round(float(np.mean(alpha_beta_cuts)), 1) if alpha_beta_cuts else 0.0,
+                    "avg_chance_nodes": round(float(np.mean(chance_nodes)), 1) if chance_nodes else 0.0,
+                    "avg_max_nodes": round(float(np.mean(max_nodes)), 1) if max_nodes else 0.0,
+                    "avg_chance_value": round(avg_chance_value, 4),
                 }
 
         summary = {
@@ -330,6 +355,10 @@ class Benchmarker:
             print(f"  moves_resolved:      {search_metrics.get('avg_moves_resolved', 0):.2f} / 4")
             print(f"  moves_unresolved:    {search_metrics.get('avg_moves_unresolved', 0):.2f} / 4")
             print(f"  cap_hits:            {search_metrics.get('avg_cap_hits', 0):.1f}")
+            print(f"  alpha_beta_cuts:     {search_metrics.get('avg_alpha_beta_cuts', 0):.1f}  (unsound in expectimax; counts max-node beta cuts)")
+            print(f"  chance_nodes:        {search_metrics.get('avg_chance_nodes', 0):.1f}")
+            print(f"  max_nodes:           {search_metrics.get('avg_max_nodes', 0):.1f}")
+            print(f"  avg_chance_value:    {search_metrics.get('avg_chance_value', 0):.4f}  (sanity check: 2x here => buggy build)")
         print("="*40)
         
         # Save JSON

@@ -11,10 +11,10 @@ Arguments:
 
 Examples:
     # Depth-3 Expectimax (recommended)
-    python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --depth 3
+    python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 
     # Raw policy (no search)
-    python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v1.zip --no-search
+    python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --no-search
 """
 
 import argparse
