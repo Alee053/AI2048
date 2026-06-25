@@ -17,7 +17,7 @@ This project implements a **hybrid AI agent** for the game 2048 that combines:
 
 The core insight: **learned value functions can replace hand-crafted heuristics** in classical search algorithms, reducing search depth requirements while maintaining strong performance.
 
-**Key Result (v3, D4-augmented):** ~90% win rate (reaching 2048+ tile) with depth-3 search, mean score ~44,000 on a 30-game benchmark — a 1.7× improvement over the v1 release (26,523 ± 12,750). At depth 4 the same model reached 74,020 (max tile 4096) in a single-game run, finishing cleanly with no cap hits.
+**Key Result (v3, D4-augmented):** **35,292 ± 12,283** mean score with **90% win rate at 2048+** (16.7% reaching 4096) on a 30-game depth-3 benchmark. This is a **1.3× improvement in mean score and 1.5× in win rate** over the v1 release (26,523 ± 12,750 mean, 58% win rate at 2048+). At depth 4 the same model reached **74,020** (max tile 4096) in a single-game run, finishing cleanly with no cap hits.
 
 ---
 
@@ -53,8 +53,8 @@ Raw-policy and depth-1/2 results use the v1 release model. Depth-3+ results are 
 | **+ Expectimax (d=1)** | v1 | 5,127.32 ± 2,482.23 | 0% | 1024 (4%) | 100 games |
 | **+ Expectimax (d=2)** | v1 | 14,014.08 ± 6,496.21 | 13% | 2048 (13%) | 100 games |
 | **+ Expectimax (d=3)** | v1 | 26,523 ± 12,749.82 | 58% | 4096 (8%) | 100 games (pre-D4 baseline) |
-| **+ Expectimax (d=3)** | **v3 (D4-aug)** | **~44,000** | **~90%** | 4096 (high) | 30 games, current release |
-| **+ Expectimax (d=4)** | **v3 (D4-aug)** | **74,020** | 100% | 4096 (100%) | 1 game (n=1 sample) |
+| **+ Expectimax (d=3)** | **v3 (D4-aug)** | **35,292.27 ± 12,283.06** | **90%** (27/30 at 2048+, 16.7% at 4096) | 4096 (16.7%) | 30 games, current release |
+| **+ Expectimax (d=4)** | **v3 (D4-aug)** | **74,020.00** | 100% | 4096 (100%) | 1 game (n=1 sample) |
 
 The v1→v3 jump at depth 3 is the regression fix documented in
 [`docs/DEPTH3-REGRESSION-ROOT-CAUSE.md`](docs/DEPTH3-REGRESSION-ROOT-CAUSE.md):
@@ -176,8 +176,8 @@ float max_node_substitute(const Board& board, int depth,
 ```
 
 ##### Transposition Table Efficacy:
-- **Dynamic Cache Hit Rate:** Average ~24% across full-game depth-4 search (rising over the episode as the persistent TT warms up). The TT key is the canonical D4 form of the board, so rotated boards share entries.
-- **Performance Gain:** Combined with alpha-beta-style pruning and the deferred-batching leaf eval, depth-3 search runs in ~7s/move on GPU, depth-4 in ~80s/move.
+- **Dynamic Cache Hit Rate:** Average 20.3% across 30 depth-3 games, 24.3% on a single depth-4 game (rising over the episode as the persistent TT warms up). The TT key is the canonical D4 form of the board, so rotated boards share entries.
+- **Performance Gain:** Combined with alpha-beta-style pruning and the deferred-batching leaf eval, depth-3 search averages 134M nodes visited per game at ~0.16s/move; depth-4 averages 2.45B nodes at ~0.16s/move. The search converges cleanly (`cap_hits=0`, `moves_unresolved=0`) on every run.
 ---
 
 #### **Batched Leaf Evaluation (Deferred Batching)**

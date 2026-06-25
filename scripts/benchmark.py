@@ -20,6 +20,7 @@ Examples:
 """
 
 import argparse
+import hashlib
 import numpy as np
 import torch
 import json
@@ -59,6 +60,27 @@ from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 def to_py(val):
     return val.item() if isinstance(val, np.generic) else val
 
+
+def _md5_of_file(path: str) -> str | None:
+    """Return the MD5 hex digest of a file, or None if unreadable."""
+    try:
+        h = hashlib.md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def _win_rates(max_tiles: List[int], n: int) -> Dict[str, float]:
+    """Return the win rate (>= threshold) for 1024, 2048, 4096, 8192."""
+    out: Dict[str, float] = {}
+    for threshold in (1024, 2048, 4096, 8192):
+        wins = sum(1 for t in max_tiles if t >= threshold)
+        out[f"win_rate_{threshold}+"] = round(wins / n, 4) if n else 0.0
+    return out
+
 # Attempt to import the ExpectimaxSearcher extension
 try:
     from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
@@ -70,12 +92,16 @@ class Benchmarker:
     def __init__(self, model_path: str, use_expectimax: bool, search_depth: int, device: str = "auto"):
         self.use_expectimax = use_expectimax
         self.search_depth = search_depth
-        
+        self.model_path = model_path
+
         # Load Model
         print(f"Loading model from: {model_path}")
         self.model = MaskablePPO.load(model_path, device=device)
         self.device = self.model.device
-        
+        self.use_cuda = isinstance(self.device, torch.device) and self.device.type == "cuda" \
+            or (isinstance(self.device, str) and self.device.startswith("cuda")) \
+            or (self.device == "auto" and torch.cuda.is_available())
+
         # Init Env
         self.env = Game2048Env()
         
@@ -302,18 +328,31 @@ class Benchmarker:
             "config": {
                 "use_expectimax": self.use_expectimax,
                 "search_depth": self.search_depth,
-                "n_runs": len(stats)
+                "n_runs": len(stats),
+                "model_path": str(self.model_path) if hasattr(self, "model_path") else None,
+                "model_md5": _md5_of_file(str(self.model_path)) if hasattr(self, "model_path") else None,
+                "device": str(self.device),
+                "cuda_device_name": torch.cuda.get_device_name(self.device) if self.use_cuda else None,
+                "cuda_runtime": torch.version.cuda if self.use_cuda else None,
             },
             "metrics": {
                 "avg_score": to_py(np.mean(scores)),
                 "std_score": to_py(np.std(scores)),
                 "min_score": to_py(np.min(scores)),
                 "max_score": to_py(np.max(scores)),
+                "median_score": to_py(float(np.median(scores))),
+                "p25_score": to_py(float(np.percentile(scores, 25))),
+                "p75_score": to_py(float(np.percentile(scores, 75))),
                 "avg_steps": to_py(np.mean(steps)),
+                "min_steps": int(np.min(steps)),
+                "max_steps": int(np.max(steps)),
+                "median_steps": to_py(float(np.median(steps))),
                 "total_time_s": round(total_elapsed, 3),
+                "avg_time_per_game_s": round(total_elapsed / len(stats), 3) if stats else 0.0,
                 "games_per_sec": round(len(stats) / total_elapsed, 3) if total_elapsed > 0 else 0.0,
                 **search_metrics,
             },
+            "win_rates": _win_rates(max_tiles, len(stats)),
             "max_tile_dist": {str(t): max_tiles.count(t) for t in sorted(set(max_tiles))},
             "raw_data": stats
         }
@@ -336,12 +375,18 @@ class Benchmarker:
         print(f"Runs Completed: {len(stats)}")
         print(f"Total Time:     {total_elapsed:.1f}s ({summary['metrics']['games_per_sec']:.2f} games/s)")
         print(f"Average Score:  {summary['metrics']['avg_score']:.2f} +/- {summary['metrics']['std_score']:.2f}")
-        print(f"Average Steps:  {summary['metrics']['avg_steps']:.2f}")
+        print(f"  min/median/max: {summary['metrics']['min_score']} / {summary['metrics']['median_score']:.0f} / {summary['metrics']['max_score']}")
+        print(f"Average Steps:  {summary['metrics']['avg_steps']:.2f}  (min {summary['metrics']['min_steps']}, max {summary['metrics']['max_steps']})")
+        print(f"Per-game time:  {summary['metrics']['avg_time_per_game_s']:.2f}s")
         print("-" * 40)
         print("Max Tile Distribution:")
         for tile, count in summary['max_tile_dist'].items():
             percentage = (count / len(stats)) * 100
             print(f"  {tile}: {count} ({percentage:.1f}%)")
+        if "win_rates" in summary:
+            print("Win rates (>= threshold):")
+            for k, v in summary["win_rates"].items():
+                print(f"  {k}: {v * 100:.1f}%")
         if self.use_expectimax and search_metrics:
             print("-" * 40)
             print("Search Diagnostics (per move, averaged):")
