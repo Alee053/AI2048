@@ -29,7 +29,7 @@ from twenty_forty_eight_ai.env.d4_transforms import (
 from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
 
-MODEL_PATH = "data/models/hybrid_ppo_v3/final_model.zip"
+MODEL_PATH = "data/models/release/Hybrid-PPO-Expectimax-v1.zip"
 N_BOARDS = 100
 TOLERANCE = 0.01
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -80,13 +80,27 @@ def evaluate(model: MaskablePPO, board: np.ndarray) -> float:
 
 
 def main() -> int:
-    print(f"Loading NEW model: {MODEL_PATH}")
+    print(f"Loading model: {MODEL_PATH}")
     new_model = MaskablePPO.load(MODEL_PATH, device=DEVICE)
     old_model = None
-    old_path = "data/models/release/Hybrid-PPO-Expectimax-v1.zip"
-    if Path(old_path).exists():
-        print(f"Loading OLD model: {old_path}")
+    old_path = None
+    # The OLD release has been replaced by the retrained model on the
+    # fix-regression branch; if a backup exists at a known path, load
+    # it for comparison. Otherwise the baseline is unavailable.
+    candidate_old = Path("data/models/release/Hybrid-PPO-Expectimax-v1.zip.bak")
+    if candidate_old.exists() and candidate_old.resolve() != Path(MODEL_PATH).resolve():
+        old_path = str(candidate_old)
+    elif Path(MODEL_PATH).name == "Hybrid-PPO-Expectimax-v1.zip":
+        # The release model now IS the retrained model. Look for a
+        # pre-retraining backup if one was kept aside.
+        backup = Path("data/models/_pre_d4_baseline.zip")
+        if backup.exists():
+            old_path = str(backup)
+    if old_path is not None:
+        print(f"Loading OLD baseline: {old_path}")
         old_model = MaskablePPO.load(old_path, device=DEVICE)
+    else:
+        print("No OLD baseline available (release model was replaced by retrain).")
     print(f"Device: {DEVICE}")
     print(f"Boards: {N_BOARDS}, tolerance: {TOLERANCE}")
     print()
