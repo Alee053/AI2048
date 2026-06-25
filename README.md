@@ -17,7 +17,7 @@ This project implements a **hybrid AI agent** for the game 2048 that combines:
 
 The core insight: **learned value functions can replace hand-crafted heuristics** in classical search algorithms, reducing search depth requirements while maintaining strong performance.
 
-**Key Result (v3, D4-augmented):** **35,292 ± 12,283** mean score with **90% win rate at 2048+** (16.7% reaching 4096) on a 30-game depth-3 benchmark. This is a **1.3× improvement in mean score and 1.5× in win rate** over the v1 release (26,523 ± 12,750 mean, 58% win rate at 2048+). At depth 4 the same model reached **74,020** (max tile 4096) in a single-game run, finishing cleanly with no cap hits.
+**Key Result (v3, D4-augmented):** **36,275.87 ± 16,673.48** mean score (median **33,484**, range 14,820–79,864) on a 30-game depth-3 benchmark. Win rates: **100% at 1024+, 80% at 2048+, 20% at 4096+**. This is a **1.4× improvement in mean score** over the v1 release (26,523 ± 12,750 mean, 58% at 2048+). At depth 4 the same model reached **74,020** (max tile 4096) in a single-game run, finishing cleanly with no cap hits.
 
 ---
 
@@ -53,7 +53,7 @@ Raw-policy and depth-1/2 results use the v1 release model. Depth-3+ results are 
 | **+ Expectimax (d=1)** | v1 | 5,127.32 ± 2,482.23 | 0% | 1024 (4%) | 100 games |
 | **+ Expectimax (d=2)** | v1 | 14,014.08 ± 6,496.21 | 13% | 2048 (13%) | 100 games |
 | **+ Expectimax (d=3)** | v1 | 26,523 ± 12,749.82 | 58% | 4096 (8%) | 100 games (pre-D4 baseline) |
-| **+ Expectimax (d=3)** | **v3 (D4-aug)** | **35,292.27 ± 12,283.06** | **90%** (27/30 at 2048+, 16.7% at 4096) | 4096 (16.7%) | 30 games, current release |
+| **+ Expectimax (d=3)** | **v3 (D4-aug)** | **36,275.87 ± 16,673.48** (median 33,484, range 14,820–79,864) | **80% at 2048+**, 20% at 4096+, 100% at 1024+ | 4096 (20%), 2048 (60%), 1024 (20%) | 30 games, current release |
 | **+ Expectimax (d=4)** | **v3 (D4-aug)** | **74,020.00** | 100% | 4096 (100%) | 1 game (n=1 sample) |
 
 The v1→v3 jump at depth 3 is the regression fix documented in
@@ -68,7 +68,7 @@ evaluations under the C++ canonicalization. See "D4 Augmentation" below.
 **To reproduce the v3 depth-3 numbers** (30 games, ~3.5h on a T4 GPU):
 ```bash
 uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n_runs 30 --depth 3 --device cuda --output v3_depth3
+  --n_runs 30 --depth 3 --device cuda --output v3_depth3_final
 ```
 
 **To verify D4 invariance of the released model** (≤30s on GPU):
@@ -76,6 +76,13 @@ uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.
 uv run python scripts/check_d4_invariance.py
 ```
 
+**v3 depth-3 score distribution** (30 games, the run whose numbers are in the table above):
+
+<p align="center">
+  <img src="assets/v3_depth3_score_distribution.png" width="700" alt="v3 Depth-3 Score Distribution"/>
+  <br/>
+  <em>30-game depth-3 score distribution: min 14,820, median 33,484, mean 36,276, max 79,864. Bimodal peaks at 2048 (60%) and 4096 (20%); 20% of games capped at 1024.</em>
+</p>
 
 
 ---
@@ -176,8 +183,8 @@ float max_node_substitute(const Board& board, int depth,
 ```
 
 ##### Transposition Table Efficacy:
-- **Dynamic Cache Hit Rate:** Average 20.3% across 30 depth-3 games, 24.3% on a single depth-4 game (rising over the episode as the persistent TT warms up). The TT key is the canonical D4 form of the board, so rotated boards share entries.
-- **Performance Gain:** Combined with alpha-beta-style pruning and the deferred-batching leaf eval, depth-3 search averages 134M nodes visited per game at ~0.16s/move; depth-4 averages 2.45B nodes at ~0.16s/move. The search converges cleanly (`cap_hits=0`, `moves_unresolved=0`) on every run.
+- **Dynamic Cache Hit Rate:** 20.34% across the 30-game depth-3 benchmark (rising over the episode as the persistent TT warms up); 24.34% on the single depth-4 game. The TT key is the canonical D4 form of the board, so rotated boards share entries.
+- **Performance Gain:** Combined with alpha-beta-style pruning and the deferred-batching leaf eval, depth-3 search averages 134M nodes visited per game at 489,831 nodes/sec; depth-4 averages 2.45B nodes per game at 504,703 nodes/sec. The search converges cleanly (`cap_hits=0`, `moves_unresolved=0`) on every run.
 ---
 
 #### **Batched Leaf Evaluation (Deferred Batching)**
@@ -755,7 +762,7 @@ v1 release (pre-augmentation) had mean ~1.0, max ~6.0 on the same boards
 regression doc is aspirational; the CustomCNN is not rotation-equivariant
 by design, so 100M steps gets the model close but not perfect. The
 residual error is small enough that the C++ search still picks strong
-moves (mean ~44k at depth 3, vs the OLD's 26,523).
+moves (mean 36,276 at depth 3, vs the OLD's 26,523).
 
 ---
 
