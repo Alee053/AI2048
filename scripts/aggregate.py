@@ -29,7 +29,8 @@ def _check_schema_versions(benchmark_dir, sweep_name):
     """Walk {sweep_name}_depth* folders and check config.json schema versions.
 
     Returns a list of (path, version) tuples for any run whose major
-    version differs from SUPPORTED_SCHEMA_MAJOR.
+    version differs from SUPPORTED_SCHEMA_MAJOR. Config lives at the
+    depth-folder root (the producer writes {sweep}_depth{N}/config.json).
     """
     pattern = re.compile(rf"{re.escape(sweep_name)}_depth(\d+)")
     violations = []
@@ -38,31 +39,40 @@ def _check_schema_versions(benchmark_dir, sweep_name):
             continue
         if not pattern.match(entry.name):
             continue
-        for sub in os.scandir(entry.path):
-            if not sub.is_dir():
+        cfg = Path(entry.path) / "config.json"
+        if not cfg.exists():
+            # Try subdir fallback for legacy multi-seed sweeps.
+            for sub in os.scandir(entry.path):
+                if not sub.is_dir():
+                    continue
+                legacy_cfg = Path(sub.path) / "config.json"
+                if legacy_cfg.exists():
+                    cfg = legacy_cfg
+                    break
+            else:
                 continue
-            cfg = Path(sub.path) / "config.json"
-            if not cfg.exists():
-                continue
-            try:
-                with open(cfg) as f:
-                    cfg_data = json.load(f)
-                ver = cfg_data.get("benchmark_schema_version", "")
-                major = int(ver.split(".")[0]) if ver else 0
-                if major != SUPPORTED_SCHEMA_MAJOR:
-                    violations.append((sub.path, ver))
-            except Exception:
-                violations.append((sub.path, "unreadable"))
+        try:
+            with open(cfg) as f:
+                cfg_data = json.load(f)
+            ver = cfg_data.get("benchmark_schema_version", "")
+            major = int(ver.split(".")[0]) if ver else 0
+            if major != SUPPORTED_SCHEMA_MAJOR:
+                violations.append((str(cfg.parent), ver))
+        except Exception:
+            violations.append((str(cfg.parent), "unreadable"))
     return violations
 
 
-def discover_depth_folders(benchmark_dir: str, sweep_name: str) -> dict:
+def discover_depth_folders(benchmark_dir: str, sweep_name: str, legacy: bool = False) -> dict:
     """Find all {sweep_name}_depth{N} folders and their result files.
 
     Supports both legacy layouts (results_seed_N.json per seed) and the
     new flat layout where each depth folder contains episodes.csv directly.
     Falls back to treating benchmark_dir as a single depth=0 run when no
     sweep subfolders are present (single-run smoke case).
+
+    When legacy=True, only results_seed_N.json files are accepted and the
+    episodes.csv fallback is skipped.
     """
     pattern = re.compile(rf"{re.escape(sweep_name)}_depth(\d+)")
     depth_folders = {}
@@ -84,6 +94,8 @@ def discover_depth_folders(benchmark_dir: str, sweep_name: str) -> dict:
                 "results": legacy_files,
             }
             continue
+        if legacy:
+            continue
         ep_csv = Path(entry.path) / "episodes.csv"
         if ep_csv.exists():
             depth_folders[depth] = {
@@ -92,7 +104,7 @@ def discover_depth_folders(benchmark_dir: str, sweep_name: str) -> dict:
             }
 
     # Single-run fallback: benchmark_dir itself contains episodes.csv.
-    if not depth_folders:
+    if not depth_folders and not legacy:
         direct_csv = Path(benchmark_dir) / "episodes.csv"
         if direct_csv.exists():
             depth_folders[0] = {
@@ -215,7 +227,7 @@ def main():
             sys.exit(2)
 
     # Discover
-    depth_folders = discover_depth_folders(benchmark_dir, sweep_name)
+    depth_folders = discover_depth_folders(benchmark_dir, sweep_name, legacy=args.legacy)
     if not depth_folders:
         print(f"Error: no depth folders found for sweep '{sweep_name}' in {benchmark_dir}")
         print(f"  Expected pattern: {sweep_name}_depth<N>")
@@ -291,7 +303,7 @@ def main():
                     ("avg_tt_hit_rate", "mean_tt_hit_rate"),
                     ("avg_chance_value", "mean_chance_value"),
                 ]:
-                    vals = [r[col] for r in episodes if r.get(col) is not None and r[col] != 0]
+                    vals = [r[col] for r in episodes if r.get(col) is not None and not (isinstance(r[col], float) and (r[col] != r[col]))]
                     if vals:
                         row[key] = float(sum(vals) / len(vals))
                 # Reuse the existing win-rate/tile-eq computation by passing
