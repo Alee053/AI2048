@@ -57,7 +57,13 @@ def _check_schema_versions(benchmark_dir, sweep_name):
 
 
 def discover_depth_folders(benchmark_dir: str, sweep_name: str) -> dict:
-    """Find all {sweep_name}_depth{N} folders and their result files."""
+    """Find all {sweep_name}_depth{N} folders and their result files.
+
+    Supports both legacy layouts (results_seed_N.json per seed) and the
+    new flat layout where each depth folder contains episodes.csv directly.
+    Falls back to treating benchmark_dir as a single depth=0 run when no
+    sweep subfolders are present (single-run smoke case).
+    """
     pattern = re.compile(rf"{re.escape(sweep_name)}_depth(\d+)")
     depth_folders = {}
 
@@ -68,14 +74,30 @@ def discover_depth_folders(benchmark_dir: str, sweep_name: str) -> dict:
         if not m:
             continue
         depth = int(m.group(1))
-        result_files = sorted([
+        legacy_files = sorted([
             f.path for f in os.scandir(entry.path)
             if re.match(r"results_seed_\d+\.json", f.name)
         ])
-        if result_files:
+        if legacy_files:
             depth_folders[depth] = {
                 "path": entry.path,
-                "results": result_files
+                "results": legacy_files,
+            }
+            continue
+        ep_csv = Path(entry.path) / "episodes.csv"
+        if ep_csv.exists():
+            depth_folders[depth] = {
+                "path": entry.path,
+                "results": [str(ep_csv)],
+            }
+
+    # Single-run fallback: benchmark_dir itself contains episodes.csv.
+    if not depth_folders:
+        direct_csv = Path(benchmark_dir) / "episodes.csv"
+        if direct_csv.exists():
+            depth_folders[0] = {
+                "path": benchmark_dir,
+                "results": [str(direct_csv)],
             }
     return depth_folders
 
@@ -90,7 +112,7 @@ def compute_win_rates(raw_data: list, thresholds: list) -> dict:
     n = len(raw_data)
     result = {}
     for t in thresholds:
-        result[f"win_rate_{t}"] = sum(1 for r in raw_data if r["max_tile"] >= t) / n
+        result[f"win_rate_{t}"] = (sum(1 for r in raw_data if r["max_tile"] >= t) / n) if n else 0.0
     return result
 
 
@@ -99,7 +121,7 @@ def compute_max_tile_eq_pct(raw_data: list, thresholds: list) -> dict:
     n = len(raw_data)
     result = {}
     for t in thresholds:
-        result[f"max_tile_eq_{t}_pct"] = sum(1 for r in raw_data if r["max_tile"] == t) / n
+        result[f"max_tile_eq_{t}_pct"] = (sum(1 for r in raw_data if r["max_tile"] == t) / n) if n else 0.0
     return result
 
 
@@ -138,6 +160,33 @@ def compute_ci(mean: float, std: float, n: int, z: float = 1.96) -> tuple:
     """Compute 95% CI given mean, std, and n samples."""
     se = std / np.sqrt(n)
     return mean - z * se, mean + z * se
+
+
+def _pstdev(values):
+    """Population standard deviation. Used for per-seed std in summary rows."""
+    if not values or len(values) < 2:
+        return 0.0
+    n = len(values)
+    mean = sum(values) / n
+    return (sum((v - mean) ** 2 for v in values) / n) ** 0.5
+
+
+def load_episodes_csv(run_dir):
+    """Load episodes.csv from a run folder as a list of dicts.
+
+    Returns an empty list if the file doesn't exist or pandas is missing.
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        print("Error: aggregate.py requires pandas for the new CSV layout.")
+        print("Install with: uv add pandas")
+        sys.exit(1)
+    csv_path = Path(run_dir) / "episodes.csv"
+    if not csv_path.exists():
+        return []
+    df = pd.read_csv(csv_path)
+    return df.to_dict("records")
 
 
 def main():
@@ -186,12 +235,21 @@ def main():
     for depth, info in sorted(depth_folders.items()):
         depth_results = []
         for result_path in info["results"]:
-            seed_m = re.search(r"results_seed_(\d+)\.json", os.path.basename(result_path))
-            if seed_m is None:
+            basename = os.path.basename(result_path)
+            seed_m = re.search(r"results_seed_(\d+)\.json", basename)
+            if seed_m is not None:
+                seed_n = int(seed_m.group(1))
+            elif basename == "episodes.csv":
+                # New flat layout: treat each depth folder as a single seed=0 run.
+                seed_n = 0
+            else:
                 continue
-            seed_n = int(seed_m.group(1))
-            result = load_result_file(result_path)
-            raw = result.get("raw_data", [])
+            if basename.endswith(".json"):
+                result = load_result_file(result_path)
+                raw = result.get("raw_data", [])
+            else:
+                result = {}
+                raw = []
 
             win_rates = compute_win_rates(raw, REPORT_THRESHOLDS)
             tile_eq_pcts = compute_max_tile_eq_pct(raw, THRESHOLDS)
@@ -200,62 +258,115 @@ def main():
                 "sweep_name": sweep_name,
                 "depth": depth,
                 "seed": seed_n,
-                "avg_score": result["metrics"]["avg_score"],
-                "std_score": result["metrics"]["std_score"],
-                "min_score": result["metrics"]["min_score"],
-                "max_score": result["metrics"]["max_score"],
-                "avg_steps": result["metrics"]["avg_steps"],
             }
-            # Include search metrics if present
-            for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
-                if key in result["metrics"]:
-                    row[key] = result["metrics"][key]
+            run_dir = os.path.dirname(result_path)
+            episodes = load_episodes_csv(run_dir) if not args.legacy else []
+
+            if episodes:
+                # New CSV layout
+                scores = [int(r["score"]) for r in episodes]
+                steps_ = [int(r["steps"]) for r in episodes]
+                max_tiles = [int(r["max_tile"]) for r in episodes]
+                row.update({
+                    "avg_score": float(sum(scores) / len(scores)),
+                    "std_score": float(_pstdev(scores)),
+                    "min_score": min(scores),
+                    "max_score": max(scores),
+                    "avg_steps": float(sum(steps_) / len(steps_)),
+                })
+                # Include search-mode metrics from episodes.csv when present.
+                for key, col in [
+                    ("avg_think_ms", "total_think_ms"),
+                    ("avg_nodes_visited", "total_nodes"),
+                    ("avg_batches_eval", "total_batches"),
+                    ("avg_tt_collisions", "total_tt_collisions"),
+                    ("avg_tt_same_key_overwrites", "total_tt_same_key_overwrites"),
+                    ("avg_moves_resolved", "total_moves_resolved"),
+                    ("avg_moves_unresolved", "total_moves_unresolved"),
+                    ("avg_cap_hits", "total_cap_hits"),
+                    ("avg_alpha_beta_cuts", "total_alpha_beta_cuts"),
+                    ("avg_chance_nodes", "total_chance_nodes"),
+                    ("avg_max_nodes", "total_max_nodes"),
+                    ("avg_nodes_per_sec", "mean_nps"),
+                    ("avg_tt_hit_rate", "mean_tt_hit_rate"),
+                    ("avg_chance_value", "mean_chance_value"),
+                ]:
+                    vals = [r[col] for r in episodes if r.get(col) is not None and r[col] != 0]
+                    if vals:
+                        row[key] = float(sum(vals) / len(vals))
+                # Reuse the existing win-rate/tile-eq computation by passing
+                # synthetic raw_data-like list.
+                win_rates = compute_win_rates(
+                    [{"score": s, "max_tile": mt} for s, mt in zip(scores, max_tiles)],
+                    REPORT_THRESHOLDS,
+                )
+                tile_eq_pcts = compute_max_tile_eq_pct(
+                    [{"max_tile": mt} for mt in max_tiles],
+                    THRESHOLDS,
+                )
+            else:
+                # Legacy JSON layout
+                row.update({
+                    "avg_score": result["metrics"]["avg_score"],
+                    "std_score": result["metrics"]["std_score"],
+                    "min_score": result["metrics"]["min_score"],
+                    "max_score": result["metrics"]["max_score"],
+                    "avg_steps": result["metrics"]["avg_steps"],
+                })
+                for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+                    if key in result["metrics"]:
+                        row[key] = result["metrics"][key]
+
             row.update(win_rates)
             row.update(tile_eq_pcts)
             summary_rows.append(row)
             depth_results.append(result)
 
-        # Cross-seed aggregate row for this depth
-        agg = aggregate_depth(depth_results)
-        ci_lower, ci_upper = compute_ci(agg["mean_score"], agg["std_score"], agg["n_seeds"])
-        agg_row = {
-            "sweep_name": sweep_name,
-            "depth": depth,
-            "seed": "aggregate",
-            "avg_score": agg["mean_score"],
-            "std_score": agg["std_score"],
-            "min_score": agg["min_score"],
-            "max_score": agg["max_score"],
-            "avg_steps": agg["mean_steps"],
-        }
-        # Aggregate search metrics across seeds
-        for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
-            vals = [r["metrics"][key] for r in depth_results if key in r["metrics"]]
-            if vals:
-                agg_row[key] = round(np.mean(vals), 3 if key == "avg_think_ms" else 2 if key == "avg_tt_hit_rate" else 1)
-        # Compute aggregate win rates from pooled raw data
-        all_raw = [r for res in depth_results for r in res.get("raw_data", [])]
-        agg_win_rates = compute_win_rates(all_raw, REPORT_THRESHOLDS)
-        agg_tile_eq = compute_max_tile_eq_pct(all_raw, THRESHOLDS)
-        agg_row.update(agg_win_rates)
-        agg_row.update(agg_tile_eq)
-        summary_rows.append(agg_row)
+        # Cross-seed aggregate row for this depth (legacy only; new flat
+        # layout contributes a single per-seed row that already encodes
+        # the metrics).
+        legacy_depth_results = [r for r in depth_results if r.get("metrics")]
+        if legacy_depth_results:
+            agg = aggregate_depth(legacy_depth_results)
+            ci_lower, ci_upper = compute_ci(agg["mean_score"], agg["std_score"], agg["n_seeds"])
+            agg_row = {
+                "sweep_name": sweep_name,
+                "depth": depth,
+                "seed": "aggregate",
+                "avg_score": agg["mean_score"],
+                "std_score": agg["std_score"],
+                "min_score": agg["min_score"],
+                "max_score": agg["max_score"],
+                "avg_steps": agg["mean_steps"],
+            }
+            # Aggregate search metrics across seeds
+            for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+                vals = [r["metrics"][key] for r in legacy_depth_results if key in r["metrics"]]
+                if vals:
+                    agg_row[key] = round(np.mean(vals), 3 if key == "avg_think_ms" else 2 if key == "avg_tt_hit_rate" else 1)
+            # Compute aggregate win rates from pooled raw data
+            all_raw = [r for res in legacy_depth_results for r in res.get("raw_data", [])]
+            agg_win_rates = compute_win_rates(all_raw, REPORT_THRESHOLDS)
+            agg_tile_eq = compute_max_tile_eq_pct(all_raw, THRESHOLDS)
+            agg_row.update(agg_win_rates)
+            agg_row.update(agg_tile_eq)
+            summary_rows.append(agg_row)
 
-        # Cross-depth CI table
-        ci_row = {
-            "depth": depth,
-            "mean_score": agg["mean_score"],
-            "std_score": agg["std_score"],
-            "ci_lower": ci_lower,
-            "ci_upper": ci_upper,
-            "n_seeds": agg["n_seeds"],
-            "n_episodes": agg["n_seeds"] * agg["n_episodes"],
-        }
-        # Include search metrics in CI table
-        for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
-            if key in agg:
-                ci_row[key] = agg[key]
-        cross_depth_rows.append(ci_row)
+            # Cross-depth CI table
+            ci_row = {
+                "depth": depth,
+                "mean_score": agg["mean_score"],
+                "std_score": agg["std_score"],
+                "ci_lower": ci_lower,
+                "ci_upper": ci_upper,
+                "n_seeds": agg["n_seeds"],
+                "n_episodes": agg["n_seeds"] * agg["n_episodes"],
+            }
+            # Include search metrics in CI table
+            for key in ["avg_think_ms", "avg_nodes_visited", "avg_batches_eval", "avg_nodes_per_sec", "avg_tt_hit_rate"]:
+                if key in agg:
+                    ci_row[key] = agg[key]
+            cross_depth_rows.append(ci_row)
 
     # Write summary.csv
     csv_path = output_dir / "summary.csv"
@@ -294,17 +405,32 @@ def main():
         figures_dir = output_dir / "paper_figures"
         figures_dir.mkdir(exist_ok=True)
 
-        for depth, info in sorted(depth_folders.items()):
-            # Load all seed results for this depth
-            seed_data = []
-            for result_path in info["results"]:
+        def _load_scores_for_path(result_path):
+            """Return a list of {seed, scores, raw} entries for one path."""
+            basename = os.path.basename(result_path)
+            if basename.endswith(".json"):
                 result = load_result_file(result_path)
-                seed_m = re.search(r"results_seed_(\d+)\.json", os.path.basename(result_path))
-                if seed_m is None:
-                    continue
-                seed_n = seed_m.group(1)
-                scores = [r["score"] for r in result.get("raw_data", [])]
-                seed_data.append({"seed": seed_n, "scores": scores})
+                seed_m = re.search(r"results_seed_(\d+)\.json", basename)
+                seed = seed_m.group(1) if seed_m else "0"
+                raw = result.get("raw_data", [])
+                scores = [r["score"] for r in raw]
+                return [{"seed": seed, "scores": scores, "raw": raw}]
+            if basename == "episodes.csv":
+                run_dir = os.path.dirname(result_path)
+                episodes = load_episodes_csv(run_dir)
+                raw = [{"score": int(r["score"]), "max_tile": int(r["max_tile"])} for r in episodes]
+                scores = [int(r["score"]) for r in episodes]
+                return [{"seed": "0", "scores": scores, "raw": raw}]
+            return []
+
+        for depth, info in sorted(depth_folders.items()):
+            seed_data = []
+            all_raw = []
+            for result_path in info["results"]:
+                entries = _load_scores_for_path(result_path)
+                seed_data.extend(entries)
+                for e in entries:
+                    all_raw.extend(e["raw"])
 
             if not seed_data:
                 continue
@@ -323,16 +449,9 @@ def main():
             plt.close(fig)
 
             # 2. Bar chart of win rates (per seed + aggregate)
-            depth_results = []
-            all_raw = []
-            for result_path in info["results"]:
-                result = load_result_file(result_path)
-                depth_results.append(result)
-                all_raw.extend(result.get("raw_data", []))
-
             win_rates_per_seed = []
-            for result in depth_results:
-                raw = result.get("raw_data", [])
+            for d in seed_data:
+                raw = d["raw"]
                 wr = sum(1 for r in raw if r["max_tile"] >= 2048) / len(raw) if raw else 0
                 win_rates_per_seed.append(wr)
 
@@ -343,7 +462,7 @@ def main():
             bars = ax.bar(x, win_rates_per_seed, color="steelblue", alpha=0.7)
             ax.axhline(agg_wr, color="orange", linestyle="--", linewidth=2, label=f"Aggregate: {agg_wr:.2%}")
             ax.set_xticks(x)
-            ax.set_xticklabels([f"Seed {i}" for i in range(len(win_rates_per_seed))])
+            ax.set_xticklabels([f"Seed {d['seed']}" for d in seed_data])
             ax.set_ylabel("Win Rate (>=2048)")
             ax.set_title(f"Win Rate per Seed — Depth {depth}")
             ax.legend()
@@ -357,12 +476,13 @@ def main():
 
         for di, depth in enumerate(all_depths):
             for result_path in depth_folders[depth]["results"]:
-                result = load_result_file(result_path)
-                raw = result.get("raw_data", [])
-                n = len(raw)
-                for ti, tile in enumerate(tile_values):
-                    count = sum(1 for r in raw if r["max_tile"] == tile)
-                    heatmap_data[di, ti] += count / n if n else 0
+                entries = _load_scores_for_path(result_path)
+                for e in entries:
+                    raw = e["raw"]
+                    n = len(raw)
+                    for ti, tile in enumerate(tile_values):
+                        count = sum(1 for r in raw if r["max_tile"] == tile)
+                        heatmap_data[di, ti] += count / n if n else 0
 
         fig, ax = plt.subplots(figsize=(12, 6))
         im = ax.imshow(heatmap_data, aspect="auto", cmap="YlOrRd")
