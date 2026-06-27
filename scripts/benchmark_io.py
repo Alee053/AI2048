@@ -6,6 +6,9 @@ lists from here.
 """
 from __future__ import annotations
 
+import csv
+import json
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -220,3 +223,69 @@ def episode_to_row(result: EpisodeResult) -> dict[str, Any]:
 def move_to_row(move: MoveRecord) -> dict[str, Any]:
     """Convert a MoveRecord to a dict matching MOVE_COLUMNS exactly."""
     return {k: getattr(move, k) for k in MOVE_COLUMNS}
+
+
+class CSVWriter:
+    """Writes config.json, episodes.csv, moves.csv, summary.json to a directory.
+
+    Thread-safe via a single internal lock. The master process owns one
+    instance; workers never write directly.
+    """
+
+    def __init__(self, output_dir, log_moves: bool) -> None:
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.log_moves = log_moves
+        self._lock = threading.Lock()
+
+        self._episodes_path = self.output_dir / "episodes.csv"
+        self._moves_path = self.output_dir / "moves.csv"
+        self._config_path = self.output_dir / "config.json"
+        self._summary_path = self.output_dir / "summary.json"
+
+        self._episodes_file = open(self._episodes_path, "w", newline="")
+        self._episodes_writer = csv.DictWriter(
+            self._episodes_file, fieldnames=EPISODE_COLUMNS
+        )
+        self._episodes_writer.writeheader()
+        self._episodes_file.flush()
+
+        self._moves_file = None
+        self._moves_writer = None
+        if log_moves:
+            self._moves_file = open(self._moves_path, "w", newline="")
+            self._moves_writer = csv.DictWriter(
+                self._moves_file, fieldnames=MOVE_COLUMNS
+            )
+            self._moves_writer.writeheader()
+            self._moves_file.flush()
+
+    def write_config(self, config: dict) -> None:
+        with self._lock:
+            with open(self._config_path, "w") as f:
+                json.dump(config, f, sort_keys=True)
+
+    def writerow_episode(self, row: dict) -> None:
+        with self._lock:
+            self._episodes_writer.writerow(row)
+            self._episodes_file.flush()
+
+    def writerow_moves(self, rows: list) -> None:
+        if not self.log_moves or self._moves_writer is None:
+            return
+        with self._lock:
+            for row in rows:
+                self._moves_writer.writerow(row)
+            self._moves_file.flush()
+
+    def write_summary(self, summary: dict) -> None:
+        with self._lock:
+            with open(self._summary_path, "w") as f:
+                json.dump(summary, f, sort_keys=True)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._episodes_file and not self._episodes_file.closed:
+                self._episodes_file.close()
+            if self._moves_file and not self._moves_file.closed:
+                self._moves_file.close()

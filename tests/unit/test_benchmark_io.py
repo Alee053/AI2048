@@ -130,3 +130,56 @@ def test_move_to_row_keys_match_move_columns():
     assert set(row.keys()) == set(MOVE_COLUMNS)
     assert row["action"] == 0
     assert row["score_up"] != row["score_up"]  # NaN check
+
+
+def test_csvwriter_writes_episode_csv(tmp_path):
+    from scripts.benchmark_io import CSVWriter
+
+    writer = CSVWriter(tmp_path, log_moves=False)
+    writer.write_config({"benchmark_schema_version": "1.0.0", "run_name": "t"})
+
+    row = {
+        "schema_version": "1.0.0", "run_id": "r1", "episode_idx": 0,
+        "worker_id": 0, "train_seed": None, "eval_seed": 42,
+        "requested_depth": 3, "effective_depth": 3,
+        "use_expectimax": True, "score": 1000, "max_tile": 128,
+        "max_log_tile": 7, "steps": 50, "episode_time_s": 5.0,
+        "mean_move_time_ms": 100.0, "median_move_time_ms": 95.0,
+        "p95_move_time_ms": 150.0, "max_move_time_ms": 200.0,
+        "termination_reason": "board_full", "win_1024": False,
+        "win_2048": False, "win_4096": False, "win_8192": False,
+        "total_think_ms": 1900.0, "total_nodes": 10000,
+        "total_batches": 10, "total_tt_lookups": 5000,
+        "total_tt_hits": 200, "total_tt_collisions": 1,
+        "total_tt_same_key_overwrites": 0, "total_moves_resolved": 50,
+        "total_moves_unresolved": 0, "total_cap_hits": 0,
+        "total_alpha_beta_cuts": 5, "total_chance_nodes": 200,
+        "total_max_nodes": 100, "mean_chance_value": 0.1,
+        "mean_empty_cells": 8.0, "min_empty_cells": 3,
+        "mean_merge_score": 20.0, "mean_nps": 5263.0,
+        "mean_tt_hit_rate": 0.04, "mean_nodes_per_batch_call": 1000.0,
+    }
+    writer.writerow_episode(row)
+
+    csv_path = tmp_path / "episodes.csv"
+    assert csv_path.exists()
+    content = csv_path.read_text()
+    assert "schema_version" in content.splitlines()[0]
+    assert "score" in content
+    assert "1000" in content
+
+    config_path = tmp_path / "config.json"
+    assert config_path.exists()
+    assert config_path.read_text() == '{"benchmark_schema_version": "1.0.0", "run_name": "t"}'
+
+
+def test_csvwriter_moves_only_when_enabled(tmp_path):
+    from scripts.benchmark_io import CSVWriter, MOVE_COLUMNS
+
+    writer = CSVWriter(tmp_path, log_moves=True)
+    writer.writerow_moves([{k: "" for k in MOVE_COLUMNS}])
+    assert (tmp_path / "moves.csv").exists()
+
+    writer2 = CSVWriter(tmp_path / "nolog", log_moves=False)
+    writer2.writerow_moves([{k: "" for k in MOVE_COLUMNS}])
+    assert not (tmp_path / "nolog" / "moves.csv").exists()
