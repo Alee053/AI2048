@@ -205,10 +205,16 @@ class MoveRecord:
 
 
 def episode_to_row(result: EpisodeResult) -> dict[str, Any]:
-    """Convert an EpisodeResult to a dict matching EPISODE_COLUMNS exactly."""
-    move_records = result.move_records  # exclude from row
-    d = {k: getattr(result, k) for k in EPISODE_COLUMNS}
-    return d
+    """Convert an EpisodeResult to a dict matching EPISODE_COLUMNS exactly.
+
+    `move_records` is intentionally excluded — it lives in MOVE_COLUMNS, not
+    EPISODE_COLUMNS.
+    """
+    assert "move_records" not in EPISODE_COLUMNS, (
+        "move_records is a list of MoveRecord objects; it must not be "
+        "serialized into the per-episode CSV row."
+    )
+    return {k: getattr(result, k) for k in EPISODE_COLUMNS}
 
 
 def move_to_row(move: MoveRecord) -> dict[str, Any]:
