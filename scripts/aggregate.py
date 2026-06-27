@@ -22,6 +22,39 @@ from collections import defaultdict
 
 import numpy as np
 
+SUPPORTED_SCHEMA_MAJOR = 1
+
+
+def _check_schema_versions(benchmark_dir, sweep_name):
+    """Walk {sweep_name}_depth* folders and check config.json schema versions.
+
+    Returns a list of (path, version) tuples for any run whose major
+    version differs from SUPPORTED_SCHEMA_MAJOR.
+    """
+    pattern = re.compile(rf"{re.escape(sweep_name)}_depth(\d+)")
+    violations = []
+    for entry in os.scandir(benchmark_dir):
+        if not entry.is_dir():
+            continue
+        if not pattern.match(entry.name):
+            continue
+        for sub in os.scandir(entry.path):
+            if not sub.is_dir():
+                continue
+            cfg = Path(sub.path) / "config.json"
+            if not cfg.exists():
+                continue
+            try:
+                with open(cfg) as f:
+                    cfg_data = json.load(f)
+                ver = cfg_data.get("benchmark_schema_version", "")
+                major = int(ver.split(".")[0]) if ver else 0
+                if major != SUPPORTED_SCHEMA_MAJOR:
+                    violations.append((sub.path, ver))
+            except Exception:
+                violations.append((sub.path, "unreadable"))
+    return violations
+
 
 def discover_depth_folders(benchmark_dir: str, sweep_name: str) -> dict:
     """Find all {sweep_name}_depth{N} folders and their result files."""
@@ -113,11 +146,24 @@ def main():
     parser.add_argument("--sweep", type=str, required=True, help="Sweep name to aggregate")
     parser.add_argument("--win-threshold", type=int, default=None, help="Report single win threshold (default: all observed)")
     parser.add_argument("--output", type=str, default=None, help="Override output directory (default: benchmark_dir)")
+    parser.add_argument("--legacy", action="store_true",
+                        help="Read legacy results_seed_N.json files instead of the new CSV layout.")
     args = parser.parse_args()
 
     benchmark_dir = args.benchmark_dir
     sweep_name = args.sweep
     output_dir = Path(args.output or benchmark_dir)
+
+    # Schema-version check: aggregate.py only accepts major version 1.
+    if not args.legacy:
+        schema_violations = _check_schema_versions(benchmark_dir, sweep_name)
+        if schema_violations:
+            print("Error: unsupported benchmark_schema_version in some run folders:")
+            for path, ver in schema_violations:
+                print(f"  {path}: {ver}")
+            print("aggregate.py only accepts major version 1.x.x.")
+            print("Re-run with --legacy to consume the old JSON layout.")
+            sys.exit(2)
 
     # Discover
     depth_folders = discover_depth_folders(benchmark_dir, sweep_name)
