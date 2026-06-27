@@ -78,3 +78,44 @@ def test_benchmarker_d4_augmentation_disabled_by_default(production_model_path):
     bencher = Benchmarker(production_model_path, use_expectimax=False,
                           search_depth=0, device="cpu")
     assert bencher.env.d4_augment is False
+
+
+def test_benchmarker_log_moves_populates_move_records(production_model_path):
+    import math
+    from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
+    from scripts.benchmark_io import MoveRecord
+
+    bencher = Benchmarker(production_model_path, use_expectimax=True,
+                          search_depth=2, device="cpu")
+    result = bencher.run_episode(eval_seed=42, log_moves=True,
+                                 run_id="test-run", worker_id=0)
+
+    assert len(result.move_records) == result.steps
+    assert all(isinstance(m, MoveRecord) for m in result.move_records)
+
+    first = result.move_records[0]
+    assert 0 <= first.empty_cells_before <= 16
+    assert first.max_tile_before in (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768)
+    assert first.max_log_tile_before == int(math.log2(first.max_tile_before)) if first.max_tile_before > 1 else 0
+    assert 0 <= first.n_legal_actions <= 4
+    parts = first.board_state.split(",")
+    assert len(parts) == 16
+    assert all(0 <= int(p) <= 16 for p in parts)
+    assert not math.isnan(first.score_up)
+
+
+def test_benchmarker_log_moves_raw_policy_has_nan_scores(production_model_path):
+    import math
+    from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
+
+    bencher = Benchmarker(production_model_path, use_expectimax=False,
+                          search_depth=0, device="cpu")
+    result = bencher.run_episode(eval_seed=42, log_moves=True,
+                                 run_id="test-run", worker_id=0)
+
+    assert len(result.move_records) == result.steps
+    for m in result.move_records:
+        assert math.isnan(m.score_up)
+        assert math.isnan(m.score_right)
+        assert math.isnan(m.score_down)
+        assert math.isnan(m.score_left)
