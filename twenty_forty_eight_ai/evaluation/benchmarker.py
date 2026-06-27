@@ -8,7 +8,6 @@ from __future__ import annotations
 import hashlib
 import statistics
 import time
-from typing import Any
 
 import numpy as np
 import torch
@@ -67,6 +66,7 @@ class Benchmarker:
         log_moves: bool,
         run_id: str,
         worker_id: int = 0,
+        episode_idx: int = 0,
     ) -> EpisodeResult:
         """Run one episode, return an EpisodeResult with full per-episode metrics.
 
@@ -105,7 +105,8 @@ class Benchmarker:
             empty_cells_before = int((board_before == 0).sum())
             max_log_tile_before = int(board_before.max()) if board_before.any() else 0
             max_tile_before = 2 ** max_log_tile_before
-            n_legal_actions = int(self.env.action_masks().sum())
+            mask = self.env.action_masks()
+            n_legal_actions = int(mask.sum())
 
             t0 = time.perf_counter()
             stats = None
@@ -118,7 +119,6 @@ class Benchmarker:
                 action = int(stats["best_move"])
                 scores = list(stats["move_scores"])
             else:
-                mask = self.env.action_masks()
                 action, _ = self.model.predict(
                     obs, action_masks=mask, deterministic=True
                 )
@@ -128,7 +128,7 @@ class Benchmarker:
             t1 = time.perf_counter()
             move_time_ms = (t1 - t0) * 1000.0
 
-            merge_score = int(info.get("merge_score", reward))
+            merge_score = int(info.get("merge_score", 0))
             move_times_ms.append(move_time_ms)
             empty_cells_samples.append(empty_cells_before)
             merge_score_samples.append(merge_score)
@@ -214,7 +214,7 @@ class Benchmarker:
         return EpisodeResult(
             schema_version=EPISODE_SCHEMA_VERSION,
             run_id=run_id,
-            episode_idx=0,
+            episode_idx=episode_idx,
             worker_id=worker_id,
             train_seed=None,
             eval_seed=eval_seed,

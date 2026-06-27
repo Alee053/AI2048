@@ -119,3 +119,18 @@ def test_benchmarker_log_moves_raw_policy_has_nan_scores(production_model_path):
         assert math.isnan(m.score_right)
         assert math.isnan(m.score_down)
         assert math.isnan(m.score_left)
+
+
+def test_benchmarker_result_roundtrips_through_episode_to_row(production_model_path):
+    from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
+    from scripts.benchmark_io import episode_to_row, EPISODE_COLUMNS
+
+    bencher = Benchmarker(production_model_path, use_expectimax=False,
+                          search_depth=0, device="cpu")
+    result = bencher.run_episode(eval_seed=42, log_moves=False,
+                                 run_id="test-run", worker_id=0,
+                                 episode_idx=7)
+    row = episode_to_row(result)
+    assert set(row.keys()) == set(EPISODE_COLUMNS)
+    assert row["episode_idx"] == 7
+    assert row["worker_id"] == 0
