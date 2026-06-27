@@ -34,7 +34,8 @@ def parse_args(argv=None):
         description="Benchmark a trained 2048 agent with optional expectimax search.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("model_path", type=str, help="Path to trained model .zip file")
+    p.add_argument("model_path", type=str, nargs="?", default=None,
+                   help="Path to trained model .zip file (not required when --model-dir is set)")
     p.add_argument("--n-runs", type=int, default=100,
                    help="Number of episodes to simulate (default: 100)")
     p.add_argument("--depth", type=int, default=0,
@@ -140,6 +141,9 @@ def main(argv=None):
             args.parallel,
         )
 
+    if not args.model_path:
+        print("Error: model_path is required (or use --model-dir for multi-seed)")
+        return 1
     if not os.path.exists(args.model_path):
         print(f"Error: model file not found: {args.model_path}")
         return 1

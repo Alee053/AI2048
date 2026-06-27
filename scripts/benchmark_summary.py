@@ -43,6 +43,11 @@ def compute_summary_from_rows(rows, config, total_time_s):
         "avg_time_per_game_s": float(total_time_s / len(rows)),
         "games_per_sec": float(len(rows) / total_time_s) if total_time_s > 0 else 0.0,
     }
+    if len(scores) > 1:
+        score_std = statistics.pstdev(scores)
+        score_se = score_std / (len(scores) ** 0.5)
+        metrics["score_ci95_low"] = float(metrics["avg_score"] - 1.96 * score_se)
+        metrics["score_ci95_high"] = float(metrics["avg_score"] + 1.96 * score_se)
 
     use_search = config.get("use_expectimax", False)
     if use_search and any(r.get("total_think_ms") for r in rows):
@@ -55,12 +60,39 @@ def compute_summary_from_rows(rows, config, total_time_s):
         metrics["avg_batches_eval"] = float(statistics.fmean(
             r["total_batches"] for r in rows
         ))
+        metrics["avg_tt_collisions"] = float(statistics.fmean(
+            r["total_tt_collisions"] for r in rows
+        ))
+        metrics["avg_tt_same_key_overwrites"] = float(statistics.fmean(
+            r["total_tt_same_key_overwrites"] for r in rows
+        ))
+        metrics["avg_moves_resolved"] = float(statistics.fmean(
+            r["total_moves_resolved"] for r in rows
+        ))
+        metrics["avg_moves_unresolved"] = float(statistics.fmean(
+            r["total_moves_unresolved"] for r in rows
+        ))
+        metrics["avg_cap_hits"] = float(statistics.fmean(
+            r["total_cap_hits"] for r in rows
+        ))
+        metrics["avg_alpha_beta_cuts"] = float(statistics.fmean(
+            r["total_alpha_beta_cuts"] for r in rows
+        ))
+        metrics["avg_chance_nodes"] = float(statistics.fmean(
+            r["total_chance_nodes"] for r in rows
+        ))
+        metrics["avg_max_nodes"] = float(statistics.fmean(
+            r["total_max_nodes"] for r in rows
+        ))
         nps_values = [r["mean_nps"] for r in rows if r["mean_nps"] > 0]
         if nps_values:
             metrics["avg_nodes_per_sec"] = float(statistics.fmean(nps_values))
         tt_rates = [r["mean_tt_hit_rate"] for r in rows if r["mean_tt_hit_rate"] > 0]
         if tt_rates:
             metrics["avg_tt_hit_rate"] = float(statistics.fmean(tt_rates))
+        chance_values = [r["mean_chance_value"] for r in rows if r.get("mean_chance_value")]
+        if chance_values:
+            metrics["avg_chance_value"] = float(statistics.fmean(chance_values))
 
     win_rates = {}
     for t in (1024, 2048, 4096, 8192):

@@ -6,13 +6,12 @@ import os
 import signal
 import sys
 import time
-import traceback
 import uuid
 from pathlib import Path
 
-from scripts.benchmark import _tqdm_iter
+from scripts.benchmark import _tqdm_iter, build_config
 from scripts.benchmark_io import (
-    CSVWriter, EpisodeResult, EPISODE_SCHEMA_VERSION,
+    CSVWriter,
     episode_to_row, move_to_row,
 )
 from scripts.benchmark_worker import run_worker
@@ -21,6 +20,17 @@ from scripts.benchmark_worker import run_worker
 ESTIMATED_STEPS_PER_EPISODE = 500
 AVG_BYTES_PER_MOVE_ROW = 350
 LARGE_MOVE_LOG_THRESHOLD = 5_000_000
+
+
+def _install_sigterm_handler():
+    """Funnel SIGTERM through KeyboardInterrupt so the existing handler runs."""
+    def _on_sigterm(signum, frame):
+        raise KeyboardInterrupt
+    try:
+        signal.signal(signal.SIGTERM, _on_sigterm)
+    except (ValueError, OSError):
+        # signal only works in main thread; ignore if not available
+        pass
 
 
 def _check_log_moves_guard(n_runs, log_moves, yes_large):
@@ -40,7 +50,7 @@ def _assign_seeds(env_seed_base, n_runs, n_workers):
     return [seeds[w::n_workers] for w in range(n_workers)]
 
 
-def _drain_status_queue(status_queue, into=None):
+def _drain_status_queue(status_queue):
     """Drain the status queue non-blocking. Returns list of messages."""
     msgs = []
     while True:
@@ -49,8 +59,6 @@ def _drain_status_queue(status_queue, into=None):
         except Exception:
             break
         msgs.append(msg)
-        if into is not None:
-            into.append(msg)
     return msgs
 
 
@@ -59,6 +67,11 @@ def run_benchmark(args):
     log_moves = bool(args.log_moves)
     yes_large = bool(args.yes_large_move_log)
     _check_log_moves_guard(args.n_runs, log_moves, yes_large)
+    _install_sigterm_handler()
+
+    if args.workers < 1:
+        print(f"Error: --workers must be >= 1, got {args.workers}")
+        return 1
 
     run_name = args.output or f"run_{int(time.time())}"
     output_dir = Path("data/benchmarks") / run_name
