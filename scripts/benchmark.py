@@ -20,12 +20,14 @@ import time
 import torch
 
 
-def _tqdm_iter(iterable, **kwargs):
+def _tqdm_iter(iterable=None, **kwargs):
     try:
         from tqdm import tqdm
     except ImportError:
-        return iterable
+        return iterable if iterable is not None else iter([])
     disable = not sys.stdout.isatty()
+    if iterable is None:
+        return tqdm(disable=disable, **kwargs)
     return tqdm(iterable, disable=disable, **kwargs)
 
 
