@@ -492,122 +492,309 @@ uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.z
 
 ---
 
-### **Benchmark (Headless)**
+### **Benchmark Harness**
 
-Run large-scale performance evaluation without visualization:
+Run large-scale, paper-grade evaluation without visualization. The harness emits structured CSV + JSON suitable for downstream analysis (`aggregate.py`, pandas, paper figures).
+
+**Invocation:**
 
 ```bash
-uv run python scripts/benchmark.py <model_path> [OPTIONS]
+uv run python -m scripts.benchmark <model_path> [OPTIONS]
 ```
+
+The `-m scripts.benchmark` form is required because `scripts/` is a package; running `python scripts/benchmark.py` directly will fail with `ModuleNotFoundError: No module named 'scripts'`.
 
 **Arguments:**
-- `model_path` (required): Path to trained model `.zip` file
-- `--n_runs <int>`: Number of episodes to simulate (default: 10)
-- `--depth <int>`: Expectimax search depth; 0 = raw policy (default: 0)
-- `--output <name>`: Custom run name for output folder (default: auto-generated)
-- `--device <str>`: Device for model inference: `cpu`, `cuda`, `auto` (default: auto)
 
-**Examples:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `model_path` | str | (required unless `--model-dir`) | Path to trained model `.zip` |
+| `--n-runs` | int | `100` | Number of episodes |
+| `--depth` | int | `0` | Expectimax search depth; `0` = raw policy |
+| `--output` | str | `run_<timestamp>` | Folder name under `data/benchmarks/` |
+| `--device` | `{cpu,cuda,auto}` | `auto` | Inference device |
+| `--workers` | int | `1` | Number of subprocess workers |
+| `--log-moves` | flag | off | Write `moves.csv` with one row per player move |
+| `--yes-large-move-log` | flag | off | Required if estimated move-log rows > 5M |
+| `--base-eval-seed` | int | random | Root seed for deterministic per-episode eval seeds |
+| `--train-seed` | int | none | Recorded in `config.json` for sweep runs |
+| `--model-version` | str | none | Free-form version label, recorded in `config.json` |
+| `--model-dir` | str | none | Directory of `seed_N/` subdirs (multi-seed; placeholder in current build) |
+| `--parallel` | flag | off | Parallel across seeds (multi-seed mode only) |
 
-Full 100-episode benchmark with depth-3 search
+**Quick examples:**
+
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n_runs 100 --depth 3 --output depth3_final_eval
+# Paper-grade single-worker, depth-3, 100 episodes
+uv run python -m scripts.benchmark \
+  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 100 --depth 3 --workers 1 --device cuda \
+  --output v3_depth3_final --base-eval-seed 0
+
+# Throughput-mode: 8 CPU workers, depth-3
+uv run python -m scripts.benchmark \
+  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 200 --depth 3 --workers 8 --device cpu \
+  --output v3_depth3_throughput --base-eval-seed 0
+
+# Raw-policy baseline (no search)
+uv run python -m scripts.benchmark \
+  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 100 --depth 0 --workers 1 \
+  --output v3_raw --base-eval-seed 0
+
+# Per-move log for downstream analysis
+uv run python -m scripts.benchmark \
+  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 50 --depth 3 --workers 1 \
+  --log-moves --output v3_depth3_moves
 ```
 
-Quick 10-episode test with raw policy
-```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n_runs 10 --depth 0 --output raw_policy_baseline
+**Operational recommendations:**
+
+| Goal | Recommended |
+|---|---|
+| Paper-grade single-GPU latency, reproducible | `--device cuda --workers 1` |
+| Experimental: parallel GPU inference | `--device cuda --workers 2` (only if GPU memory fits two model copies) |
+| Maximum throughput on a CPU box | `--device cpu --workers 4-8` |
+
+#### Output Structure
+
+Every run produces four files in `data/benchmarks/<run_name>/`:
+
+```
+data/benchmarks/<run_name>/
+├── config.json    # Run provenance + config (written at start, updated at end)
+├── episodes.csv   # One row per completed episode
+├── moves.csv      # One row per player move (only when --log-moves)
+└── summary.json   # Aggregate metrics + status
 ```
 
-CPU-only benchmark (no GPU required)
-```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n_runs 50 --depth 2 --device cpu --output depth2_cpu_test
+The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` after each row — a `kill -9` mid-run leaves a usable partial output plus a `config.json` with `interrupted=true` and `status="interrupted"`.
+
+#### `config.json` schema
+
+```json
+{
+  "benchmark_schema_version": "1.0.0",
+  "run_id": "uuid4...",
+  "run_name": "v3_depth3_final",
+  "model_path": "data/models/release/Hybrid-PPO-Expectimax-v3.zip",
+  "model_md5": "fab18d67...",
+  "model_version": "v3",
+  "train_seed": null,
+  "env_seed_base": 12345,
+  "n_runs": 100,
+  "n_workers": 4,
+  "device": "cuda",
+  "cuda_device_name": "NVIDIA RTX 4090",
+  "cuda_runtime": "13.0",
+  "depth": 3,
+  "use_expectimax": true,
+  "log_moves": false,
+  "base_eval_seed": 12345,
+  "eval_seed_strategy": "deterministic-offset",
+  "git_commit": "abc1234",
+  "git_dirty": false,
+  "started_at_iso": "2026-06-27T12:34:56Z",
+  "finished_at_iso": "2026-06-27T12:41:48Z",
+  "total_wall_time_s": 412.7,
+  "interrupted": false,
+  "status": "completed"
+}
 ```
 
-**Output Structure:**
+Field semantics:
+
+- `benchmark_schema_version`: semver. `aggregate.py` accepts same-major; rejects others.
+- `env_seed_base`: seed for Python/numpy RNG used by `Fast2048.generate_random()`.
+- `eval_seed_strategy`: `"deterministic-offset"` (master assigns `eval_seed = env_seed_base + episode_idx`) or `"random"` (when `base_eval_seed` is unset).
+- `total_wall_time_s`: full run wall-clock (includes worker spawn + summary write).
+- `status`: `"completed"` | `"interrupted"` | `"failed"`.
+- `interrupted`: `true` only on `SIGINT`/`SIGTERM`.
+
+#### `episodes.csv` columns (43 fields)
+
+The column list lives in `scripts/benchmark_io.py:EPISODE_COLUMNS` — single source of truth for both the writer (`benchmark.py`) and the consumer (`aggregate.py`). Adding a column means updating that list AND the `EpisodeResult` dataclass together.
+
+Per-episode fields:
+
+| Field | Notes |
+|---|---|
+| `schema_version`, `run_id`, `episode_idx`, `worker_id` | Identifiers |
+| `train_seed`, `eval_seed` | Seeds (reproducibility) |
+| `requested_depth`, `effective_depth`, `use_expectimax` | Search config (forward-compat: `effective_depth` will diverge from `requested_depth` if iterative deepening lands) |
+| `score`, `max_tile`, `max_log_tile`, `steps` | Outcome |
+| `episode_time_s`, `mean_move_time_ms`, `median_move_time_ms`, `p95_move_time_ms`, `max_move_time_ms` | Wall time |
+| `termination_reason` | `"board_full"` (today) or `"max_steps"` (reserved) |
+| `win_1024`, `win_2048`, `win_4096`, `win_8192` | Boolean thresholds |
+| `total_think_ms`, `total_nodes`, `total_batches` | C++ search think-time aggregates |
+| `total_tt_lookups`, `total_tt_hits`, `total_tt_collisions`, `total_tt_same_key_overwrites` | Transposition table |
+| `total_moves_resolved`, `total_moves_unresolved`, `total_cap_hits` | Resolution + iteration-cap hits |
+| `total_alpha_beta_cuts`, `total_chance_nodes`, `total_max_nodes` | Search internals |
+| `mean_chance_value` | Average chance-node value |
+| `mean_empty_cells`, `min_empty_cells`, `mean_merge_score` | Board-state distributions |
+| `mean_nps`, `mean_tt_hit_rate`, `mean_nodes_per_batch_call` | Derived rates |
+
+#### `moves.csv` columns (29 fields)
+
+Opt-in via `--log-moves`. One row per player move. Useful for paper figures on board evolution, tile-spawn distributions, and search-time histograms. **Can produce GB-scale files** — use `--log-moves` only when you need per-move data.
+
+All board-snapshot fields (`board_state`, `canonical_board_hash`, `empty_cells_before`, `max_tile_before`, `max_log_tile_before`, `n_legal_actions`, `score_*`) come from the **same pre-action board snapshot**. The row describes the decision point, not the post-decision state.
+
+| Notable field | Notes |
+|---|---|
+| `board_state` | 16 comma-separated log-tile values in row-major order; `0`=empty, `11`=2048-tile, `16`=65536-tile |
+| `canonical_board_hash` | `BoardEncoder::canonicalize` uint64 (D4-canonical form), base-10 string |
+| `score_up/right/down/left` | C++ root-move scores (or `NaN` in raw-policy mode) |
+| `move_time_ms` | Wall-time around the full move (search + env step) |
+| `think_ms` | Just the C++ `find_best_move` time |
+
+`--log-moves` writes a single warning + estimated row count and disk usage before any worker spawns. If the estimate exceeds 5,000,000 rows, the run refuses to start unless `--yes-large-move-log` is passed.
+
+#### `summary.json`
+
+Aggregate metrics for quick inspection. Mirrors the shape of the old `results.json["metrics"]` block plus the new search-mode fields, win-rate thresholds (1024/2048/4096/8192), and a max-tile distribution.
+
+```json
+{
+  "benchmark_schema_version": "1.0.0",
+  "status": "completed",
+  "n_completed": 100,
+  "n_runs_requested": 100,
+  "config": { "...subset of config.json...": "..." },
+  "metrics": {
+    "avg_score": 24320.5, "std_score": 8921.3, "min_score": 8400, "max_score": 51200,
+    "median_score": 23456, "p25_score": 18432, "p75_score": 31204,
+    "avg_steps": 487.2, "min_steps": 312, "max_steps": 901, "median_steps": 478,
+    "total_time_s": 410.2, "total_wall_time_s": 412.7,
+    "avg_time_per_game_s": 4.10, "games_per_sec": 0.244,
+    "avg_think_ms": 38.7, "avg_nodes_visited": 1124.5, "avg_batches_eval": 3.2,
+    "avg_nodes_per_sec": 29040.0, "avg_tt_hit_rate": 12.4,
+    "avg_tt_collisions": 0.8, "avg_tt_same_key_overwrites": 0.1,
+    "avg_moves_resolved": 3.85, "avg_moves_unresolved": 0.15,
+    "avg_cap_hits": 0.0, "avg_alpha_beta_cuts": 14.2,
+    "avg_chance_nodes": 287.4, "avg_max_nodes": 145.6,
+    "avg_chance_value": 0.087,
+    "score_ci95_low": 22612.0, "score_ci95_high": 26029.0
+  },
+  "win_rates": {
+    "win_rate_1024+": 1.0, "win_rate_2048+": 0.82,
+    "win_rate_4096+": 0.18, "win_rate_8192+": 0.02
+  },
+  "max_tile_dist": {
+    "1024": 0, "2048": 16, "4096": 82, "8192": 2
+  }
+}
+```
+
+`total_time_s` excludes worker-spawn + summary-write overhead. `total_wall_time_s` includes everything.
+
+#### Parallel execution model
+
+The harness uses `multiprocessing.Process` with the `spawn` start method (CUDA-safe — PyTorch explicitly warns against `fork` after CUDA init). Workers are long-lived; the master owns a result queue and a status queue.
+
+Seed assignment is **worker-count-invariant**: master precomputes `seeds = [env_seed_base + i for i in range(n_runs)]` and chunks them contiguously to workers. `episode_idx=i` always sees `eval_seed = env_seed_base + i` regardless of `--workers`.
 
 ```text
-data/benchmarks/<run_name>/
-├── results.json # Metrics + raw data (scores, tiles, steps)
-└── score_distribution.png # Histogram with mean line
+seeds = [0, 1, 2, 3, 4, 5, 6, 7]
+
+--workers 1:  worker 0 = [0, 1, 2, 3, 4, 5, 6, 7]
+--workers 2:  worker 0 = [0, 1, 2, 3]    worker 1 = [4, 5, 6, 7]
+--workers 4:  worker 0 = [0, 1]          worker 1 = [2, 3]
+              worker 2 = [4, 5]          worker 3 = [6, 7]
 ```
 
-**Metrics Reported:**
-- Average score ± std
-- Min/max scores
-- Average moves per episode
-- Max tile distribution (frequency of 512, 1024, 2048, 4096, etc.)
+Per-worker RNG is seeded once at process start (`np.random.seed(env_seed_base + worker_id * 10_000)`). The C++ searcher's chance-node evaluation is **deterministic** — it enumerates every empty cell with both tile values 2 and 4 and computes the exact expected value, so no C++ RNG seeding is required (verified by `tests/unit/test_searcher_determinism.py`).
+
+**Important reproducibility caveat:** scores are reproducible across runs at the **same worker count** but may differ slightly between `--workers 1` and `--workers 2`. The spec classifies score as "match approximately across worker counts" because per-worker `np.random` state ordering interleaves differently. The fields that are guaranteed worker-count-invariant are `eval_seed`, `episode_idx`, `use_expectimax`, `requested_depth`, `effective_depth`, `schema_version`, `run_id`, `worker_id`, `train_seed`, `termination_reason`, and `steps` distribution shape.
+
+#### Interrupt + crash handling
+
+| Signal / event | Behavior |
+|---|---|
+| `Ctrl-C` (SIGINT) | Master sets `stop_event`, drains in-flight queue non-blocking, joins workers (10s timeout then `terminate()`), writes partial `summary.json` with `status="interrupted"` |
+| `SIGTERM` | Funneled through `KeyboardInterrupt` handler; same behavior as SIGINT |
+| Worker exception | Worker posts `{status: "failed", error: traceback}` to status queue and re-raises; master marks `status="failed"` and exits non-zero |
+| `kill -9` on master | Output is crash-safe: `episodes.csv`/`moves.csv` flush after each row; `config.json` is written at start so provenance survives |
+
+Only episodes that were fully returned to the result queue produce rows. A worker's in-progress episode (not yet posted) is dropped on interrupt — by design, since partial `EpisodeResult` objects cannot be safely serialized.
+
+#### Logging invariance
+
+Enabling `--log-moves` does NOT change `episodes.csv` content. This is enforced by `test_log_moves_off_vs_on_produces_identical_episodes_csv` in `tests/integration/test_benchmark_csv.py`. Adding a non-deterministic column (e.g. wall-clock timestamp) to `episodes.csv` will fail this test.
 
 ---
 
-### **Multi-Seed Benchmarking**
+### **Aggregation (`scripts/aggregate.py`)**
 
-Benchmark multiple trained seeds in one command:
-
-```bash
-# Benchmark all seed_N/ subdirectories in a sweep
-uv run python scripts/benchmark.py data/models/sweep-v1/ \
-  --model-dir --n_runs 100 --depth 3 \
-  --output sweep-v1_depth3
-```
-
-**Arguments:**
-- `--model-dir`: Directory containing `seed_N/` subdirectories
-- `--verbose`: Print per-episode progress line
-- `--parallel`: Run seed benchmarks in parallel (background jobs)
-
-**Requirements:**
-- `--output` must follow pattern `<sweep_name>_depth<N>` (e.g., `sweep-v1_depth3`)
-- Each `seed_N/` subdirectory must contain `final_model.zip`
-
-**Output Structure:**
-```
-data/benchmarks/<sweep_name>_depth<N>/
-├── results_seed_0.json
-├── results_seed_1.json
-└── ...
-```
-
----
-
-### **Post-Processing Aggregation**
-
-Aggregate multi-seed, multi-depth benchmark results into summary statistics and figures:
+Consume `episodes.csv` outputs from one or more runs to produce paper-grade summary statistics and figures.
 
 ```bash
 # Aggregate all depth results for a sweep
-uv run python scripts/aggregate.py data/benchmarks/ --sweep sweep-v1
+uv run python -m scripts.aggregate.py data/benchmarks/ --sweep sweep-v1
 
-# Focus on a specific win threshold
-uv run python scripts/aggregate.py data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
+# Single win-threshold focus
+uv run python -m scripts.aggregate.py data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
+
+# Re-process historical JSON runs
+uv run python -m scripts.aggregate.py data/benchmarks/ --sweep v3_depth3_final --legacy
 ```
+
+**Discovery convention:** the folder under `data/benchmarks/` must match `{sweep_name}_depth{N}` for `aggregate.py` to find it. This is enforced by `--output` naming in `benchmark.py`.
+
+**Schema-version safety:** by default, `aggregate.py` walks each run folder, reads `config.json`, and refuses to consume a run whose `benchmark_schema_version` major differs from `1`. To override (e.g. reprocess very old runs), pass `--legacy`.
 
 **Arguments:**
-- `benchmark_dir`: Root folder containing `{sweep_name}_depth*` subfolders
-- `--sweep <name>`: Sweep name to aggregate (required)
-- `--win-threshold <N>`: Report single win threshold (default: 1024, 2048, 4096, 8192)
-- `--output <dir>`: Override output directory
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `benchmark_dir` | str | (required) | Root folder containing `{sweep_name}_depth*` subfolders |
+| `--sweep` | str | (required) | Sweep name to filter on |
+| `--win-threshold` | int | (all) | Report a single win threshold instead of 1024/2048/4096/8192 |
+| `--output` | str | `benchmark_dir` | Override output directory |
+| `--legacy` | flag | off | Read legacy `results_seed_N.json` files instead of the new CSV layout |
 
 **Output:**
+
 ```
-<benchmark_dir>/
-├── summary.csv              # Per-seed + aggregate rows with all metrics
-├── cross_depth_ci_table.csv # Depth comparison with 95% confidence intervals
+<output_dir>/
+├── summary.csv               # Per-seed + aggregate rows with all metrics
+├── cross_depth_ci_table.csv  # Depth comparison with 95% confidence intervals
 └── paper_figures/
-    ├── violin_score_depth0.png   # Score distributions per seed
-    ├── violin_score_depth1.png
-    ├── bar_winrate_depth0.png    # Win rates per seed + aggregate
-    ├── bar_winrate_depth1.png
-    └── heatmap_max_tile.png      # Max tile frequency across seeds/depths
+    ├── violin_score_depth{N}.png
+    ├── bar_winrate_depth{N}.png
+    └── heatmap_max_tile.png
 ```
 
-**Metrics in summary.csv:**
+**`summary.csv` columns** (per-seed + aggregate row):
+
+- `sweep_name`, `depth`, `seed`
 - `avg_score`, `std_score`, `min_score`, `max_score`, `avg_steps`
-- `win_rate_1024`, `win_rate_2048`, `win_rate_4096`, `win_rate_8192`
-- `max_tile_eq_1024_pct`, `max_tile_eq_2048_pct`, etc.
+- `win_rate_1024+`, `win_rate_2048+`, `win_rate_4096+`, `win_rate_8192+`
+- `max_tile_eq_1024_pct`, `max_tile_eq_2048_pct`, `max_tile_eq_4096_pct`, `max_tile_eq_8192_pct`
+- Search-mode metrics (when present): `avg_think_ms`, `avg_nodes_visited`, `avg_batches_eval`, `avg_nodes_per_sec`, `avg_tt_hit_rate`, `avg_tt_collisions`, `avg_tt_same_key_overwrites`, `avg_moves_resolved`, `avg_moves_unresolved`, `avg_cap_hits`, `avg_alpha_beta_cuts`, `avg_chance_nodes`, `avg_max_nodes`, `avg_chance_value`
+
+---
+
+### **Multi-Seed Benchmarking (status: placeholder)**
+
+The `--model-dir` flag is wired through the CLI but `scripts/benchmark_multi_seed.py` is currently a stub that returns exit code 1 with a clear error. Multi-seed sweep runs are supported via repeated single-model invocations:
+
+```bash
+for seed_dir in data/models/sweep-v1/seed_*; do
+  seed_name=$(basename "$seed_dir")
+  uv run python -m scripts.benchmark "$seed_dir/final_model.zip" \
+    --n-runs 100 --depth 3 --workers 1 \
+    --output "sweep-v1_depth3/${seed_name}" \
+    --base-eval-seed 0
+done
+
+# Then aggregate
+uv run python -m scripts.aggregate data/benchmarks/sweep-v1_depth3 --sweep sweep-v1_depth3
+```
+
+The discovery convention `{sweep_name}_depth{N}` still applies when constructing the output paths.
 
 ---
 
@@ -708,10 +895,21 @@ Evaluate with visualization:
 uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
-Run full benchmark suite:
+Run full benchmark suite (paper-grade):
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n_runs 100 --depth 3 --output depth3_expectimax_test
+uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test
+```
+
+Throughput-mode benchmark (CPU, 8 workers):
+```bash
+uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 200 --depth 3 --workers 8 --device cpu --output depth3_throughput
+```
+
+Aggregate a sweep's results into summary.csv + figures:
+```bash
+uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1
 ```
 
 ---
@@ -784,19 +982,33 @@ moves (mean 36,276 at depth 3, vs the OLD's 26,523).
 │   │   ├── d4_transforms.py       # D4 symmetries + action-permutation table
 │   │   ├── game.py                # Fast2048 (LUT-based)
 │   │   └── reward.py              # Merge + free-cells + snake-gradient
+│   ├── evaluation/
+│   │   └── benchmarker.py         # Benchmarker class (runs episodes, returns EpisodeResult)
 │   └── utils/
 │       ├── tensor_utils.py        # Board→Tensor conversion
 │       └── searcher.py            # Python wrapper for C++ Expectimax
 ├── scripts/
 │   ├── train.py                   # PPO training (D4-augment on by default)
 │   ├── tune.py                    # Optuna hyperparameter search
-│   ├── benchmark.py               # Headless evaluation
+│   ├── benchmark.py               # CLI entry point (thin wrapper over benchmark_runner)
+│   ├── benchmark_io.py            # Schema, dataclasses, CSVWriter (single source of truth)
+│   ├── benchmark_runner.py        # Master process: spawn workers, drain queues, write outputs
+│   ├── benchmark_worker.py        # run_worker subprocess function
+│   ├── benchmark_summary.py       # compute_summary_from_rows
+│   ├── benchmark_multi_seed.py    # Multi-seed stub (placeholder)
 │   ├── aggregate.py               # Post-processing aggregator for sweeps
 │   ├── evaluate.py                # Visual evaluation (pygame)
 │   ├── profile_train.py           # Training profile run
 │   └── check_d4_invariance.py     # D4 invariance check for the value net
 ├── tests/
-│   ├── test_d4_transforms.py      # D4 transform + env integration (79 tests)
+│   ├── unit/                      # Fast unit tests (no subprocess)
+│   │   ├── test_benchmark_io.py   # Schema, dataclasses, CSVWriter
+│   │   ├── test_benchmarker.py    # Benchmarker class (raw-policy + search)
+│   │   ├── test_benchmark_worker.py # run_worker subprocess
+│   │   └── test_searcher_determinism.py
+│   ├── integration/               # End-to-end CLI tests (require production model)
+│   │   └── test_benchmark_csv.py
+│   ├── test_d4_transforms.py
 │   ├── test_depth4_convergence.py
 │   ├── test_persistent_tt.py
 │   ├── test_transposition_table.py
@@ -810,7 +1022,7 @@ moves (mean 36,276 at depth 3, vs the OLD's 26,523).
 │   ├── models/
 │   │   └── release/
 │   │       └── Hybrid-PPO-Expectimax-v3.zip   # D4-augmented release
-│   └── benchmarks/                # (gitignored)
+│   └── benchmarks/                # (gitignored; populated by benchmark.py)
 ├── configs/
 │   ├── train/
 │   │   ├── hybrid_ppo_v1.yaml     # v1 (no D4 aug)
