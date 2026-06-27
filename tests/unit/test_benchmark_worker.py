@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import pickle
 
 import numpy as np
 import pytest
@@ -29,7 +28,6 @@ def test_seed_worker_rng_isolates_streams():
 
 
 def test_run_worker_posts_episode_result_to_queue():
-    pytest.importorskip("scripts.benchmark_worker", reason="worker not yet implemented")
     if not os.path.exists(_PRODUCTION_MODEL):
         pytest.skip("Production model not found")
 
