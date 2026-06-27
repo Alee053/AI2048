@@ -53,3 +53,28 @@ def test_benchmarker_win_booleans_match_max_tile(production_model_path):
     assert result.win_2048 == (result.max_tile >= 2048)
     assert result.win_4096 == (result.max_tile >= 4096)
     assert result.win_8192 == (result.max_tile >= 8192)
+
+
+def test_benchmarker_search_mode_returns_episode_result(production_model_path):
+    from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
+
+    bencher = Benchmarker(production_model_path, use_expectimax=True,
+                          search_depth=3, device="cpu")
+    result = bencher.run_episode(eval_seed=42, log_moves=False,
+                                 run_id="test-run", worker_id=0)
+
+    assert result.use_expectimax is True
+    assert result.requested_depth == 3
+    assert result.effective_depth == 3
+    assert result.termination_reason == "board_full"
+    assert result.steps > 0
+    assert result.total_think_ms >= 0.0
+    assert result.total_nodes >= 0
+
+
+def test_benchmarker_d4_augmentation_disabled_by_default(production_model_path):
+    from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
+
+    bencher = Benchmarker(production_model_path, use_expectimax=False,
+                          search_depth=0, device="cpu")
+    assert bencher.env.d4_augment is False
