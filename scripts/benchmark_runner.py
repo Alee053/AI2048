@@ -47,7 +47,15 @@ def _check_log_moves_guard(n_runs, log_moves, yes_large):
 
 def _assign_seeds(env_seed_base, n_runs, n_workers):
     seeds = [env_seed_base + i for i in range(n_runs)]
-    return [seeds[w::n_workers] for w in range(n_workers)]
+    # Contiguous chunks: each worker gets a slice [w*per, (w+1)*per).
+    # This guarantees that eval_seed for episode_idx i is invariant in n_workers.
+    per_worker = max(1, (n_runs + n_workers - 1) // n_workers)  # ceil
+    chunks = []
+    for w in range(n_workers):
+        start = w * per_worker
+        end = min(start + per_worker, n_runs)
+        chunks.append(seeds[start:end])
+    return chunks
 
 
 def _drain_status_queue(status_queue):
