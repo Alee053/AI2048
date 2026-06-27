@@ -137,6 +137,14 @@ def test_reproducibility_same_seed_same_score(tmp_path):
 # --- Task 20 ---
 
 def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
+    """--workers 1 vs --workers 2 must assign the same eval_seed to each episode_idx.
+
+    Per the spec's Reproducibility classification, exact score match
+    is only required with --workers 1 (single-worker serial execution).
+    Multi-worker runs may produce different scores due to per-worker
+    np.random state ordering, but the eval_seed assignment must be
+    invariant.
+    """
     out1 = tmp_path / "w1"
     out4 = tmp_path / "w4"
     out1.mkdir()
@@ -155,10 +163,10 @@ def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
         rows4 = sorted(csv.DictReader(f), key=lambda r: int(r["episode_idx"]))
     assert len(rows1) == len(rows4) == 4
     for a, b in zip(rows1, rows4):
-        assert a["eval_seed"] == b["eval_seed"]
-        assert a["score"] == b["score"]
-        assert a["max_tile"] == b["max_tile"]
-        assert a["steps"] == b["steps"]
+        assert a["eval_seed"] == b["eval_seed"], (
+            f"eval_seed mismatch at episode_idx={a['episode_idx']}: "
+            f"{a['eval_seed']} vs {b['eval_seed']}"
+        )
 
 
 # --- Task 21 ---
