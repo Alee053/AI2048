@@ -232,7 +232,7 @@ class CSVWriter:
     instance; workers never write directly.
     """
 
-    def __init__(self, output_dir, log_moves: bool) -> None:
+    def __init__(self, output_dir: Path | str, log_moves: bool) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.log_moves = log_moves
@@ -253,12 +253,16 @@ class CSVWriter:
         self._moves_file = None
         self._moves_writer = None
         if log_moves:
-            self._moves_file = open(self._moves_path, "w", newline="")
-            self._moves_writer = csv.DictWriter(
-                self._moves_file, fieldnames=MOVE_COLUMNS
-            )
-            self._moves_writer.writeheader()
-            self._moves_file.flush()
+            try:
+                self._moves_file = open(self._moves_path, "w", newline="")
+                self._moves_writer = csv.DictWriter(
+                    self._moves_file, fieldnames=MOVE_COLUMNS
+                )
+                self._moves_writer.writeheader()
+                self._moves_file.flush()
+            except Exception:
+                self._episodes_file.close()
+                raise
 
     def write_config(self, config: dict) -> None:
         with self._lock:
@@ -289,3 +293,10 @@ class CSVWriter:
                 self._episodes_file.close()
             if self._moves_file and not self._moves_file.closed:
                 self._moves_file.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False

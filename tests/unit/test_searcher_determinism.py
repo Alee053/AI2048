@@ -31,10 +31,9 @@ def test_searcher_chance_node_is_deterministic():
     s2 = ExpectimaxSearcher(target_batch_size=8192)
     r1 = s1.find_best_move(_BOARD, depth=2, batch_eval_func=_fake_batch_eval)
     r2 = s2.find_best_move(_BOARD, depth=2, batch_eval_func=_fake_batch_eval)
-    for key in (
-        "best_move", "nodes_visited", "batches_eval",
-        "tt_lookups", "tt_hits", "chance_nodes_evaluated",
-        "max_nodes_evaluated",
-    ):
+    # Every counter except think_ms (wall-clock-dependent) must match.
+    timing_keys = {"think_ms"}
+    for key in r1.keys() & r2.keys():
+        if key in timing_keys:
+            continue
         assert r1[key] == r2[key], f"{key}: {r1[key]} != {r2[key]}"
-    assert r1["move_scores"] == r2["move_scores"]
