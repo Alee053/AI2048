@@ -268,3 +268,39 @@ def test_log_moves_off_vs_on_produces_identical_episodes_csv(tmp_path):
 
     assert (out_on / "moves.csv").exists()
     assert not (out_off / "moves.csv").exists()
+
+
+# --- Task 25 ---
+
+def test_worker_crash_detection_marks_status_failed(tmp_path):
+    """A worker that raises sets config.json status='failed' and exits non-zero.
+
+    Crash is simulated via the BENCHMARK_FORCE_CRASH=1 env var hook in
+    Benchmarker.run_episode. The harness writes status='failed' when it
+    sees a "failed" message on the status queue.
+    """
+    out = tmp_path / "crash"
+    out.mkdir()
+    env = {**os.environ, "BENCHMARK_FORCE_CRASH": "1"}
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "scripts.benchmark",
+         str(_PRODUCTION_MODEL),
+         "--n-runs", "3", "--depth", "0",
+         "--workers", "1", "--device", "cpu",
+         "--output", str(out), "--base-eval-seed", "0"],
+        cwd=str(_REPO_ROOT), capture_output=True, text=True,
+        timeout=60, env=env,
+    )
+    assert proc.returncode != 0, (
+        f"Expected non-zero exit on worker crash, got {proc.returncode}\n"
+        f"stderr:\n{proc.stderr}"
+    )
+
+    cfg_path = out / "config.json"
+    assert cfg_path.exists(), "config.json should exist even on worker crash"
+    with open(cfg_path) as f:
+        cfg = json.load(f)
+    assert cfg["status"] == "failed", (
+        f"Expected status='failed', got {cfg.get('status')!r}"
+    )

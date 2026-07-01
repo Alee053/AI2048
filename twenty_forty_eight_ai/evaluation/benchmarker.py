@@ -6,6 +6,7 @@ both the worker subprocess and the master process.
 from __future__ import annotations
 
 import hashlib
+import os
 import statistics
 import time
 
@@ -48,6 +49,8 @@ class Benchmarker:
         if self.use_expectimax:
             self.searcher = ExpectimaxSearcher()
 
+        self._force_crash = os.environ.get("BENCHMARK_FORCE_CRASH") == "1"
+
     # The C++ searcher calls this callback per batch of leaf boards.
     def _evaluate_batch(self, boards_list: list) -> list:
         if not boards_list:
@@ -74,6 +77,9 @@ class Benchmarker:
         search counters) are tracked regardless of `log_moves`. The full
         MoveRecord list is appended only when `log_moves=True`.
         """
+        if self._force_crash:
+            raise RuntimeError("simulated worker crash (BENCHMARK_FORCE_CRASH=1)")
+
         # Seed global numpy RNG with eval_seed so episode outcomes are
         # deterministic regardless of order or worker count. The Python
         # Fast2048.generate_random() uses the global np.random (not the
