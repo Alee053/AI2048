@@ -137,13 +137,10 @@ def test_reproducibility_same_seed_same_score(tmp_path):
 # --- Task 20 ---
 
 def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
-    """--workers 1 vs --workers 2 must assign the same eval_seed to each episode_idx.
+    """--workers 1 vs --workers 2 must produce identical episode outcomes.
 
-    Per the spec's Reproducibility classification, exact score match
-    is only required with --workers 1 (single-worker serial execution).
-    Multi-worker runs may produce different scores due to per-worker
-    np.random state ordering, but the eval_seed assignment must be
-    invariant.
+    With per-episode np.random seeding, exact match should hold across
+    worker counts.
     """
     out1 = tmp_path / "w1"
     out4 = tmp_path / "w4"
@@ -167,6 +164,15 @@ def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
             f"eval_seed mismatch at episode_idx={a['episode_idx']}: "
             f"{a['eval_seed']} vs {b['eval_seed']}"
         )
+        # With per-episode np.random seeding, score/max_tile/steps
+        # are now deterministic across worker counts (same eval_seed
+        # => same tile spawn sequence => same game).
+        assert a["score"] == b["score"], (
+            f"score mismatch at episode_idx={a['episode_idx']}: "
+            f"{a['score']} vs {b['score']}"
+        )
+        assert a["max_tile"] == b["max_tile"]
+        assert a["steps"] == b["steps"]
 
 
 # --- Task 21 ---

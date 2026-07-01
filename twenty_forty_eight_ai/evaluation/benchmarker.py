@@ -74,6 +74,12 @@ class Benchmarker:
         search counters) are tracked regardless of `log_moves`. The full
         MoveRecord list is appended only when `log_moves=True`.
         """
+        # Seed global numpy RNG with eval_seed so episode outcomes are
+        # deterministic regardless of order or worker count. The Python
+        # Fast2048.generate_random() uses the global np.random (not the
+        # Gymnasium-env-scoped RNG), so this is the authoritative seed
+        # source for tile spawns during this episode.
+        np.random.seed(eval_seed)
         obs, _ = self.env.reset(seed=eval_seed)
         done = False
         steps = 0
