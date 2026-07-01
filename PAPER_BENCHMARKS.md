@@ -11,9 +11,17 @@ so each result folder is force-added (`git add -f`) when we commit.
 ## Benchmarks
 
 - [x] **B1** `paper_d3_n100` — depth=3, 100 episodes, no move logs
-- [ ] **B2** `paper_d3_n100_logged` — depth=3, 100 episodes, with move logs
-- [ ] **B3** `paper_d0_n100` — depth=0, 100 episodes (raw policy baseline)
-- [ ] **B4** `paper_d1_n100` — depth=1, 100 episodes
+- [ ] **B2** `paper_d0_n100` — depth=0, 100 episodes, no move logs (raw policy baseline)
+- [ ] **B3** `paper_d1_n100` — depth=1, 100 episodes, no move logs
+- [ ] **B4** `paper_d2_n100` — depth=2, 100 episodes, no move logs
+- [ ] **B5** `paper_d3_n100_logged` — depth=3, 100 episodes, with move logs (deferred — tomorrow)
+
+## Schedule
+
+- **Tonight (sequential, no move logs):** B2 → B3 → B4. Total wall time ≈ 3 h (depth 0 ≈ 8 min, depth 1 ≈ 35 min, depth 2 ≈ 2.2 h).
+- **Tomorrow:** B5 (depth 3 with `--log-moves`). Wall time ≈ 8 h, produces ~700k-row moves.csv.
+
+All runs share `--base-eval-seed 20482048` so per-episode tile-spawn sequences are identical across depths → scores are directly comparable for the depth ablation.
 
 ## B1 Results
 
