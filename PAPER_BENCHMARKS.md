@@ -10,10 +10,32 @@ so each result folder is force-added (`git add -f`) when we commit.
 
 ## Benchmarks
 
-- [ ] **B1** `paper_d3_n100` — depth=3, 100 episodes, no move logs
+- [x] **B1** `paper_d3_n100` — depth=3, 100 episodes, no move logs
 - [ ] **B2** `paper_d3_n100_logged` — depth=3, 100 episodes, with move logs
 - [ ] **B3** `paper_d0_n100` — depth=0, 100 episodes (raw policy baseline)
 - [ ] **B4** `paper_d1_n100` — depth=1, 100 episodes
+
+## B1 Results
+
+| Metric | Value |
+|---|---|
+| avg_score | 38,430.76 |
+| 95% CI | 35,316 — 41,546 |
+| std_score | 15,893.73 |
+| median_score | 35,508 |
+| min — max | 14,640 — 79,204 |
+| win_rate 1024+ | 1.00 |
+| win_rate 2048+ | 0.87 |
+| win_rate 4096+ | 0.24 |
+| win_rate 8192+ | 0.00 |
+| max_tile 1024 / 2048 / 4096 / 8192 | 13 / 63 / 24 / 0 |
+| avg_steps | 1,920.66 |
+| total_wall_time_s | 29,136.24 (≈ 8.1 h) |
+| avg_time_per_game_s | 291.35 |
+| nodes/sec | 485,708 |
+| TT hit rate | 0.2034 |
+
+Artifacts: `data/benchmarks/paper_d3_n100/{config.json, episodes.csv, summary.json}`
 
 ## Per-benchmark checklist (reused)
 
