@@ -11,9 +11,9 @@ so each result folder is force-added (`git add -f`) when we commit.
 ## Benchmarks
 
 - [x] **B1** `paper_d3_n100` — depth=3, 100 episodes, no move logs
-- [ ] **B2** `paper_d0_n100` — depth=0, 100 episodes, no move logs (raw policy baseline)
-- [ ] **B3** `paper_d1_n100` — depth=1, 100 episodes, no move logs
-- [ ] **B4** `paper_d2_n100` — depth=2, 100 episodes, no move logs
+- [x] **B2** `paper_d0_n100` — depth=0, 100 episodes, no move logs (raw policy baseline)
+- [x] **B3** `paper_d1_n100` — depth=1, 100 episodes, no move logs
+- [x] **B4** `paper_d2_n100` — depth=2, 100 episodes, no move logs
 - [ ] **B5** `paper_d3_n100_logged` — depth=3, 100 episodes, with move logs (deferred — tomorrow)
 
 ## Schedule
@@ -44,6 +44,29 @@ All runs share `--base-eval-seed 20482048` so per-episode tile-spawn sequences a
 | TT hit rate | 0.2034 |
 
 Artifacts: `data/benchmarks/paper_d3_n100/{config.json, episodes.csv, summary.json}`
+
+## Depth Ablation Summary (B1–B4)
+
+All four runs share `--base-eval-seed 20482048`, model md5 `fab18d67…`, `--device cuda --workers 1`, 100 episodes each. Per-episode tile-spawn sequences are identical across depths, so score deltas are attributable to search depth alone.
+
+| Depth | avg_score | 95% CI | std | median | win_1024+ | win_2048+ | win_4096+ | t/game (s) | wall (s) |
+|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 6,080 | 5,473–6,687 | 3,096 | 5,598 | 0.07 | 0.00 | 0.00 | 0.92 | 92.6 |
+| 1 | 7,930 | 7,192–8,668 | 3,764 | 7,510 | 0.22 | 0.01 | 0.00 | 2.38 | 239.1 |
+| 2 | 20,696 | 18,770–22,621 | 9,824 | 16,574 | 0.90 | 0.35 | 0.02 | 14.01 | 1,401.8 |
+| 3 | 38,431 | 35,316–41,546 | 15,894 | 35,508 | 1.00 | 0.87 | 0.24 | 291.35 | 29,136.2 |
+
+**Observations**
+
+- avg_score roughly **doubles per depth increment**: 6k → 8k → 21k → 38k.
+- win_rate_2048+ exhibits a step change at depth 3 (0.35 → 0.87); depth 2 is the first depth where 4096+ becomes non-trivial.
+- Time per game grows ~5–20× per depth (search branching factor); depth 3 is the first depth that takes longer than a typical interactive session.
+
+## B2 / B3 / B4 artifacts
+
+- `data/benchmarks/paper_d0_n100/{config.json, episodes.csv, summary.json}`
+- `data/benchmarks/paper_d1_n100/{config.json, episodes.csv, summary.json}`
+- `data/benchmarks/paper_d2_n100/{config.json, episodes.csv, summary.json}`
 
 ## Per-benchmark checklist (reused)
 
