@@ -1,9 +1,9 @@
 # Paper Benchmarks — Hybrid-PPO-Expectimax-v3
 
-Final release-model benchmarks for the paper. Each row produces one run folder
-under `data/benchmarks/<output>/` containing `config.json`, `results.json`,
-`per_run.csv`, and `score_distribution.png`. `data/benchmarks/` is gitignored,
-so each result folder is force-added (`git add -f`) when we commit.
+Final release-model benchmarks for the paper. Each run folder under
+`data/benchmarks/<output>/` contains `config.json`, `summary.json`,
+`episodes.csv`, and (only for B5) `moves.csv`. `data/benchmarks/` is
+gitignored, so each result folder is force-added (`git add -f`) on commit.
 
 **Model:** `data/models/release/Hybrid-PPO-Expectimax-v3.zip`
 **Device convention:** `--device cuda --workers 1` for paper-grade latency.
@@ -14,14 +14,12 @@ so each result folder is force-added (`git add -f`) when we commit.
 - [x] **B2** `paper_d0_n100` — depth=0, 100 episodes, no move logs (raw policy baseline)
 - [x] **B3** `paper_d1_n100` — depth=1, 100 episodes, no move logs
 - [x] **B4** `paper_d2_n100` — depth=2, 100 episodes, no move logs
-- [ ] **B5** `paper_d3_n100_logged` — depth=3, 100 episodes, with move logs (deferred — tomorrow)
+- [x] **B5** `paper_d3_n100_logged` — depth=3, 100 episodes, with move logs
 
-## Schedule
+All runs share `--base-eval-seed 20482048`, model md5 `fab18d67…`, and `--device cuda --workers 1`. Per-episode tile-spawn sequences are identical across all five runs → scores are directly comparable across depths.
 
-- **Tonight (sequential, no move logs):** B2 → B3 → B4. Total wall time ≈ 3 h (depth 0 ≈ 8 min, depth 1 ≈ 35 min, depth 2 ≈ 2.2 h).
-- **Tomorrow:** B5 (depth 3 with `--log-moves`). Wall time ≈ 8 h, produces ~700k-row moves.csv.
-
-All runs share `--base-eval-seed 20482048` so per-episode tile-spawn sequences are identical across depths → scores are directly comparable for the depth ablation.
+**Total wall time across all benchmarks:** ≈ 31 h
+(B1: 8.1 h, B2: 1.5 min, B3: 4 min, B4: 23 min, B5: 8.3 h)
 
 ## B1 Results
 
@@ -45,6 +43,28 @@ All runs share `--base-eval-seed 20482048` so per-episode tile-spawn sequences a
 
 Artifacts: `data/benchmarks/paper_d3_n100/{config.json, episodes.csv, summary.json}`
 
+## B5 Results (depth=3, with move logs)
+
+Identical configuration to B1 except `--log-moves` is enabled.
+
+| Metric | B5 (logged) | B1 (no logs) | Δ |
+|---|---:|---:|---:|
+| avg_score | 38,430.76 | 38,430.76 | 0.00 |
+| std_score | 15,893.73 | 15,893.73 | 0.00 |
+| 95% CI | 35,316–41,546 | 35,316–41,546 | — |
+| win_rate 1024+ / 2048+ / 4096+ | 1.00 / 0.87 / 0.24 | 1.00 / 0.87 / 0.24 | — |
+| max_tile 1024 / 2048 / 4096 / 8192 | 13 / 63 / 24 / 0 | 13 / 63 / 24 / 0 | — |
+| avg_steps | 1,920.66 | 1,920.66 | 0.00 |
+| avg_nodes_visited | 140,691,276.85 | 140,691,276.85 | 0.00 |
+| avg_nodes_per_sec | 473,255 | 485,708 | **−2.5 %** |
+| avg_time_per_game (s) | 300.17 | 291.35 | **+3.0 %** |
+| total_wall_time_s | 30,018.34 (≈ 8.34 h) | 29,136.24 | +882 s |
+| moves.csv size | 54.3 MB / ~691k rows | — | — |
+
+**Determinism validation:** B5 reproduces B1 **exactly** on every behavioral metric (score, win-rate, max-tile distribution, node counts, avg_steps). The only deltas are throughput-related (`nodes/sec` −2.5 %, `t/game` +3.0 %), attributable to per-move CSV write I/O. This confirms the harness is deterministic under fixed `(model, seed, depth)` and that `--log-moves` is a pure side-channel.
+
+Artifacts: `data/benchmarks/paper_d3_n100_logged/{config.json, episodes.csv, moves.csv, summary.json}`
+
 ## Depth Ablation Summary (B1–B4)
 
 All four runs share `--base-eval-seed 20482048`, model md5 `fab18d67…`, `--device cuda --workers 1`, 100 episodes each. Per-episode tile-spawn sequences are identical across depths, so score deltas are attributable to search depth alone.
@@ -62,22 +82,24 @@ All four runs share `--base-eval-seed 20482048`, model md5 `fab18d67…`, `--dev
 - win_rate_2048+ exhibits a step change at depth 3 (0.35 → 0.87); depth 2 is the first depth where 4096+ becomes non-trivial.
 - Time per game grows ~5–20× per depth (search branching factor); depth 3 is the first depth that takes longer than a typical interactive session.
 
-## B2 / B3 / B4 artifacts
+## All artifacts
 
 - `data/benchmarks/paper_d0_n100/{config.json, episodes.csv, summary.json}`
 - `data/benchmarks/paper_d1_n100/{config.json, episodes.csv, summary.json}`
 - `data/benchmarks/paper_d2_n100/{config.json, episodes.csv, summary.json}`
+- `data/benchmarks/paper_d3_n100/{config.json, episodes.csv, summary.json}`
+- `data/benchmarks/paper_d3_n100_logged/{config.json, episodes.csv, moves.csv, summary.json}`
 
 ## Per-benchmark checklist (reused)
 
 For each row above, after running:
 
 1. Run the benchmark command and wait for it to finish (or verify `status: "completed"` in `config.json`).
-2. Sanity-check `results.json` — `metrics.avg_score`, `n_runs`, `win_rate_2048+`, `max_tile_dist`.
+2. Sanity-check `summary.json` — `metrics.avg_score`, `n_completed`, `win_rates`, `max_tile_dist`.
 3. Commit the run folder + this checklist update.
 
 ## Notes
 
-- Prior 30-run depth-3 result lives at `data/benchmarks/v3_depth3_final/` (avg_score ≈ 36276, depth-3 win-rate 2048+ ≈ 0.80) — kept for comparison.
-- Wall-time estimate at depth 3, CUDA, 1 worker: ~7.6 h for 100 episodes (≈274 s/game from prior run). Depth 0 and depth 1 will be far faster.
+- Prior 30-run depth-3 result lives at `data/benchmarks/v3_depth3_final/` (avg_score ≈ 36,276, win-rate 2048+ ≈ 0.80) — kept for comparison against the 100-run paper benchmark.
 - Each run records `model_md5`, `git_commit`, `cuda_device_name`, and `base_eval_seed` in `config.json` for reproducibility.
+- B5 (`paper_d3_n100_logged`) is a behavioral twin of B1 — same scores, same node counts, same per-episode outcomes — confirming that `--log-moves` is a pure side-channel. Use B5 for any per-move analysis (move timing, distribution of chosen actions, heatmaps), B1 for clean headline numbers.
