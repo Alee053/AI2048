@@ -17,7 +17,7 @@ This project implements a **hybrid AI agent** for the game 2048 that combines:
 
 The core insight: **learned value functions can replace hand-crafted heuristics** in classical search algorithms, reducing search depth requirements while maintaining strong performance.
 
-**Key Result (v3, D4-augmented):** **36,275.87 ± 16,673.48** mean score (median **33,484**, range 14,820–79,864) on a 30-game depth-3 benchmark. Win rates: **100% at 1024+, 80% at 2048+, 20% at 4096+**. This is a **1.4× improvement in mean score** over the v1 release (26,523 ± 12,750 mean, 58% at 2048+). At depth 4 the same model reached **74,020** (max tile 4096) in a single-game run, finishing cleanly with no cap hits.
+**Key Result (v3, D4-augmented):** at depth 3 the release model scores **38,430.76 ± 15,893.73** (n=100, 95% CI 35,316–41,546; median **35,508**), with win rates **100% / 87% / 24%** at 1024 / 2048 / 4096. Across **4 training seeds** (n=100 each), the mean of model means is **36,268** (sample SD **2,665**; 95% CI [32,027, 40,509]) — every seed reaches 2048+ in 72–87% of games. On the depth ablation (same release model, shared per-episode tile-spawn seeds, n=100/depth) mean score rises **monotonically**: **6,080 (d=0) → 7,930 (d=1) → 20,696 (d=2) → 38,431 (d=3)**, with the 2048+ win rate stepping 35%→87% between depth 2 and 3 — a **~1.45× gain** over the pre-D4 v1 depth-3 baseline (~26,523, 58% at 2048+).
 
 ---
 
@@ -45,43 +45,38 @@ uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.z
 
 ### **Ablation Study: Search Depth Impact**
 
-Raw-policy and depth-1/2 results use the v1 release model. Depth-3+ results are the v3 model (D4-augmented) on the same code; they are not directly comparable to the v1 rows because the model changed.
+All rows are the **same v3 (D4-augmented) release model** (md5 `fab18d67…`), run with identical per-episode tile-spawn seeds (`--base-eval-seed 20482048`), `--device cuda --workers 1`, **n=100 episodes per depth**. Because the seed sequence is shared across depths, score deltas are attributable to search depth alone. (Run folders: `data/benchmarks/paper_d{0,1,2,3}_n100/`.)
 
-| Configuration | Model | Avg Score | 2048+ Win Rate | Max Tile (Frequency) | Notes |
-|---------------|-------|-----------|----------------|----------------------|-------|
-| **Raw PPO Policy** | v1 | 7,995.6 ± 3,502.67 | 0% | 1024 (18%) | 100 games |
-| **+ Expectimax (d=1)** | v1 | 5,127.32 ± 2,482.23 | 0% | 1024 (4%) | 100 games |
-| **+ Expectimax (d=2)** | v1 | 14,014.08 ± 6,496.21 | 13% | 2048 (13%) | 100 games |
-| **+ Expectimax (d=3)** | v1 | 26,523 ± 12,749.82 | 58% | 4096 (8%) | 100 games (pre-D4 baseline) |
-| **+ Expectimax (d=3)** | **v3 (D4-aug)** | **36,275.87 ± 16,673.48** (median 33,484, range 14,820–79,864) | **80% at 2048+**, 20% at 4096+, 100% at 1024+ | 4096 (20%), 2048 (60%), 1024 (20%) | 30 games, current release |
-| **+ Expectimax (d=4)** | **v3 (D4-aug)** | **74,020.00** | 100% | 4096 (100%) | 1 game (n=1 sample) |
+| Configuration | Avg Score | 95% CI | Median | 1024+ | 2048+ | 4096+ | Max Tile (top 3) |
+|---|---:|---|---:|---:|---:|---:|---|
+| Raw PPO Policy (d=0) | 6,080 ± 3,096 | 5,473–6,687 | 5,598 | 7% | 0% | 0% | 512 (46%), 256 (40%), 1024 (7%) |
+| + Expectimax (d=1) | 7,930 ± 3,764 | 7,192–8,668 | 7,510 | 22% | 1% | 0% | 512 (54%), 1024 (21%), 256 (21%) |
+| + Expectimax (d=2) | 20,696 ± 9,824 | 18,770–22,621 | 16,574 | 90% | 35% | 2% | 1024 (55%), 2048 (33%), 512 (9%) |
+| **+ Expectimax (d=3)** | **38,431 ± 15,894** | **35,316–41,546** | **35,508** | **100%** | **87%** | **24%** | **2048 (63%), 4096 (24%), 1024 (13%)** |
 
-The v1→v3 jump at depth 3 is the regression fix documented in
-[`docs/DEPTH3-REGRESSION-ROOT-CAUSE.md`](docs/DEPTH3-REGRESSION-ROOT-CAUSE.md):
-the OLD model's value network was not invariant to the 8 D4 symmetries of the
-board, and the C++ searcher's canonicalize-then-unpack path returned the
-canonical form (not the search-time orientation), biasing every leaf
-evaluation. The fix retrains the value network with random D4 augmentation
-so that `model(canonicalize(b)) ≈ model(b)`, restoring accurate leaf
-evaluations under the C++ canonicalization. See "D4 Augmentation" below.
+**Why depth 3 is the v1→v3 fix point.** The pre-D4 v1 model scored ~26,523 (58% at 2048+) at depth 3 — its value network was **not** invariant to the 8 D4 symmetries of the board, so the C++ searcher's *canonicalize → key → unpack* path evaluated a different board orientation than the one actually being searched, biasing every leaf. Retraining with random D4 augmentation makes `model(canonicalize(b)) ≈ model(b)`, which restores accurate leaf evaluations under the C++ canonicalization (see [D4 Augmentation](#d4-augmentation)).
 
-**To reproduce the v3 depth-3 numbers** (30 games, ~3.5h on a T4 GPU):
+**To reproduce** (≈8.1 h on an RTX 3070 Ti Laptop GPU per depth):
 ```bash
-uv run python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n_runs 30 --depth 3 --device cuda --output v3_depth3_final
+uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  --n-runs 100 --depth 3 --device cuda --workers 1 \
+  --output paper_d3_n100 --base-eval-seed 20482048
 ```
+The ablation uses the same command with `--depth 0/1/2` and `--output paper_d{0,1,2}_n100`. All four runs share `--base-eval-seed 20482048`, so per-episode tile spawns are identical across depths.
 
 **To verify D4 invariance of the released model** (≤30s on GPU):
 ```bash
 uv run python scripts/check_d4_invariance.py
 ```
 
-**v3 depth-3 score distribution** (30 games, the run whose numbers are in the table above):
+<p align="center">
+  <img src="assets/fig_depth_ablation.png" width="720" alt="Score distribution by search depth"/>
+  <br/><em>Per-episode score by search depth (n=100 each, same tile-spawn seeds). Diamonds = mean. Each depth increment shifts the whole distribution right; depth 3 is the first depth with a substantial 4096 tail.</em>
+</p>
 
 <p align="center">
-  <img src="assets/v3_depth3_score_distribution.png" width="700" alt="v3 Depth-3 Score Distribution"/>
-  <br/>
-  <em>30-game depth-3 score distribution: min 14,820, median 33,484, mean 36,276, max 79,864. Bimodal peaks at 2048 (60%) and 4096 (20%); 20% of games capped at 1024.</em>
+  <img src="assets/fig_winrate_by_depth.png" width="680" alt="Win rate by depth and tile threshold"/>
+  <br/><em>Win-rate step change at depth 3: 2048+ jumps from 35% (d=2) to 87% (d=3).</em>
 </p>
 
 
@@ -89,15 +84,35 @@ uv run python scripts/check_d4_invariance.py
 
 ### **Analysis: The Value Function as Heuristic**
 
-The ablation study reveals a **critical insight** about hybrid RL systems:
+The ablation study reveals how the learned value function behaves as a search heuristic. On the D4-augmented v3 model, score improves **monotonically with depth** — there is no shallow-search regression. Two regimes stand out:
 
-#### **1. The "Shallow Search Trap" (Depth 1)**
-Performance **degrades** at depth 1 (5,127 → 7,996). This suggests the value function $V(s)$ contains **local noise**. A shallow 1-step lookahead **overfits** to these noisy estimates, making worse decisions than the policy $\pi(s)$, which has learned robust action priors through training.
+#### **1. Depth 1→2: search starts to see merges**
+A 1-ply lookahead only edges out the raw policy (7,930 vs 6,080, +30%) because one ply barely reaches the next merge. The large jump comes at depth 2 (20,696, +161% over d=1): two ply is enough to evaluate the board *after* a merge and the subsequent tile spawn, so the search rewards moves that open productive merges. Depth 2 is also the first depth where reaching 2048 becomes common (35% vs 1% at d=1).
 
-#### **2. The "Search as Regularization" Effect (Depth 3)**
-Increasing depth to 3 acts as a **Monte Carlo averaging** process. By aggregating value estimates over thousands of leaf nodes in the search tree, Expectimax **filters out noise** in $V(s)$. This produces a **3.3x score improvement** and enables strategic play (reaching 4096 tile).
+#### **2. Depth 3: "search as regularization"**
+Going to depth 3 aggregates value estimates over **~141M leaf nodes per game** (avg 9,532 CNN batch calls), which **filters noise** in $V(s)$ the way Monte-Carlo averaging does. Mean score reaches 38,431 (+86% over d=2) and the 2048+ win rate steps from 35% to 87%, with 24% of games reaching 4096. The search converges cleanly on every game (`moves_unresolved=0`, `cap_hits=0`, `alpha_beta_cuts=0`).
 
 **Connection to Bayesian Optimization:** This mirrors the exploration-exploitation trade-off in GP-UCB (Krause et al., 2009). Deeper search increases sample complexity but reduces epistemic uncertainty, similar to how UCB balances mean prediction with confidence bounds.
+
+---
+
+### **Multi-Seed Robustness (depth 3)**
+
+The release model is one of four trained from the same config with different seeds (`hybrid_ppo_v3` + seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`):
+
+| Model | Mean Score | 95% CI | Median | 2048+ | 4096+ |
+|---|---:|---|---:|---:|---:|
+| **v3 (release)** | **38,430.8 ± 15,894** | 35,316–41,546 | 35,508 | 87% | 24% |
+| seed 0 | 37,420.2 ± 15,626 | 34,357–40,483 | 35,822 | 85% | 22% |
+| seed 1 | 32,395.3 ± 14,648 | 29,524–35,266 | 32,526 | 72% | 16% |
+| seed 2 | 36,826.0 ± 15,720 | 33,745–39,907 | 35,418 | 83% | 22% |
+
+**Model-level statistics (n=4 seeds):** mean **36,268**, sample SD **2,665**, 95% CI **[32,027, 40,509]** (t-interval, df=3). Pooled across all 400 episodes: mean 36,268, median 34,834, p25/p75 = 27,416 / 37,053, range 7,424–79,808; win rates 1024+ **100%**, 2048+ **82%**, 4096+ **21%**. The best-to-lowest mean spread is 6,035 points (release vs seed 1); this four-run sweep quantifies seed sensitivity but is not a hypothesis test.
+
+<p align="center">
+  <img src="assets/fig_multiseed_d3.png" width="720" alt="Depth-3 score across training seeds"/>
+  <br/><em>Depth-3 score distribution per training seed (n=100 each). Diamonds = per-model mean; dashed line = model-level mean (36,268); shaded band = model-level 95% CI [32,027, 40,509].</em>
+</p>
 
 ---
 
@@ -159,47 +174,77 @@ This optimization is critical for Expectimax search, which evaluates **10,000+ b
 
 ---
 
-#### **Expectimax with Transposition Table**
+#### **Expectimax with a Persistent Transposition Table**
 
-The search uses **memoization** to avoid re-evaluating identical board states:
+Leaf evaluation is memoized in a **persistent transposition table** that survives across `find_best_move` calls within an episode (only `clear_tt()` wipes it). It is factored into its own header, [`TranspositionTable.h`](cpp_src/TranspositionTable.h), and is a **4-way set-associative** cache sized to fit a 64-byte cache line:
 
 ```cpp
-// ExpectimaxSearcher.cpp - Cached recursive search
-float max_node_substitute(const Board& board, int depth,
-                          const std::map<Board, float>& leaf_cache) {
-    TranspositionKey key = {board, depth};
-    if (transposition_table.count(key)) // ← Check cache
-        return transposition_table[key];
+// TranspositionTable.h — 16-byte entries, 4-way associative buckets
+struct TTEntry {
+    uint64_t key;        // canonical (D4) packed board — NOT a Zobrist hash
+    float    score;      // expectimax value
+    uint8_t  depth;      // search depth remaining (depth-preferred replacement)
+    uint8_t  type;       // MAX | CHANCE
+    uint8_t  generation; // 5-bit age tag, used for cross-search eviction
+};
+struct TTBucket { TTEntry entries[4]; };          // 64 bytes → one cache line
+// 2^22 buckets × 4 entries = 2^24 entries ≈ 256 MiB
+```
 
-    // Search all moves, cache result
-    float max_value = -1e9;
-    for (int move = 0; move < 4; ++move) {
-        // ... Expectimax logic ...
-        max_value = std::max(max_value, total_value);
+Probing is **depth-preferred** (a hit only counts when the stored depth ≥ requested). The store path uses a three-tier replacement policy: (1) overwrite the same key, (2) fill an empty slot, (3) two-pass victim selection that first prefers the oldest **generation** (cross-search eviction), then falls back to the shallowest depth within the current search. `begin_new_search()` advances the generation each move so stale entries age out naturally.
+
+The search itself is a **per-move, multi-pass, deferred-batching** loop (`ExpectimaxSearcher::find_best_move`). Each root move is resolved independently with a hard iteration cap (`MAX_ITERATIONS_PER_MOVE = 100`) that failsafes against any re-evaluation loop:
+
+```cpp
+// ExpectimaxSearcher.cpp — one root move's resolution loop
+while (std::isinf(move_scores[rm.move_id])) {
+    if (++iter > MAX_ITERATIONS_PER_MOVE) { cap_hits_this_call++; break; }
+    batch_queue.clear();
+    float v = chance_node_substitute(rm.post_board, depth,
+                                     BoardEncoder::canonicalize(rm.post_board),
+                                     batch_queue);
+    if (!std::isinf(v)) { move_scores[rm.move_id] = v; break; }   // resolved this pass
+    // otherwise: leaves parked in batch_queue → eval in Python, store at depth 0, re-search
+    std::sort(batch_queue.begin(), batch_queue.end());             // dedup canonical keys
+    batch_queue.erase(std::unique(batch_queue.begin(), batch_queue.end()),
+                      batch_queue.end());
+    auto values = batch_eval_func(boards_for_python);              // ONE Python call / pass
+    for (size_t i = 0; i < batch_queue.size(); ++i) {
+        transposition_table.store(batch_queue[i], /*depth*/0, NodeType::MAX,    values[i]);
+        transposition_table.store(batch_queue[i], /*depth*/0, NodeType::CHANCE, values[i]);
     }
-    transposition_table[key] = max_value;  // ← Store in cache
-    return max_value;
 }
 ```
 
-##### Transposition Table Efficacy:
-- **Dynamic Cache Hit Rate:** 20.34% across the 30-game depth-3 benchmark (rising over the episode as the persistent TT warms up); 24.34% on the single depth-4 game. The TT key is the canonical D4 form of the board, so rotated boards share entries.
-- **Performance Gain:** Combined with alpha-beta-style pruning and the deferred-batching leaf eval, depth-3 search averages 134M nodes visited per game at 489,831 nodes/sec; depth-4 averages 2.45B nodes per game at 504,703 nodes/sec. The search converges cleanly (`cap_hits=0`, `moves_unresolved=0`) on every run.
+On top of TT memoization, the current searcher adds:
+
+- **Root move ordering via CNN pre-evaluation.** Before searching, the four root post-move boards are batch-evaluated by the value net and sorted best-first, which improves pruning effectiveness.
+- **Alpha-beta pruning at MAX nodes** (`max_value >= beta`), guarded by `if (!any_unresolved)` so it only fires once a subtree is fully resolved. *Soundness caveat:* in expectimax the chance-node parent *averages* its children, so a hard beta-cut can in principle prune a child that would have pulled the average back into bounds — the cut is therefore tracked via the `alpha_beta_cuts` diagnostic. In the n=100 paper runs this cut fires **0 times** (it is conservative in practice).
+- **Corrected chance-node divisor.** `E[V] = (1/N)·Σ_c (0.9·V(c,2) + 0.1·V(c,4))` over the N empty cells — the earlier `2N` divisor half-scaled the chance value and biased the search.
+- **Log2 immediate-merge reward** folded into node values.
+- **Batch deduplication** (canonical keys are `sort`+`unique`'d before the Python call) and a hard iteration cap that converts any pathological re-eval into a logged warning instead of a hang.
+
+##### Transposition Table Efficacy (n=100, depth 3)
+
+- **TT hit rate:** **20.34%** at depth 3, rising over each episode as the persistent TT warms up. It is higher at shallower depths (46.7% at d=1, 33.9% at d=2) because smaller trees reuse a larger share of nodes. The key is the **canonical D4 form** of the board, so rotated/reflected boards share entries.
+- **Throughput:** depth-3 search averages **~141M nodes visited per game** across ~6,907 resolved root moves, at **485,708 nodes/sec**, in ~9,532 CNN batches/game (~291 s/game on an RTX 3070 Ti Laptop GPU).
+- **Convergence:** every game resolves cleanly — `moves_unresolved = 0`, `cap_hits = 0`, `alpha_beta_cuts = 0`.
+
 ---
 
 #### **Batched Leaf Evaluation (Deferred Batching)**
 
-The C++ searcher uses **multi-pass deferred batching** instead of the OLD gather-all-first approach. On the first search pass, leaf evaluations return `UNRESOLVED`; the searcher collects those leaf keys into a batch queue, calls Python once with the full batch, then re-runs the search with cached values. This avoids the OLD's two-pass overhead and is more friendly to large `target_batch_size` (32k leaves typical).
+The multi-pass scheme above means Python is called **once per pass** with the full deduplicated batch of unresolved canonical leaves (`target_batch_size` default **32,768**), instead of once per leaf. The C++ canonicalizes each board to a single D4 element before keying the batch, then `BoardEncoder::unpack`s it back to a raw 4×4 board for the model. This is sound **only if the value network is D4-invariant** — see [D4 Augmentation](#d4-augmentation).
 
-The C++ canonicalizes the board to a single D4 element before keying the batch, then `BoardEncoder::unpack`s back to a raw board for the model. This is safe **only if the value network is D4-invariant** — see "D4 Augmentation" below.
+Per-game batch counts and throughput scale steeply with depth (all n=100, same seeds):
 
-**Batch Sizes:**
-- Depth 1: ~50-100 leaves
-- Depth 2: ~500-1,000 leaves
-- Depth 3: ~3,000-8,000 leaves
-- Depth 4: ~50,000-100,000 leaves per game (summed across moves)
+| Depth | Avg batches/game | Avg nodes/game | Avg nodes/sec | TT hit rate | Avg time/game |
+|---|---:|---:|---:|---:|---:|
+| 1 | 2,347 | 45,129 | 21,139 | 46.7% | 2.4 s |
+| 2 | 5,183 | 3,077,630 | 231,161 | 33.9% | 14.0 s |
+| 3 | 9,532 | 140,691,277 | 485,708 | 20.3% | 291.4 s |
 
-Inference Efficiency: On GPU-enabled systems, batched evaluation amortizes the Python Interpreter overhead and CUDA kernel launch costs across thousands of states, significantly reducing per-state inference latency.
+On GPU, batched evaluation amortizes Python-interpreter and CUDA-kernel-launch overhead across thousands of states, keeping per-leaf inference latency low even at depth 3.
 
 ---
 
@@ -227,20 +272,28 @@ below.
 
 #### **Reward Shaping: Merge + Free Cells + Snake Gradient**
 
-The reward function in `reward.py` combines three terms, computed on the
-canonical (untransformed) board so it is invariant to the D4 augmentation:
+The reward function in [`reward.py`](twenty_forty_eight_ai/env/reward.py) (Numba `@njit`) combines three terms, computed on the **canonical (untransformed) board** so it is invariant to the D4 augmentation:
 
 ```python
-# reward.py - reward = log-merge + free-cells bonus + snake-gradient bonus
+# reward.py — reward = log-merge + free-cells bonus + snake-gradient bonus
+MERGE_REWARD_COEF = 1.0
+FREE_CELLS_COEF   = 0.1
+GRADIENT_COEF     = 1e-4
+ROW_GRADIENT      = np.arange(16, dtype=np.float32).reshape(4, 4)   # snake along a row
+COL_GRADIENT      = ROW_GRADIENT.T                                   # snake along a column
 
+@njit
 def calculate_reward(board, merge_score, moved):
     if not moved:
         return -1.0
-    merge_reward = np.log2(merge_score) if merge_score > 0 else 0.0
+    merge_reward      = np.log2(merge_score) if merge_score > 0 else 0.0
     free_cells_reward = np.sum(board == 0)
-    log_board = log2_where_nonzero(board)
-    snake = max(log_board * ROW_GRADIENT, log_board * COL_GRADIENT).sum()
-    return MERGE_COEF * merge_reward + FREE_COEF * free_cells_reward + GRADIENT_COEF * snake
+    log_board         = _njit_log2_where_zero(board.astype(np.float32))
+    gradient_reward   = max(np.sum(log_board * ROW_GRADIENT),
+                            np.sum(log_board * COL_GRADIENT))
+    return (MERGE_REWARD_COEF * merge_reward
+            + FREE_CELLS_COEF  * free_cells_reward
+            + GRADIENT_COEF    * gradient_reward)
 ```
 
 **Why this works:**
@@ -252,23 +305,27 @@ def calculate_reward(board, merge_score, moved):
 
 #### **Custom Neural Network Architecture**
 
-The policy/value network uses a **specialized CNN** designed for 2048's structure:
+The feature extractor ([`architecture.py`](twenty_forty_eight_ai/agent/architecture.py)) is a 2048-aware CNN. Each tile is an **integer log2 index (0–16)** fed into a learned **`nn.Embedding(17, 128)`** (not a float-normalized board); the embedded 128-channel 4×4 grid then passes through three **depthwise-separable** conv pathways that look for row, column, and 2×2-block patterns, before being concatenated and projected to `features_dim = 256`:
 
 ```text
-Input: board (log-normalized tiles)
+Input: board (int64 log2 tile indices, 0=empty … 16=65536)   shape (1, 4, 4)
+       │  nn.Embedding(num_embeddings=17, embedding_dim=128)
+       ▼
+128-channel 4×4 grid                                    shape (128, 4, 4)
        │
-       ├─> Conv2D(32, kernel=2×4) ──> Row-wise patterns (e.g., [2,2,4,8])
-       │
-       ├─> Conv2D(32, kernel=4×2) ──> Column-wise patterns
-       │
-       └─> Conv2D(64, kernel=3×3) ──> Global spatial features
-              │
-              └─> Concatenate([row, col, global]) ──> Dense(256) ──> {Policy, Value}
+       ├─> DepthwiseSeparableConv(128→128, kernel=1×4) ──> Row patterns      (e.g. [2,2,4,8])
+       ├─> DepthwiseSeparableConv(128→128, kernel=4×1) ──> Column patterns
+       └─> DepthwiseSeparableConv(128→128, kernel=2×2) ──> 2×2 block patterns
+              │  each: ReLU → Flatten
+              ▼
+       Concatenate ──> Linear(→ 256) ──> ReLU ──> {Policy head, Value head}
 ```
 
-**Why custom CNN over MLP?**
-- 2048 exhibits **translational patterns** (e.g., row `[2,4,8,16]` should be recognized anywhere on board).
-- CNNs share weights across positions, improving sample efficiency.
+`DepthwiseSeparableConv` splits each stage into a depthwise conv (one filter per input channel) followed by a 1×1 pointwise conv, cutting parameters versus a dense `Conv2d` while preserving the spatial-pattern decomposition.
+
+**Why a custom CNN over an MLP?**
+- 2048 exhibits **structural patterns** (e.g., a `[2,4,8,16]` row matters regardless of where it sits); the row/column/block pathways encode these directly.
+- **Learned tile embeddings** represent the huge dynamic range of tile values (2 … 65536) without log-normalization hacks, and depthwise-separable convs share weights across positions, improving sample efficiency.
 
 ---
 
@@ -291,12 +348,13 @@ def objective(trial):
     return evaluate_agent(model, n_episodes=50)
 ```
 
-**Final Hyperparameters (v3 release, `configs/train/hybrid_ppo_v3.yaml`):**
-- Learning Rate: `2.5e-4` (linear decay to 0)
-- Discount Factor ($\gamma$): `0.95`
-- GAE Lambda ($\lambda$): `0.95`
-- Entropy Coefficient: `6.7e-6`
+**Final Hyperparameters (v3 release, [`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
+- Learning Rate: `2.507e-4` (linear decay to 0)
+- Discount Factor ($\gamma$): `0.9500`
+- GAE Lambda ($\lambda$): `0.95` (Stable-Baselines3 default; not overridden in config)
+- Entropy Coefficient: `6.684e-6`
 - Clip Range ($\epsilon$): `0.2`
+- Rollout steps per env (`n_steps`): `512`
 - Batch Size: `4096`
 - Epochs per update: `4`
 - Total timesteps: `100,000,000`
@@ -460,9 +518,9 @@ Optuna automatically resumes from the SQLite database if `load_if_exists=True` (
 
 ---
 
-### **Evaluation (Visual)**
+### **Evaluation (Visual Dashboard)**
 
-Watch the agent play with interactive pygame visualization:
+Watch the agent play in an interactive **pygame + pygame_gui dashboard** (`scripts/evaluate.py` → [`twenty_forty_eight_ai/utils/visualizer.py`](twenty_forty_eight_ai/utils/visualizer.py)). The dashboard renders the board alongside a live stats panel and **three sparkline charts** (score, per-move think-time, nodes visited), four action-value progress bars, a scrolling move-history list, and runs the expectimax search on a **background thread** (event-driven via `threading.Event` + a result queue) so the UI never blocks. **New Game** and **Pause** buttons are wired up.
 
 ```bash
 uv run python scripts/evaluate.py <model_path> [OPTIONS]
@@ -472,6 +530,7 @@ uv run python scripts/evaluate.py <model_path> [OPTIONS]
 - `model_path` (required): Path to trained model `.zip` file
 - `--no-search`: Disable Expectimax search (use raw PPO policy)
 - `--depth <int>`: Search depth for Expectimax (default: 3)
+- `--no-stats`: Hide the enhanced stats panel + sparklines for faster rendering
 
 **Examples:**
 
@@ -587,7 +646,7 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
   "n_runs": 100,
   "n_workers": 4,
   "device": "cuda",
-  "cuda_device_name": "NVIDIA RTX 4090",
+  "cuda_device_name": "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
   "cuda_runtime": "13.0",
   "depth": 3,
   "use_expectimax": true,
@@ -885,7 +944,7 @@ uv run python scripts/train.py --config configs/train/my_experiment.yaml
 
 ### **Quick Start**
 
-Train a new agent (200M steps, 44 hours on a T4 GPU):
+Train a new agent (v1 config: 200M steps; the v3 release uses 100M — see `configs/train/`):
 ```bash
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
 ```
@@ -956,26 +1015,27 @@ uv run python scripts/check_d4_invariance.py
 On 100 random mid-game boards the released v3 model has mean abs diff
 ~0.35 and max diff ~1.65 across the 7 non-identity D4 elements. The OLD
 v1 release (pre-augmentation) had mean ~1.0, max ~6.0 on the same boards
-— a 3-4× improvement in D4 invariance. The 0.01 threshold from the
-regression doc is aspirational; the CustomCNN is not rotation-equivariant
+— a 3-4× improvement in D4 invariance. The 0.01 tolerance is aspirational; the CustomCNN is not rotation-equivariant
 by design, so 100M steps gets the model close but not perfect. The
 residual error is small enough that the C++ search still picks strong
-moves (mean 36,276 at depth 3, vs the OLD's 26,523).
+moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 
 ---
 
 ## **Project Structure**
 
 ```text
-├── cpp_src/                       # C++17 engine (pybind11 bindings)
-│   ├── Fast2048.cpp               # LUT-based game logic
-│   ├── ExpectimaxSearcher.cpp     # Multi-pass deferred-batching searcher + TT
-│   ├── BoardEncoder.cpp           # 16-bit pack/unpack/canonicalize
+├── cpp_src/                       # C++17 engine (pybind11 module `_searcher_cpp`)
+│   ├── Fast2048.cpp/.h            # LUT-based game logic (65,536 precomputed rows)
+│   ├── ExpectimaxSearcher.cpp/.h  # Multi-pass deferred-batching searcher + TT
+│   ├── TranspositionTable.h       # 4-way set-assoc TT (256 MiB, generation aging)
+│   ├── BoardEncoder.cpp/.h        # 16-bit pack/unpack + D4 canonicalize
+│   ├── RandomUtil.cpp/.h          # mt19937 RNG + Zobrist helpers (RNG used; Zobrist unused)
 │   ├── bindings.cpp               # Python ↔ C++ interface
 │   └── CMakeLists.txt
 ├── twenty_forty_eight_ai/         # Python package
 │   ├── agent/
-│   │   ├── architecture.py        # Custom CNN (row/col/global heads)
+│   │   ├── architecture.py        # CustomCNN: tile embedding + depthwise-separable convs
 │   │   └── callbacks.py           # W&B logging, checkpointing
 │   ├── env/
 │   │   ├── environment.py         # Gymnasium wrapper (D4-augment opt-in)
@@ -983,10 +1043,13 @@ moves (mean 36,276 at depth 3, vs the OLD's 26,523).
 │   │   ├── game.py                # Fast2048 (LUT-based)
 │   │   └── reward.py              # Merge + free-cells + snake-gradient
 │   ├── evaluation/
-│   │   └── benchmarker.py         # Benchmarker class (runs episodes, returns EpisodeResult)
+│   │   └── benchmarker.py         # Benchmarker class (EpisodeResult lives in benchmark_io)
 │   └── utils/
+│       ├── searcher.py            # Python wrapper → loads C++ `_searcher_cpp.…so`
 │       ├── tensor_utils.py        # Board→Tensor conversion
-│       └── searcher.py            # Python wrapper for C++ Expectimax
+│       ├── visualizer.py          # pygame dashboard (board, stats, async search)
+│       ├── sparkline.py           # SparklineRenderer (score/think/nodes charts)
+│       └── visualizer_theme.json  # pygame_gui theme for the dashboard
 ├── scripts/
 │   ├── train.py                   # PPO training (D4-augment on by default)
 │   ├── tune.py                    # Optuna hyperparameter search
@@ -997,7 +1060,7 @@ moves (mean 36,276 at depth 3, vs the OLD's 26,523).
 │   ├── benchmark_summary.py       # compute_summary_from_rows
 │   ├── benchmark_multi_seed.py    # Multi-seed stub (placeholder)
 │   ├── aggregate.py               # Post-processing aggregator for sweeps
-│   ├── evaluate.py                # Visual evaluation (pygame)
+│   ├── evaluate.py                # Visual dashboard (launches Visualizer)
 │   ├── profile_train.py           # Training profile run
 │   └── check_d4_invariance.py     # D4 invariance check for the value net
 ├── tests/
@@ -1031,9 +1094,7 @@ moves (mean 36,276 at depth 3, vs the OLD's 26,523).
 │   │   └── resume_training.yaml
 │   └── tune/
 │       └── bayesian_opt_search.yaml
-├── docs/
-│   ├── DEPTH3-REGRESSION-ROOT-CAUSE.md  # Diagnostic + retraining plan
-│   └── TODO-training-fixes.md
+├── docs/                              # gitignored; design/spec notes live here locally
 └── twenty_forty_eight_ai.egg-info/        # build artifact (gitignored)
 ```
 
