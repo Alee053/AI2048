@@ -114,6 +114,33 @@ The release model is one of four trained from the same config with different see
   <br/><em>Depth-3 score distribution per training seed (n=100 each). Diamonds = per-model mean; dashed line = model-level mean (36,268); shaded band = model-level 95% CI [32,027, 40,509].</em>
 </p>
 
+### **Versioned Models and Benchmark Artifacts**
+
+The repository versions the **four final models** and every benchmark artifact used by the figures and tables above. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the definitive 100-game release evaluation.
+
+**Final models**
+
+| Path | Contents |
+|---|---|
+| `data/models/release/Hybrid-PPO-Expectimax-v3.zip` | D4-augmented release model used for the depth-0 through depth-3 ablation. |
+| `data/models/hybrid_ppo_v3/sweep_status.json` | Completion manifest for the three-seed sweep. |
+| `data/models/hybrid_ppo_v3-seed0/final_model.zip` | Final model for training seed 0. |
+| `data/models/hybrid_ppo_v3-seed1/final_model.zip` | Final model for training seed 1. |
+| `data/models/hybrid_ppo_v3-seed2/final_model.zip` | Final model for training seed 2. |
+
+**Benchmark artifacts** — every folder contains `config.json`, `summary.json`, and `episodes.csv`; the logged run also contains `moves.csv`.
+
+| Folder | Evaluation |
+|---|---|
+| `data/benchmarks/paper_d0_n100/` | Release model, raw policy (depth 0), n=100. |
+| `data/benchmarks/paper_d1_n100/` | Release model, depth 1, n=100. |
+| `data/benchmarks/paper_d2_n100/` | Release model, depth 2, n=100. |
+| `data/benchmarks/paper_d3_n100/` | Release model, depth 3, n=100. |
+| `data/benchmarks/paper_d3_n100_logged/` | Deterministic depth-3 twin with per-move logs; behavioral outcomes match `paper_d3_n100`. |
+| `data/benchmarks/seed0_d3_n100/` | Seed-0 model, depth 3, n=100. |
+| `data/benchmarks/seed1_d3_n100/` | Seed-1 model, depth 3, n=100. |
+| `data/benchmarks/seed2_d3_n100/` | Seed-2 model, depth 3, n=100. |
+
 ---
 
 ## **Technical Architecture**
@@ -1083,9 +1110,10 @@ moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 │   └── stress_depth4_real.py      # Real-model depth-4 stress test
 ├── data/
 │   ├── models/
-│   │   └── release/
-│   │       └── Hybrid-PPO-Expectimax-v3.zip   # D4-augmented release
-│   └── benchmarks/                # (gitignored; populated by benchmark.py)
+│   │   ├── release/Hybrid-PPO-Expectimax-v3.zip  # D4-augmented release
+│   │   ├── hybrid_ppo_v3/sweep_status.json       # Seed-sweep completion manifest
+│   │   └── hybrid_ppo_v3-seed{0,1,2}/final_model.zip
+│   └── benchmarks/                # 8 final runs force-added; future runs stay ignored
 ├── configs/
 │   ├── train/
 │   │   ├── hybrid_ppo_v1.yaml     # v1 (no D4 aug)
