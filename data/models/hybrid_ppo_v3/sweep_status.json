@@ -1,0 +1,15 @@
+{
+  "sweep_name": "hybrid_ppo_v3",
+  "total_seeds": 3,
+  "seeds": {
+    "0": {
+      "status": "completed"
+    },
+    "1": {
+      "status": "completed"
+    },
+    "2": {
+      "status": "completed"
+    }
+  }
+}
