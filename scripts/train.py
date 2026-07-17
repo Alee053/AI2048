@@ -94,6 +94,15 @@ def seed_from_config(config: dict) -> int:
     return config.get("seed", 0)
 
 
+def resume_settings(config: dict) -> tuple[bool, str | None]:
+    """Return validated resume settings, defaulting to fresh training."""
+    load_model = bool(config.get("load_model", False))
+    checkpoint_path = config.get("checkpoint_path")
+    if load_model and not checkpoint_path:
+        raise ValueError("load_model=true requires a non-empty checkpoint_path")
+    return load_model, checkpoint_path
+
+
 def train(config: dict):
     """Run training loop."""
     seed = seed_from_config(config)
@@ -133,15 +142,15 @@ def train(config: dict):
         features_extractor_kwargs=dict(features_dim=config['features_dim']),
     )
 
-    should_load_model = config['load_model'] and config['checkpoint_path'] is not None
+    should_load_model, checkpoint_path = resume_settings(config)
 
     if should_load_model:
-        print(f"Loading model from: {config['checkpoint_path']}")
-        if not os.path.exists(config['checkpoint_path']):
-            print(f"Error: Checkpoint path not found at {config['checkpoint_path']}. Exiting.")
+        print(f"Loading model from: {checkpoint_path}")
+        if not os.path.exists(checkpoint_path):
+            print(f"Error: Checkpoint path not found at {checkpoint_path}. Exiting.")
             return
 
-        model = MaskablePPO.load(config['checkpoint_path'], env=vec_env, verbose=1)
+        model = MaskablePPO.load(checkpoint_path, env=vec_env, verbose=1)
 
         # Calculate remaining steps
         current_steps = model.num_timesteps

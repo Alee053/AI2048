@@ -2,7 +2,7 @@
 
 **A Production-Grade System Bridging Deep Reinforcement Learning and Classical Search**
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/) [![C++17](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.12.x](https://img.shields.io/badge/python-3.12.x-blue.svg)](https://www.python.org/downloads/) [![C++17](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 ## **Quick Links**
@@ -358,21 +358,18 @@ Input: board (int64 log2 tile indices, 0=empty … 16=65536)   shape (1, 4, 4)
 
 ### **3. Systematic Hyperparameter Optimization**
 
-All hyperparameters were tuned using **Optuna** (100+ trials, logged to Weights & Biases):
+Hyperparameters are tuned with **Optuna** and logged to Weights & Biases. The current configuration runs a resumable SQLite study for up to 12 hours, with five startup trials and 5,000,000 training timesteps per trial:
 
 ```python
-# tune.py - Bayesian hyperparameter search
+# tune.py - Optuna hyperparameter search
 
-def objective(trial):
-    lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)
-    gamma = trial.suggest_float('gamma', 0.95, 0.999)
-    ent_coef = trial.suggest_float('ent_coef', 0.0, 0.01)
-
-    model = MaskablePPO(..., learning_rate=lr, gamma=gamma, ent_coef=ent_coef)
-    model.learn(total_timesteps=5_000_000)
-
-    # Evaluate on 50 episodes
-    return evaluate_agent(model, n_episodes=50)
+def objective(trial, config):
+    # Search-space values are passed to MaskablePPO.
+    model = MaskablePPO(...)
+    model.learn(total_timesteps=config['trial']['total_timesteps'])
+    if not model.ep_info_buffer:
+        return -1e9
+    return np.mean([ep_info['r'] for ep_info in model.ep_info_buffer])
 ```
 
 **Final Hyperparameters (v3 release, [`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
@@ -395,9 +392,9 @@ def objective(trial):
 
 Tuning the PPO hyperparameters for this agent is an instance of **black-box optimization**:
 - Input: hyperparameter vector \(x\)
-- Output: noisy objective \(f(x)\) = average 2048 score over 50 games
+- Output: noisy objective \(f(x)\) = final mean reward from the PPO episode buffer
 
-I used **Optuna’s Bayesian optimization** to choose hyperparameters, which is conceptually close to the **GP-UCB** framework: a surrogate model of \(f\) is updated from past trials and an acquisition rule balances exploration (trying uncertain regions) and exploitation (refining promising ones).
+I used **Optuna’s optimization and pruning workflow** to choose hyperparameters, which is conceptually close to the **GP-UCB** framework: a study records noisy trial outcomes and an acquisition rule balances exploration (trying uncertain regions) and exploitation (refining promising ones). The current implementation does not run a separate fixed 50-game evaluation.
 ### Conceptual Parallel: Planning Under Uncertainty
 
 Although Expectimax in this project does **not** implement Gaussian-process UCB, it faces a related trade-off: 
@@ -441,10 +438,12 @@ ppo_params:
   clip_range: 0.2 # PPO clip range
   ent_coef: 0.005 # Entropy coefficient
 
-# Resume Training (optional)
+# Resume Training (optional; omit both keys for fresh training)
 load_model: false # Set to true to resume
-checkpoint_path: null # Path to .zip checkpoint
+checkpoint_path: null # Required when load_model is true
 ```
+
+`load_model` defaults to `false` and `checkpoint_path` defaults to `null` when omitted. Setting `load_model: true` without a non-empty checkpoint path raises a configuration error before loading.
 
 **Example:**
 
@@ -483,13 +482,10 @@ uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
 
 **Output Structure:**
 ```
-data/models/<run_name>/
-├── sweep_status.json        # Tracks seed completion status
-├── seed_0/
-│   └── final_model.zip
-├── seed_1/
-│   └── final_model.zip
-└── ...
+data/models/<run_name>/sweep_status.json        # Tracks seed completion status
+data/models/<run_name>-seed0/final_model.zip
+data/models/<run_name>-seed1/final_model.zip
+data/models/<run_name>-seed2/final_model.zip
 ```
 
 Each seed run's W&B run name is `<run_name>-seed<N>` for easy filtering.
@@ -588,7 +584,12 @@ Run large-scale, paper-grade evaluation without visualization. The harness emits
 uv run python -m scripts.benchmark <model_path> [OPTIONS]
 ```
 
-The `-m scripts.benchmark` form is required because `scripts/` is a package; running `python scripts/benchmark.py` directly will fail with `ModuleNotFoundError: No module named 'scripts'`.
+Both module and direct-script forms are supported. The direct script adds the repository root to `sys.path` before importing sibling modules:
+
+```bash
+uv run python -m scripts.benchmark <model_path> [OPTIONS]
+uv run python scripts/benchmark.py <model_path> [OPTIONS]
+```
 
 **Arguments:**
 
@@ -605,7 +606,7 @@ The `-m scripts.benchmark` form is required because `scripts/` is a package; run
 | `--base-eval-seed` | int | random | Root seed for deterministic per-episode eval seeds |
 | `--train-seed` | int | none | Recorded in `config.json` for sweep runs |
 | `--model-version` | str | none | Free-form version label, recorded in `config.json` |
-| `--model-dir` | str | none | Directory of `seed_N/` subdirs (multi-seed; placeholder in current build) |
+| `--model-dir` | str | none | Multi-seed mode placeholder; currently returns an error |
 | `--parallel` | flag | off | Parallel across seeds (multi-seed mode only) |
 
 **Quick examples:**
@@ -646,17 +647,17 @@ uv run python -m scripts.benchmark \
 
 #### Output Structure
 
-Every run produces four files in `data/benchmarks/<run_name>/`:
+Every run produces three required files in `data/benchmarks/<run_name>/`, plus `moves.csv` when `--log-moves` is enabled:
 
 ```
 data/benchmarks/<run_name>/
 ├── config.json    # Run provenance + config (written at start, updated at end)
 ├── episodes.csv   # One row per completed episode
-├── moves.csv      # One row per player move (only when --log-moves)
+├── moves.csv      # One row per player move (optional, --log-moves)
 └── summary.json   # Aggregate metrics + status
 ```
 
-The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` after each row — a `kill -9` mid-run leaves a usable partial output plus a `config.json` with `interrupted=true` and `status="interrupted"`.
+The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` after each row. A `kill -9` may leave usable partial CSV output and the initial `config.json`, but the master cannot update that config after SIGKILL; its status can remain `"running"`. Use Ctrl-C (SIGINT) or SIGTERM for a clean interrupted summary.
 
 #### `config.json` schema
 
@@ -697,7 +698,7 @@ Field semantics:
 - `eval_seed_strategy`: `"deterministic-offset"` (master assigns `eval_seed = env_seed_base + episode_idx`) or `"random"` (when `base_eval_seed` is unset).
 - `total_wall_time_s`: full run wall-clock (includes worker spawn + summary write).
 - `status`: `"completed"` | `"interrupted"` | `"failed"`.
-- `interrupted`: `true` only on `SIGINT`/`SIGTERM`.
+- `interrupted`: `true` only when the master handles `SIGINT`/`SIGTERM`.
 
 #### `episodes.csv` columns (43 fields)
 
@@ -736,7 +737,7 @@ All board-snapshot fields (`board_state`, `canonical_board_hash`, `empty_cells_b
 | `move_time_ms` | Wall-time around the full move (search + env step) |
 | `think_ms` | Just the C++ `find_best_move` time |
 
-`--log-moves` writes a single warning + estimated row count and disk usage before any worker spawns. If the estimate exceeds 5,000,000 rows, the run refuses to start unless `--yes-large-move-log` is passed.
+`--log-moves` writes a single warning + estimated row count and disk usage before any worker spawns. The estimate uses a fixed 500-step-per-episode heuristic, so it can underestimate long depth-3 episodes. If the estimate exceeds 5,000,000 rows, the run refuses to start unless `--yes-large-move-log` is passed.
 
 #### `summary.json`
 
@@ -793,7 +794,7 @@ seeds = [0, 1, 2, 3, 4, 5, 6, 7]
 
 Per-worker RNG is seeded once at process start (`np.random.seed(env_seed_base + worker_id * 10_000)`). The C++ searcher's chance-node evaluation is **deterministic** — it enumerates every empty cell with both tile values 2 and 4 and computes the exact expected value, so no C++ RNG seeding is required (verified by `tests/unit/test_searcher_determinism.py`).
 
-**Important reproducibility caveat:** scores are reproducible across runs at the **same worker count** but may differ slightly between `--workers 1` and `--workers 2`. The spec classifies score as "match approximately across worker counts" because per-worker `np.random` state ordering interleaves differently. The fields that are guaranteed worker-count-invariant are `eval_seed`, `episode_idx`, `use_expectimax`, `requested_depth`, `effective_depth`, `schema_version`, `run_id`, `worker_id`, `train_seed`, `termination_reason`, and `steps` distribution shape.
+**Reproducibility:** with a fixed `--base-eval-seed`, each episode reseeds NumPy with its own evaluation seed, so episode outcomes (`score`, `max_tile`, and `steps`) are worker-count invariant. This is covered by the integration test for one and two workers. Worker IDs, result arrival order, timing metrics, and queue scheduling can still differ between runs.
 
 #### Interrupt + crash handling
 
@@ -802,7 +803,7 @@ Per-worker RNG is seeded once at process start (`np.random.seed(env_seed_base + 
 | `Ctrl-C` (SIGINT) | Master sets `stop_event`, drains in-flight queue non-blocking, joins workers (10s timeout then `terminate()`), writes partial `summary.json` with `status="interrupted"` |
 | `SIGTERM` | Funneled through `KeyboardInterrupt` handler; same behavior as SIGINT |
 | Worker exception | Worker posts `{status: "failed", error: traceback}` to status queue and re-raises; master marks `status="failed"` and exits non-zero |
-| `kill -9` on master | Output is crash-safe: `episodes.csv`/`moves.csv` flush after each row; `config.json` is written at start so provenance survives |
+| `kill -9` on master | CSV rows already flushed may survive and the initial config remains, but status may remain `"running"`; no interrupted summary can be written |
 
 Only episodes that were fully returned to the result queue produce rows. A worker's in-progress episode (not yet posted) is dropped on interrupt — by design, since partial `EpisodeResult` objects cannot be safely serialized.
 
@@ -818,13 +819,13 @@ Consume `episodes.csv` outputs from one or more runs to produce paper-grade summ
 
 ```bash
 # Aggregate all depth results for a sweep
-uv run python -m scripts.aggregate.py data/benchmarks/ --sweep sweep-v1
+uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1
 
 # Single win-threshold focus
-uv run python -m scripts.aggregate.py data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
+uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
 
 # Re-process historical JSON runs
-uv run python -m scripts.aggregate.py data/benchmarks/ --sweep v3_depth3_final --legacy
+uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --legacy
 ```
 
 **Discovery convention:** the folder under `data/benchmarks/` must match `{sweep_name}_depth{N}` for `aggregate.py` to find it. This is enforced by `--output` naming in `benchmark.py`.
@@ -865,22 +866,18 @@ uv run python -m scripts.aggregate.py data/benchmarks/ --sweep v3_depth3_final -
 
 ### **Multi-Seed Benchmarking (status: placeholder)**
 
-The `--model-dir` flag is wired through the CLI but `scripts/benchmark_multi_seed.py` is currently a stub that returns exit code 1 with a clear error. Multi-seed sweep runs are supported via repeated single-model invocations:
+The `--model-dir` flag is wired through the CLI but `scripts/benchmark_multi_seed.py` is currently a stub that returns exit code 1 with a clear error. Multi-seed evaluation is therefore limited to repeated single-model invocations:
 
 ```bash
-for seed_dir in data/models/sweep-v1/seed_*; do
-  seed_name=$(basename "$seed_dir")
-  uv run python -m scripts.benchmark "$seed_dir/final_model.zip" \
+for seed in 0 1 2; do
+  uv run python -m scripts.benchmark "data/models/hybrid_ppo_v3-seed${seed}/final_model.zip" \
     --n-runs 100 --depth 3 --workers 1 \
-    --output "sweep-v1_depth3/${seed_name}" \
+    --output "hybrid_ppo_v3-seed${seed}_depth3" \
     --base-eval-seed 0
 done
-
-# Then aggregate
-uv run python -m scripts.aggregate data/benchmarks/sweep-v1_depth3 --sweep sweep-v1_depth3
 ```
 
-The discovery convention `{sweep_name}_depth{N}` still applies when constructing the output paths.
+Each run is a separate benchmark result. The current CSV aggregator discovers one flat `episodes.csv` per `{sweep_name}_depth{N}` directory and does not combine these new multi-seed output directories automatically; combine them with an external analysis workflow or use the tracked aggregate artifacts.
 
 ---
 
@@ -935,13 +932,15 @@ uv run python scripts/train.py --config configs/train/my_experiment.yaml
 ## **Reproducibility**
 
 ### **System Requirements**
+- **Platform:** Linux x86_64. The current Python wrapper loads a locally built CPython 3.12 `.so` extension; the Python wheel does not build or include that native module.
+- **Python:** Python 3.12.x, as required by `pyproject.toml`.
 - **CPU:** x86-64 with AVX2 support (for fast bitboard operations)
-- **GPU:** NVIDIA GPU with CUDA 11.8+ (CUDA 13 recommended)
+- **GPU:** NVIDIA GPU with CUDA 13 for the published GPU benchmarks; CPU inference is also supported.
 - **RAM:** 16GB minimum (8GB for training, 4GB for inference, 4GB OS overhead)
 - **Storage:** 5GB (models, logs, benchmark data)
 
 ### **Installation**
-> **Shell note:** Commands below use a POSIX-style shell syntax. On Windows, you can run them from Git Bash, WSL, or adapt the `$(...)` substitution to PowerShell.
+> **Shell note:** Commands below use POSIX-style shell syntax on Linux.
 
 
 1. **Clone repository:**
@@ -956,18 +955,20 @@ uv run python scripts/train.py --config configs/train/my_experiment.yaml
    ```
    
 3. Build C++ engine:
-   ```bash
-    cd cpp_src
-    cmake -B build -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
-    cmake --build build --config Release
-    cmake --install build --config Release
-    cd ..
-   ```
-   
+    ```bash
+     cd cpp_src
+     PYTHON_BIN="$(uv run python -c 'import sys; print(sys.executable)')"
+     cmake -B build \
+       -DPython3_EXECUTABLE="$PYTHON_BIN" \
+       -Dpybind11_DIR="$(uv run python -m pybind11 --cmakedir)"
+     cmake --build build --config Release
+     cmake --install build --config Release
+     cd ..
+    ```
+
 **Platform Notes:**
-- **Windows:** Requires `--config Release` flag
-- **Linux/macOS:** `--config` flag is optional (can omit)
-- **CMake 3.15+:** Required for multi-config generator support
+- **Linux x86_64 only:** This is the supported native build target in the current repository.
+- **CMake 3.15+:** Required for the C++ build.
 
 ### **Quick Start**
 

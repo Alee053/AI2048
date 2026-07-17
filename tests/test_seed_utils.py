@@ -3,6 +3,7 @@
 import random
 import numpy as np
 import torch
+import pytest
 
 
 def test_seed_from_config():
@@ -30,6 +31,24 @@ def test_set_global_seed():
     rand_values_repeat = [random.random(), np.random.rand(), torch.randint(0, 1000, (5,)).tolist()]
 
     assert rand_values == rand_values_repeat, "Seeded random values should be reproducible"
+
+
+def test_resume_settings_defaults_to_fresh_training():
+    from scripts.train import resume_settings
+
+    assert resume_settings({}) == (False, None)
+    assert resume_settings({"load_model": False}) == (False, None)
+
+
+def test_resume_settings_requires_checkpoint_when_enabled():
+    from scripts.train import resume_settings
+
+    assert resume_settings({"load_model": True, "checkpoint_path": "model.zip"}) == (
+        True,
+        "model.zip",
+    )
+    with pytest.raises(ValueError, match="checkpoint_path"):
+        resume_settings({"load_model": True})
 
 
 if __name__ == "__main__":

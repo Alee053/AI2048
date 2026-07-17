@@ -69,7 +69,7 @@ def parse_args(argv=None):
     p.add_argument("--model-version", type=str, default=None,
                    help="Free-form version label, recorded in config.json.")
     p.add_argument("--model-dir", type=str, default=None,
-                   help="Directory containing seed_N/ subdirs for multi-seed benchmarking.")
+                   help="Placeholder for multi-seed benchmarking (currently not implemented).")
     p.add_argument("--parallel", action="store_true",
                    help="Run seed benchmarks in parallel (multi-seed mode only).")
     return p.parse_args(argv)
