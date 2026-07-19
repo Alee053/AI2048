@@ -25,15 +25,24 @@ import json as _json
 import yaml
 import argparse
 import wandb
+from pathlib import Path
+from numpy.random import SeedSequence
 from sb3_contrib import MaskablePPO
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
+from twenty_forty_eight_ai.utils.effective_config import (
+    D4_SEED_DERIVATION,
+    derive_d4_rank_seed_sequences,
+    materialize_training_config,
+)
 
 SweepStatusPath = "sweep_status.json"
+EFFECTIVE_CONFIG_FILENAME = "effective_config.json"
 
 
 def _load_sweep_status(output_dir: str) -> dict:
@@ -103,13 +112,51 @@ def resume_settings(config: dict) -> tuple[bool, str | None]:
     return load_model, checkpoint_path
 
 
+def make_training_env_factories(
+    env_kwargs: dict, d4_rank_seed_sequences: list[SeedSequence]
+) -> list:
+    """Build monitored rank factories with reproducible, distinct D4 streams."""
+    return [
+        lambda d4_seed_sequence=d4_seed_sequence: Monitor(
+            Game2048Env(**env_kwargs, d4_seed=d4_seed_sequence)
+        )
+        for d4_seed_sequence in d4_rank_seed_sequences
+    ]
+
+
+def resolve_training_config(config: dict) -> tuple[dict, list[SeedSequence]]:
+    """Materialize training defaults and reproducible D4 provenance for W&B."""
+    seed = seed_from_config(config)
+    effective_config = materialize_training_config(config)
+    d4_rank_seed_sequences = derive_d4_rank_seed_sequences(
+        seed, effective_config['n_envs']
+    )
+    effective_config.update(
+        root_training_seed=seed,
+        d4_seed_derivation=D4_SEED_DERIVATION,
+        d4_rank_spawn_keys=[
+            list(sequence.spawn_key) for sequence in d4_rank_seed_sequences
+        ],
+    )
+    return effective_config, d4_rank_seed_sequences
+
+
+def persist_effective_config(model_dir: str | Path, effective_config: dict) -> Path:
+    """Write the resolved training configuration beside checkpoints and final model."""
+    path = Path(model_dir) / EFFECTIVE_CONFIG_FILENAME
+    with path.open("w") as stream:
+        _json.dump(effective_config, stream, indent=2, sort_keys=True)
+    return path
+
+
 def train(config: dict):
     """Run training loop."""
     seed = seed_from_config(config)
+    effective_config, d4_rank_seed_sequences = resolve_training_config(config)
     run_name = f"{config['run_name']}-seed{seed}"
     run = wandb.init(
         project=config['project_name'],
-        config=config,
+        config=effective_config,
         name=run_name,
         save_code=True,
     )
@@ -117,6 +164,7 @@ def train(config: dict):
 
     model_dir = os.path.join(config['output_dir'], "models", config['run_name'])
     os.makedirs(model_dir, exist_ok=True)
+    persist_effective_config(model_dir, effective_config)
 
     # Callbacks
     wandb_callback = WandbLoggingCallback()
@@ -128,15 +176,10 @@ def train(config: dict):
     callbacks = [wandb_callback, checkpoint_callback]
 
     # Environment & Model
-    # d4_augment=True is on by default for training: the model sees a
-    # uniformly random D4 symmetry on every reset/step, forcing it to
-    # learn invariance. This is what makes the C++ searcher's
-    # canonicalization safe. The flag is opt-in via env_kwargs so the
-    # env's default behavior (used by benchmark/evaluate/visualizer) is
-    # unchanged.
-    env_kwargs = dict(config.get('env_kwargs', {}))
-    env_kwargs.setdefault('d4_augment', True)
-    vec_env = make_vec_env(Game2048Env, n_envs=config['n_envs'], env_kwargs=env_kwargs)
+    env_kwargs = effective_config['env_kwargs']
+    vec_env = DummyVecEnv(
+        make_training_env_factories(env_kwargs, d4_rank_seed_sequences)
+    )
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=config['features_dim']),

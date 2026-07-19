@@ -12,10 +12,13 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 # Allow `python scripts/benchmark.py` to resolve sibling `scripts.*` imports
 # without requiring `python -m scripts.benchmark`.
@@ -24,6 +27,20 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 import torch
+
+from scripts.benchmark_provenance import (
+    SEARCH_BATCH_SIZE,
+    SEARCH_CANONICALIZATION,
+    SEARCH_TRANSPOSITION_TABLE,
+    collect_runtime_provenance,
+)
+
+
+_PAPER_REQUIRED_PROVENANCE = (
+    "model_sha256", "effective_config_sha256", "uv_lock_sha256",
+    "native_extension_sha256", "python_version", "torch_version",
+    "sb3_version", "compiler",
+)
 
 
 def _tqdm_iter(iterable=None, **kwargs):
@@ -72,29 +89,35 @@ def parse_args(argv=None):
                    help="Placeholder for multi-seed benchmarking (currently not implemented).")
     p.add_argument("--parallel", action="store_true",
                    help="Run seed benchmarks in parallel (multi-seed mode only).")
+    p.add_argument("--paper-mode", action="store_true",
+                   help="Require a clean git worktree and emit paper-grade provenance.")
+    p.add_argument("--allow-dirty-paper-run", action="store_true",
+                   help="Allow --paper-mode on a dirty worktree, marking the run non-paper-grade.")
+    p.add_argument("--effective-config", type=str, default=None,
+                   help="Path to the resolved training configuration used for this model.")
     return p.parse_args(argv)
 
 
 def _git_commit():
     try:
         out = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL, cwd=os.getcwd(),
+            ["git", "rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL, cwd=_REPO_ROOT,
         )
         return out.decode().strip()
     except Exception:
-        return "unknown"
+        return None
 
 
 def _git_dirty():
     try:
         out = subprocess.check_output(
             ["git", "status", "--porcelain"],
-            stderr=subprocess.DEVNULL, cwd=os.getcwd(),
+            stderr=subprocess.DEVNULL, cwd=_REPO_ROOT,
         )
         return bool(out.strip())
     except Exception:
-        return False
+        return None
 
 
 def _cuda_info(device):
@@ -108,9 +131,117 @@ def _cuda_info(device):
         return None, None
 
 
+def validate_paper_mode(args) -> None:
+    """Reject a dirty paper run unless the explicit non-paper override is used."""
+    if not args.paper_mode:
+        return
+    if args.train_seed is None:
+        raise ValueError("--paper-mode requires --train-seed")
+    if args.base_eval_seed is None:
+        raise ValueError("--paper-mode requires --base-eval-seed")
+    git_commit = _git_commit()
+    git_dirty = _git_dirty()
+    _validate_paper_git_state(git_commit, git_dirty, args.allow_dirty_paper_run)
+    effective_config = resolve_effective_config_path(
+        args.model_path, args.effective_config,
+    )
+    if effective_config is None:
+        raise ValueError(
+            "--paper-mode requires a model-adjacent effective config or an "
+            "existing --effective-config artifact."
+        )
+    _validate_paper_training_seed(effective_config, args.train_seed)
+    args.effective_config = str(effective_config)
+    args._paper_provenance = _collect_paper_provenance(
+        args.model_path, args.effective_config,
+    )
+
+
+def _validate_paper_git_state(git_commit, git_dirty, allow_dirty_paper_run: bool) -> None:
+    if not _is_git_commit(git_commit) or git_dirty is None:
+        raise ValueError("--paper-mode requires a verifiable git identity or status")
+    if git_dirty and not allow_dirty_paper_run:
+        raise ValueError(
+            "--paper-mode requires a clean git worktree; use "
+            "--allow-dirty-paper-run to record a non-paper-grade run."
+        )
+
+
+def _validate_paper_training_seed(effective_config: Path, train_seed: int) -> None:
+    """Require the persisted resolved config to identify the benchmarked model."""
+    try:
+        with effective_config.open() as stream:
+            resolved_config = json.load(stream)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "--paper-mode requires a readable resolved effective_config JSON"
+        ) from exc
+    if (
+        not isinstance(resolved_config, dict)
+        or resolved_config.get("root_training_seed") != train_seed
+    ):
+        raise ValueError(
+            "--paper-mode requires effective_config root_training_seed to equal "
+            "--train-seed"
+        )
+
+
+def _collect_paper_provenance(model_path: str, effective_config: str) -> dict:
+    provenance = collect_runtime_provenance(
+        model_path=model_path, effective_config=effective_config,
+    )
+    missing = [key for key in _PAPER_REQUIRED_PROVENANCE if not provenance.get(key)]
+    if missing:
+        raise ValueError(
+            "--paper-mode could not produce required provenance: "
+            + ", ".join(missing)
+        )
+    return provenance
+
+
+def _is_git_commit(value) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+
+def resolve_effective_config_path(
+    model_path: str | None, explicit_path: str | None,
+) -> Path | None:
+    """Prefer an explicit resolved config, otherwise use the model's sibling."""
+    candidate = Path(explicit_path) if explicit_path else (
+        Path(model_path).parent / "effective_config.json" if model_path else None
+    )
+    return candidate if candidate is not None and candidate.is_file() else None
+
+
 def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_iso):
     cuda_name, cuda_runtime = _cuda_info(args.device)
-    return {
+    effective_config = resolve_effective_config_path(
+        args.model_path, args.effective_config,
+    )
+    git_dirty = _git_dirty()
+    git_commit = _git_commit()
+    if args.paper_mode:
+        _validate_paper_git_state(git_commit, git_dirty, args.allow_dirty_paper_run)
+        if effective_config is None:
+            raise ValueError(
+                "--paper-mode requires a model-adjacent effective config or an "
+                "existing --effective-config artifact."
+            )
+        if args.train_seed is None:
+            raise ValueError("--paper-mode requires --train-seed")
+        if args.base_eval_seed is None:
+            raise ValueError("--paper-mode requires --base-eval-seed")
+        provenance = getattr(args, "_paper_provenance", None)
+        if provenance is None:
+            provenance = _collect_paper_provenance(
+                args.model_path, str(effective_config),
+            )
+    else:
+        provenance = collect_runtime_provenance(
+            model_path=args.model_path,
+            effective_config=str(effective_config) if effective_config else None,
+        )
+    config = {
         "benchmark_schema_version": "1.0.0",
         "run_name": run_name,
         "model_path": str(args.model_path),
@@ -128,18 +259,35 @@ def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_i
         "log_moves": bool(args.log_moves),
         "base_eval_seed": env_seed_base if args.base_eval_seed is not None else None,
         "eval_seed_strategy": eval_seed_strategy,
-        "git_commit": _git_commit(),
-        "git_dirty": _git_dirty(),
+        "git_commit": git_commit,
+        "git_dirty": git_dirty,
+        "paper_mode": bool(args.paper_mode),
+        "paper_grade": bool(
+            args.paper_mode and _is_git_commit(git_commit) and git_dirty is False
+            and not args.allow_dirty_paper_run and effective_config is not None
+        ),
+        "search_depth": args.depth,
+        "search_canonicalization": SEARCH_CANONICALIZATION,
+        "search_transposition_table": SEARCH_TRANSPOSITION_TABLE,
+        "search_batch_size": SEARCH_BATCH_SIZE,
         "started_at_iso": started_at_iso,
         "finished_at_iso": "",
         "total_wall_time_s": 0.0,
         "interrupted": False,
         "status": "running",
     }
+    config.update(provenance)
+    return config
 
 
 def main(argv=None):
     args = parse_args(argv)
+
+    try:
+        validate_paper_mode(args)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
 
     if args.model_dir:
         from scripts.benchmark_multi_seed import benchmark_multi_seed

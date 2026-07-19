@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 
 
-def _load_encoder():
-    """Load BoardEncoder from the C++ extension."""
+def _load_extension():
+    """Load the C++ extension directly."""
     import importlib.util
     import sys
     so_path = "twenty_forty_eight_ai/utils/_searcher_cpp.cpython-312-x86_64-linux-gnu.so"
@@ -12,7 +12,11 @@ def _load_encoder():
     module = importlib.util.module_from_spec(spec)
     sys.modules["_searcher_test"] = module
     spec.loader.exec_module(module)
-    return module.BoardEncoder
+    return module
+
+
+def _load_encoder():
+    return _load_extension().BoardEncoder
 
 
 class TestBoardEncoder:
@@ -31,6 +35,53 @@ class TestBoardEncoder:
         packed = encoder.pack(board)
         unpacked = encoder.unpack(packed)
         assert list(map(list, unpacked)) == [list(row) for row in board]
+
+    def test_pack_accepts_maximum_representable_exponent(self, encoder):
+        board = (
+            (15, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0, 0, 0),
+        )
+
+        assert encoder.unpack(encoder.pack(board))[0][0] == 15
+
+    @pytest.mark.parametrize("exponent", [-1, 16])
+    def test_pack_rejects_out_of_range_exponents(self, encoder, exponent):
+        board = (
+            (exponent, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0, 0, 0),
+        )
+
+        with pytest.raises(ValueError, match="0.*15"):
+            encoder.pack(board)
+
+    def test_fast2048_set_board_rejects_out_of_range_exponent(self):
+        game = _load_extension().Fast2048()
+        board = (
+            (16, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0, 0, 0),
+        )
+
+        with pytest.raises(ValueError, match="0.*15"):
+            game.set_board(board)
+
+    def test_fast2048_move_rejects_exponent_overflow_before_lut_reuse(self):
+        game = _load_extension().Fast2048()
+        board = ((15, 15, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))
+        game.set_board(board)
+        score_before = game.score
+
+        with pytest.raises(ValueError, match="move.*0.*15"):
+            game.move(3)
+
+        assert tuple(tuple(row) for row in game.get_board()) == board
+        assert game.score == score_before
+        assert game.is_move_valid(3)
 
     def test_canonicalize_identity(self, encoder):
         """Canonicalizing the same board twice gives the same result."""

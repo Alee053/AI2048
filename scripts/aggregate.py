@@ -17,12 +17,200 @@ import re
 import sys
 import json
 import csv
+import math
 from pathlib import Path
 from collections import defaultdict
 
 import numpy as np
 
+from scripts.benchmark_summary import compute_summary_from_rows
+from scripts.benchmark_io import EPISODE_COLUMNS
+
 SUPPORTED_SCHEMA_MAJOR = 1
+
+_REQUIRED_PAPER_PROVENANCE = (
+    "git_commit", "model_sha256", "effective_config_sha256", "uv_lock_sha256",
+    "native_extension_sha256", "train_seed", "base_eval_seed", "python_version",
+    "torch_version", "sb3_version", "cuda_runtime", "gpu_name", "compiler",
+    "search_depth", "search_canonicalization", "search_transposition_table",
+    "search_batch_size", "depth", "use_expectimax",
+)
+_PAIRED_PROVENANCE = (
+    "git_commit", "model_sha256", "effective_config_sha256", "uv_lock_sha256",
+    "native_extension_sha256", "device", "python_version", "torch_version",
+    "sb3_version", "cuda_runtime", "gpu_name", "compiler",
+    "search_canonicalization", "search_transposition_table", "search_batch_size",
+)
+_INT_EPISODE_FIELDS = {
+    "episode_idx", "worker_id", "train_seed", "eval_seed", "requested_depth",
+    "effective_depth", "score", "max_tile", "max_log_tile", "steps", "total_nodes",
+    "total_batches", "total_tt_lookups", "total_tt_hits", "total_tt_collisions",
+    "total_tt_same_key_overwrites", "total_moves_resolved", "total_moves_unresolved",
+    "total_cap_hits", "total_alpha_beta_cuts", "total_chance_nodes", "total_max_nodes",
+    "min_empty_cells",
+}
+_FLOAT_EPISODE_FIELDS = {
+    "episode_time_s", "mean_move_time_ms", "median_move_time_ms", "p95_move_time_ms",
+    "max_move_time_ms", "total_think_ms", "mean_chance_value", "mean_empty_cells",
+    "mean_merge_score", "mean_nps", "mean_tt_hit_rate", "mean_nodes_per_batch_call",
+}
+
+
+def validate_paper_run(run_dir: str | Path) -> dict:
+    """Validate one completed paper-grade run before it can be aggregated."""
+    run_dir = Path(run_dir)
+    config = _load_json(run_dir / "config.json")
+    summary = _load_json(run_dir / "summary.json")
+    episodes = _load_episode_rows(run_dir / "episodes.csv")
+
+    if _schema_major(config.get("benchmark_schema_version")) != SUPPORTED_SCHEMA_MAJOR:
+        raise ValueError(f"{run_dir}: unsupported config schema version")
+    if (
+        _schema_major(summary.get("benchmark_schema_version")) != SUPPORTED_SCHEMA_MAJOR
+        or summary.get("benchmark_schema_version") != config.get("benchmark_schema_version")
+    ):
+        raise ValueError(f"{run_dir}: unsupported or mismatched summary schema version")
+
+    if config.get("status") != "completed" or config.get("interrupted"):
+        raise ValueError(f"{run_dir}: status is not completed")
+    if not config.get("paper_grade") or config.get("git_dirty"):
+        raise ValueError(f"{run_dir}: run is not paper-grade")
+    missing = [key for key in _REQUIRED_PAPER_PROVENANCE if key not in config or config[key] is None]
+    nonempty = (
+        "git_commit", "model_sha256", "effective_config_sha256", "uv_lock_sha256",
+        "native_extension_sha256", "compiler", "search_canonicalization",
+    )
+    missing.extend(key for key in nonempty if not config.get(key) and key not in missing)
+    if missing:
+        raise ValueError(f"{run_dir}: missing paper provenance: {', '.join(missing)}")
+
+    requested = int(config["n_runs"])
+    if len(episodes) != requested or config.get("n_completed") != requested:
+        raise ValueError(f"{run_dir}: episode row count does not match requested runs")
+    if summary.get("n_completed") != requested or summary.get("n_runs_requested") != requested:
+        raise ValueError(f"{run_dir}: summary row count does not match requested runs")
+    if any(_schema_major(row["schema_version"]) != SUPPORTED_SCHEMA_MAJOR for row in episodes):
+        raise ValueError(f"{run_dir}: unsupported episode schema version")
+
+    run_id = config.get("run_id")
+    if run_id in (None, "") or any(row.get("run_id") != run_id for row in episodes):
+        raise ValueError(f"{run_dir}: episode run_id does not match config")
+    indices = [row["episode_idx"] for row in episodes]
+    if len(indices) != len(set(indices)) or set(indices) != set(range(requested)):
+        raise ValueError(f"{run_dir}: duplicate or missing episode_idx values")
+    seeds = [row["eval_seed"] for row in episodes]
+    expected_seeds = {int(config["base_eval_seed"]) + index for index in range(requested)}
+    if len(seeds) != len(set(seeds)) or set(seeds) != expected_seeds:
+        raise ValueError(f"{run_dir}: duplicate or missing eval_seed values")
+    if any(row.get("train_seed") != config["train_seed"] for row in episodes):
+        raise ValueError(f"{run_dir}: episode training seed does not match config")
+    expected_depth = int(config["depth"])
+    expected_search = bool(config["use_expectimax"])
+    if any(row["requested_depth"] != expected_depth for row in episodes):
+        raise ValueError(f"{run_dir}: episode requested_depth does not match config")
+    if any(row["effective_depth"] != expected_depth for row in episodes):
+        raise ValueError(f"{run_dir}: episode effective_depth does not match config")
+    if any(row["use_expectimax"] != expected_search for row in episodes):
+        raise ValueError(f"{run_dir}: episode use_expectimax does not match config")
+    if any(row["total_cap_hits"] for row in episodes):
+        raise ValueError(f"{run_dir}: episodes contain search cap hits")
+    if any(row["total_moves_unresolved"] for row in episodes):
+        raise ValueError(f"{run_dir}: episodes contain unresolved search moves")
+
+    total_time_s = float(summary.get("metrics", {}).get("total_time_s", 0.0))
+    expected_summary = compute_summary_from_rows(episodes, config, total_time_s)
+    expected_summary.update({
+        "status": "completed", "interrupted": False,
+        "n_completed": requested, "n_runs_requested": requested,
+    })
+    for key in expected_summary:
+        if key not in summary or not _equivalent(expected_summary[key], summary[key]):
+            raise ValueError(f"{run_dir}: summary.json does not match episodes.csv ({key})")
+    return {"config": config, "summary": summary, "episodes": episodes}
+
+
+def validate_paired_paper_runs(run_dirs) -> list[dict]:
+    """Require paired conditions to share eval seeds and execution provenance."""
+    runs = [validate_paper_run(run_dir) for run_dir in run_dirs]
+    if len(runs) < 2:
+        return runs
+    baseline = runs[0]
+    baseline_seeds = {row["eval_seed"] for row in baseline["episodes"]}
+    for run in runs[1:]:
+        if {row["eval_seed"] for row in run["episodes"]} != baseline_seeds:
+            raise ValueError("paired runs have mismatched eval seed sets")
+        for key in _PAIRED_PROVENANCE:
+            if run["config"].get(key) != baseline["config"].get(key):
+                raise ValueError(f"paired runs differ in {key}")
+    return runs
+
+
+def _load_json(path: Path) -> dict:
+    try:
+        with path.open() as stream:
+            return json.load(stream)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{path}: unreadable JSON") from exc
+
+
+def _load_episode_rows(path: Path) -> list[dict]:
+    try:
+        with path.open(newline="") as stream:
+            reader = csv.DictReader(stream)
+            missing = [column for column in EPISODE_COLUMNS if column not in (reader.fieldnames or [])]
+            if missing:
+                raise ValueError(
+                    f"{path}: missing required episode CSV columns: {', '.join(missing)}"
+                )
+            rows = list(reader)
+    except OSError as exc:
+        raise ValueError(f"{path}: unreadable episodes CSV") from exc
+    for row in rows:
+        for key in _INT_EPISODE_FIELDS:
+            if key in row and row[key] not in (None, ""):
+                row[key] = int(row[key])
+        for key in _FLOAT_EPISODE_FIELDS:
+            if key in row and row[key] not in (None, ""):
+                row[key] = float(row[key])
+        row["use_expectimax"] = _parse_bool(row["use_expectimax"], path)
+    return rows
+
+
+def _parse_bool(value, path: Path) -> bool:
+    if str(value).lower() in {"true", "1"}:
+        return True
+    if str(value).lower() in {"false", "0"}:
+        return False
+    raise ValueError(f"{path}: invalid boolean use_expectimax value")
+
+
+def _schema_major(version) -> int | None:
+    try:
+        return int(str(version).split(".", maxsplit=1)[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _equivalent(expected, actual) -> bool:
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        return expected.keys() == actual.keys() and all(
+            _equivalent(expected[key], actual[key]) for key in expected
+        )
+    if isinstance(expected, list) and isinstance(actual, list):
+        return len(expected) == len(actual) and all(
+            _equivalent(left, right) for left, right in zip(expected, actual)
+        )
+    if isinstance(expected, float) or isinstance(actual, float):
+        try:
+            return math.isclose(float(expected), float(actual), rel_tol=1e-12, abs_tol=1e-12)
+        except (TypeError, ValueError):
+            return False
+    return expected == actual
+
+
+def summary_fieldnames(rows: list[dict]) -> list[str]:
+    """Return the ordered union of all summary row fields."""
+    return list(dict.fromkeys(key for row in rows for key in row))
 
 
 def _check_schema_versions(benchmark_dir, sweep_name):
@@ -201,7 +389,7 @@ def load_episodes_csv(run_dir):
     return df.to_dict("records")
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("benchmark_dir", type=str, help="Root folder containing {sweep_name}_depth* subfolders")
     parser.add_argument("--sweep", type=str, required=True, help="Sweep name to aggregate")
@@ -209,7 +397,13 @@ def main():
     parser.add_argument("--output", type=str, default=None, help="Override output directory (default: benchmark_dir)")
     parser.add_argument("--legacy", action="store_true",
                         help="Read legacy results_seed_N.json files instead of the new CSV layout.")
-    args = parser.parse_args()
+    parser.add_argument("--paper-mode", "--strict", dest="paper_mode", action="store_true",
+                        help="Reject incomplete, non-paper-grade, or unpaired result artifacts.")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
 
     benchmark_dir = args.benchmark_dir
     sweep_name = args.sweep
@@ -231,7 +425,16 @@ def main():
     if not depth_folders:
         print(f"Error: no depth folders found for sweep '{sweep_name}' in {benchmark_dir}")
         print(f"  Expected pattern: {sweep_name}_depth<N>")
-        sys.exit(1)
+        return 1
+
+    if args.paper_mode:
+        try:
+            validate_paired_paper_runs(
+                [info["path"] for _, info in sorted(depth_folders.items())]
+            )
+        except ValueError as exc:
+            print(f"Error: paper aggregation rejected: {exc}")
+            return 2
 
     print(f"Found depths: {sorted(depth_folders.keys())}")
     for depth, info in sorted(depth_folders.items()):
@@ -383,7 +586,7 @@ def main():
     # Write summary.csv
     csv_path = output_dir / "summary.csv"
     if summary_rows:
-        fieldnames = list(summary_rows[0].keys())
+        fieldnames = summary_fieldnames(summary_rows)
         with open(csv_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -511,6 +714,8 @@ def main():
 
         print(f"Paper figures written to {figures_dir}/")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

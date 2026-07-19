@@ -1,11 +1,16 @@
 #include "BoardEncoder.h"
+#include <stdexcept>
 
 uint64_t BoardEncoder::pack(const Board& board) {
     uint64_t packed = 0;
     for (int r = 0; r < 4; ++r) {
         for (int c = 0; c < 4; ++c) {
             int shift = (r * 4 + c) * 4;
-            packed |= (static_cast<uint64_t>(board[r][c] & 0xF) << shift);
+            int exponent = board[r][c];
+            if (exponent < 0 || exponent > 15) {
+                throw std::invalid_argument("Board exponents must be in the range 0..15");
+            }
+            packed |= (static_cast<uint64_t>(exponent) << shift);
         }
     }
     return packed;

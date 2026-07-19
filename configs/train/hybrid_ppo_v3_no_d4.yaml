@@ -1,6 +1,6 @@
 # s--- Run & Path Settings ---
 project_name: "2048-ppo-training"
-run_name: "hybrid_ppo_v3"
+run_name: "hybrid_ppo_v3_no_d4"
 output_dir: "data" # Base directory for models and studies
 
 # --- Resume Settings ---
@@ -31,4 +31,4 @@ features_dim: 256
 # export MKL_NUM_THREADS=1
 
 env_kwargs:
-  d4_augment: true
+  d4_augment: false

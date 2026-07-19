@@ -1,10 +1,11 @@
 """Tests for the searcher Python wrapper."""
 import numpy as np
+import pytest
+
+from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
 
 def test_expectimax_searcher_returns_dict():
     """find_best_move should return a dict, not a pybind11 object."""
-    from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
-
     searcher = ExpectimaxSearcher()
     board = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [1, 0, 0, 2]])
 
@@ -22,3 +23,106 @@ def test_expectimax_searcher_returns_dict():
     assert 'tt_size' in result
     assert 'tt_lookups' in result
     assert 'tt_hits' in result
+
+
+def test_depth_zero_directs_callers_to_raw_ppo_path():
+    searcher = ExpectimaxSearcher()
+    board = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [1, 0, 0, 2]])
+
+    with pytest.raises(ValueError, match="raw PPO"):
+        searcher.find_best_move(board, 0, lambda boards: [0.0] * len(boards))
+
+
+@pytest.mark.parametrize("depth", [256, 257])
+def test_depth_above_tt_range_is_rejected(depth):
+    searcher = ExpectimaxSearcher()
+    board = np.array([
+        [1, 2, 1, 2],
+        [2, 1, 2, 1],
+        [1, 2, 1, 2],
+        [2, 1, 2, 1],
+    ])
+
+    with pytest.raises(ValueError, match="255"):
+        searcher.find_best_move(board, depth, lambda boards: [0.0] * len(boards))
+
+
+def test_search_rejects_out_of_range_input_before_simulation():
+    searcher = ExpectimaxSearcher()
+    board = np.array([[16, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+
+    with pytest.raises(ValueError, match="search input.*0.*15"):
+        searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
+
+
+def test_search_rejects_simulated_exponent_overflow():
+    searcher = ExpectimaxSearcher()
+    board = np.array([[15, 15, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+
+    with pytest.raises(ValueError, match="simulated move.*0.*15"):
+        searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_root_ordering_callback_rejects_non_finite_values(value):
+    searcher = ExpectimaxSearcher()
+    board = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+
+    with pytest.raises(ValueError, match="finite"):
+        searcher.find_best_move(board, 1, lambda boards: [value] * len(boards))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_leaf_callback_rejects_non_finite_values(value):
+    searcher = ExpectimaxSearcher()
+    board = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+    callback_calls = 0
+
+    def non_finite_leaf_callback(boards):
+        nonlocal callback_calls
+        callback_calls += 1
+        if callback_calls == 1:
+            return [0.0] * len(boards)
+        return [value] * len(boards)
+
+    with pytest.raises(ValueError, match="finite"):
+        searcher.find_best_move(board, 1, non_finite_leaf_callback)
+
+
+def test_target_batch_size_must_be_positive():
+    with pytest.raises(ValueError, match="target_batch_size.*positive"):
+        ExpectimaxSearcher(0)
+
+
+def test_root_ordering_callback_must_return_one_value_per_board():
+    searcher = ExpectimaxSearcher()
+    board = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+
+    with pytest.raises(ValueError, match="expected 2.*got 1"):
+        searcher.find_best_move(board, 1, lambda boards: [0.0])
+
+
+def test_leaf_callback_must_return_one_value_per_board():
+    searcher = ExpectimaxSearcher()
+    board = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+    callback_calls = 0
+
+    def short_leaf_callback(boards):
+        nonlocal callback_calls
+        callback_calls += 1
+        if callback_calls == 1:
+            return [0.0] * len(boards)
+        return [0.0] * (len(boards) - 1)
+
+    with pytest.raises(ValueError, match="expected .* got"):
+        searcher.find_best_move(board, 1, short_leaf_callback)
+
+
+@pytest.mark.parametrize("use_transposition_table", [True, False])
+def test_tied_root_scores_choose_lower_action_index(use_transposition_table):
+    searcher = ExpectimaxSearcher(use_transposition_table=use_transposition_table)
+    board = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+
+    result = searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
+
+    assert result["best_move"] == 1

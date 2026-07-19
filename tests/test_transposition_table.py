@@ -56,3 +56,92 @@ class TestCrossSearchTTBounding:
             f"After clear_tt, size={post_clear_size:,} but cold TT size={fresh_size:,}. "
             f"clear_tt() did not actually clear the table."
         )
+
+
+def test_depth_two_result_does_not_reuse_depth_three_tt_values():
+    board = np.array([
+        [1, 2, 0, 0],
+        [0, 1, 2, 0],
+        [0, 0, 1, 2],
+        [2, 0, 0, 1],
+    ], dtype=np.int32)
+
+    fresh = ExpectimaxSearcher(target_batch_size=32768)
+    fresh_result = fresh.find_best_move(board, 2, fake_batch_eval)
+
+    warmed = ExpectimaxSearcher(target_batch_size=32768)
+    warmed.find_best_move(board, 3, fake_batch_eval)
+    warmed_result = warmed.find_best_move(board, 2, fake_batch_eval)
+
+    assert warmed_result["best_move"] == fresh_result["best_move"]
+    assert warmed_result["move_scores"] == fresh_result["move_scores"]
+
+
+def test_tt_disabled_search_matches_enabled_search():
+    board = np.array([
+        [1, 2, 0, 0],
+        [0, 1, 2, 0],
+        [0, 0, 1, 2],
+        [2, 0, 0, 1],
+    ], dtype=np.int32)
+
+    enabled = ExpectimaxSearcher(target_batch_size=32768)
+    disabled = ExpectimaxSearcher(target_batch_size=32768, use_transposition_table=False)
+    disabled.clear_tt()
+    enabled_result = enabled.find_best_move(board, 2, fake_batch_eval)
+    disabled_result = disabled.find_best_move(board, 2, fake_batch_eval)
+
+    assert disabled_result["best_move"] == enabled_result["best_move"]
+    assert disabled_result["move_scores"] == enabled_result["move_scores"]
+    assert disabled_result["tt_lookups"] == 0
+    assert disabled_result["tt_hits"] == 0
+    assert disabled_result["tt_size"] == 0
+
+
+def test_tt_disabled_search_uses_canonical_leaf_boards():
+    board = np.array([
+        [1, 2, 0, 0],
+        [0, 3, 0, 0],
+        [0, 0, 4, 0],
+        [0, 0, 0, 0],
+    ], dtype=np.int32)
+
+    def orientation_sensitive_eval(boards):
+        return [
+            float(sum((row * 4 + column + 1) * value
+                      for row, values in enumerate(board)
+                      for column, value in enumerate(values)))
+            for board in boards
+        ]
+
+    enabled = ExpectimaxSearcher(target_batch_size=32768)
+    disabled = ExpectimaxSearcher(target_batch_size=32768, use_transposition_table=False)
+    enabled_result = enabled.find_best_move(board, 1, orientation_sensitive_eval)
+    disabled_result = disabled.find_best_move(board, 1, orientation_sensitive_eval)
+
+    assert disabled_result["best_move"] == enabled_result["best_move"]
+    assert disabled_result["move_scores"] == enabled_result["move_scores"]
+    assert disabled_result["tt_lookups"] == 0
+    assert disabled_result["tt_hits"] == 0
+    assert disabled_result["tt_size"] == 0
+
+
+def test_exact_depth_entries_coexist_after_depth_three_depth_two_depth_three_searches():
+    board = np.array([
+        [1, 2, 3, 4],
+        [2, 3, 4, 5],
+        [3, 4, 5, 6],
+        [4, 5, 6, 0],
+    ], dtype=np.int32)
+    searcher = ExpectimaxSearcher(target_batch_size=32768)
+
+    first_depth_three = searcher.find_best_move(board, 3, fake_batch_eval)
+    depth_two = searcher.find_best_move(board, 2, fake_batch_eval)
+    second_depth_two = searcher.find_best_move(board, 2, fake_batch_eval)
+    second_depth_three = searcher.find_best_move(board, 3, fake_batch_eval)
+
+    assert depth_two["tt_size"] > first_depth_three["tt_size"]
+    assert second_depth_two["nodes_visited"] == depth_two["moves_resolved"]
+    assert second_depth_two["tt_hits"] == depth_two["moves_resolved"]
+    assert second_depth_three["nodes_visited"] == first_depth_three["moves_resolved"]
+    assert second_depth_three["tt_hits"] == first_depth_three["moves_resolved"]

@@ -32,7 +32,7 @@ class Game2048Env(Env):
     def __init__(
         self,
         d4_augment: bool = False,
-        d4_seed: Optional[int] = None,
+        d4_seed: Optional[int | np.random.SeedSequence] = None,
     ):
         """Initialize environment.
 
@@ -40,8 +40,8 @@ class Game2048Env(Env):
             d4_augment: if True, apply a random D4 transform to the board
                 observation on every reset and step, and inverse-permute
                 the agent's chosen action. Off by default.
-            d4_seed: optional seed for the per-env D4 sampler. Independent
-                from the game's tile-placement RNG.
+            d4_seed: optional integer or SeedSequence for the per-env D4
+                sampler. Independent from the game's tile-placement RNG.
 
         Note on vec_env usage: when constructing a vectorized environment
         with `make_vec_env(..., env_kwargs={'d4_seed': N})`, every parallel

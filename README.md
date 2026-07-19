@@ -612,11 +612,13 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 **Quick examples:**
 
 ```bash
-# Paper-grade single-worker, depth-3, 100 episodes
+# Paper-grade single-worker, depth-3, 100 episodes.
+# The model directory must contain its matching effective_config.json.
 uv run python -m scripts.benchmark \
   data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 3 --workers 1 --device cuda \
-  --output v3_depth3_final --base-eval-seed 0
+  --output v3_depth3_final --base-eval-seed 0 --train-seed <training-seed> \
+  --paper-mode
 
 # Throughput-mode: 8 CPU workers, depth-3
 uv run python -m scripts.benchmark \
@@ -982,10 +984,11 @@ Evaluate with visualization:
 uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
-Run full benchmark suite (paper-grade):
+Run full benchmark suite (paper-grade; the model directory must contain its matching `effective_config.json`):
 ```bash
 uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test
+  --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test \
+  --base-eval-seed 0 --train-seed <training-seed> --paper-mode
 ```
 
 Throughput-mode benchmark (CPU, 8 workers):
