@@ -1,0 +1,16 @@
+# Frozen paper experiment matrix. Smoke tests may reduce only timesteps and episodes.
+training_conditions:
+  - name: d4
+    config: configs/train/hybrid_ppo_v3.yaml
+    d4_augment: true
+  - name: no_d4
+    config: configs/train/hybrid_ppo_v3_no_d4.yaml
+    d4_augment: false
+training_seeds: [0, 1, 2, 3]
+total_training_timesteps: 100000000
+benchmark_depths: [0, 1, 2, 3]
+evaluation_episodes_per_configuration: 100
+base_evaluation_seed: 20482048
+workers: 1
+device: cuda
+paper_mode: true
