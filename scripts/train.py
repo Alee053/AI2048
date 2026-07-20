@@ -22,6 +22,7 @@ Examples:
 import os
 import time
 import json as _json
+import subprocess
 import yaml
 import argparse
 import wandb
@@ -35,6 +36,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
+try:
+    from scripts.benchmark_provenance import sha256_file
+except ModuleNotFoundError:  # Support `python scripts/train.py`.
+    from benchmark_provenance import sha256_file
 from twenty_forty_eight_ai.utils.effective_config import (
     D4_SEED_DERIVATION,
     derive_d4_rank_seed_sequences,
@@ -149,6 +154,32 @@ def persist_effective_config(model_dir: str | Path, effective_config: dict) -> P
     return path
 
 
+def persist_training_manifest(model_dir: str | Path, model_path: str, model, effective_config: dict) -> Path:
+    """Persist immutable provenance bound to the final saved model."""
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except subprocess.SubprocessError:
+        git_commit = ""
+    manifest = {
+        "git_commit": git_commit,
+        "git_dirty": bool(subprocess.call(["git", "diff", "--quiet"])),
+        "root_training_seed": effective_config["root_training_seed"],
+        "effective_config_sha256": sha256_file(Path(model_dir) / EFFECTIVE_CONFIG_FILENAME),
+        "uv_lock_sha256": sha256_file(Path("uv.lock")),
+        "native_extension_sha256": sha256_file(
+            Path("twenty_forty_eight_ai/utils/_searcher_cpp.cpython-312-x86_64-linux-gnu.so")
+        ),
+        "model_sha256": sha256_file(model_path),
+        "final_timestep": model.num_timesteps,
+    }
+    path = Path(model_dir) / "training_manifest.json"
+    with path.open("w") as stream:
+        _json.dump(manifest, stream, indent=2, sort_keys=True)
+    return path
+
+
 def train(config: dict):
     """Run training loop."""
     seed = seed_from_config(config)
@@ -243,6 +274,7 @@ def train(config: dict):
     # Save model
     final_model_path = os.path.join(model_dir, "final_model.zip")
     model.save(final_model_path)
+    persist_training_manifest(model_dir, final_model_path, model, effective_config)
     print(f"Final model saved to: {final_model_path}")
     print("Training complete!")
 
