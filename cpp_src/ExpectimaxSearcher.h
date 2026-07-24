@@ -6,9 +6,11 @@
 #include <map>
 #include <functional>
 #include <chrono>
+#include <unordered_map>
 
 using BatchEvalFunc = std::function<std::vector<float>(const std::vector<std::array<std::array<int, 4>, 4>>&)>;
 using Board = std::array<std::array<int, 4>, 4>;
+using LeafCache = std::unordered_map<uint64_t, float>;
 
 struct SearchStats {
     int best_move;
@@ -63,8 +65,10 @@ private:
     std::chrono::high_resolution_clock::time_point search_start;
 
     float chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
-                                 std::vector<uint64_t>& batch_queue);
+                                  std::vector<uint64_t>& batch_queue,
+                                  const LeafCache& leaf_cache);
     float max_node_substitute(const Board& board, int depth, uint64_t board_hash,
-                              std::vector<uint64_t>& batch_queue,
-                              float alpha, float beta);
+                               std::vector<uint64_t>& batch_queue,
+                               const LeafCache& leaf_cache,
+                               float alpha, float beta);
 };
