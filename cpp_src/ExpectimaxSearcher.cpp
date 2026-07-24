@@ -48,7 +48,8 @@ float get_log_reward(int merge_score) {
 }
 
 float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, uint64_t board_hash,
-                                                 std::vector<uint64_t>& batch_queue) {
+                                                  std::vector<uint64_t>& batch_queue,
+                                                  const LeafCache& leaf_cache) {
     nodes_visited++;
     chance_nodes_evaluated_++;
 
@@ -70,7 +71,7 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
     }
 
     if (empty_cells.empty()) {
-        float val = max_node_substitute(board, depth - 1, 0, batch_queue);
+        float val = max_node_substitute(board, depth - 1, 0, batch_queue, leaf_cache);
         if (std::isinf(val) && val < 0) return UNRESOLVED;
         if (use_transposition_table_) {
             transposition_table->store(canon, static_cast<uint8_t>(depth), NodeType::CHANCE, val);
@@ -88,7 +89,7 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
         Board next_board_2 = board;
         next_board_2[cell.first][cell.second] = 1;
         uint64_t canon_2 = BoardEncoder::canonicalize(next_board_2);
-        float val_2 = max_node_substitute(next_board_2, depth - 1, canon_2, batch_queue);
+        float val_2 = max_node_substitute(next_board_2, depth - 1, canon_2, batch_queue, leaf_cache);
         if (std::isinf(val_2) && val_2 < 0) {
             any_unresolved = true;
         } else {
@@ -102,7 +103,7 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
         Board next_board_4 = board;
         next_board_4[cell.first][cell.second] = 2;
         uint64_t canon_4 = BoardEncoder::canonicalize(next_board_4);
-        float val_4 = max_node_substitute(next_board_4, depth - 1, canon_4, batch_queue);
+        float val_4 = max_node_substitute(next_board_4, depth - 1, canon_4, batch_queue, leaf_cache);
         if (std::isinf(val_4) && val_4 < 0) {
             any_unresolved = true;
         } else {
@@ -127,12 +128,16 @@ float ExpectimaxSearcher::chance_node_substitute(const Board& board, int depth, 
 }
 
 float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uint64_t /*board_hash*/,
-                                               std::vector<uint64_t>& batch_queue) {
+                                               std::vector<uint64_t>& batch_queue,
+                                               const LeafCache& leaf_cache) {
     nodes_visited++;
     max_nodes_evaluated_++;
 
     if (depth == 0) {
         uint64_t canon = BoardEncoder::canonicalize(board);
+        if (const auto cached_leaf = leaf_cache.find(canon); cached_leaf != leaf_cache.end()) {
+            return cached_leaf->second;
+        }
         if (use_transposition_table_) {
             tt_lookups++;
             float cached_score = 0.0f;
@@ -185,7 +190,7 @@ float ExpectimaxSearcher::max_node_substitute(const Board& board, int depth, uin
         Board child_board = game_instance.get_board();
         validate_board_exponents(child_board, "simulated move");
 
-        float future_value = chance_node_substitute(child_board, depth, 0, batch_queue);
+        float future_value = chance_node_substitute(child_board, depth, 0, batch_queue, leaf_cache);
         if (std::isinf(future_value) && future_value < 0) {
             any_unresolved = true;
         } else {
@@ -313,6 +318,8 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
 
         std::vector<uint64_t> batch_queue;
         batch_queue.reserve(target_batch_size_);
+        LeafCache leaf_cache;
+        leaf_cache.reserve(target_batch_size_);
 
         int iter = 0;
         while (std::isinf(move_scores[rm.move_id])) {
@@ -329,7 +336,7 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
             float future_value = chance_node_substitute(
                 rm.post_board, depth,
                 BoardEncoder::canonicalize(rm.post_board),
-                batch_queue
+                batch_queue, leaf_cache
             );
 
             if (!std::isinf(future_value)) {
@@ -365,10 +372,10 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
             validate_batch_values(values);
 
             for (size_t i = 0; i < batch_queue.size(); ++i) {
+                leaf_cache.emplace(batch_queue[i], values[i]);
                 if (use_transposition_table_) {
                     constexpr uint8_t LEAF_DEPTH = 0;
                     transposition_table->store(batch_queue[i], LEAF_DEPTH, NodeType::MAX, values[i]);
-                    transposition_table->store(batch_queue[i], LEAF_DEPTH, NodeType::CHANCE, values[i]);
                 }
             }
         }
