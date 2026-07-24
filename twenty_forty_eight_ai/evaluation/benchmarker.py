@@ -41,6 +41,7 @@ class Benchmarker:
         self.model_path = model_path
 
         self.model = MaskablePPO.load(model_path, device=device)
+        self.model.policy.eval()
         self.device = self.model.device
 
         self.env = Game2048Env()
@@ -79,6 +80,9 @@ class Benchmarker:
         """
         if self._force_crash:
             raise RuntimeError("simulated worker crash (BENCHMARK_FORCE_CRASH=1)")
+
+        if self.searcher is not None:
+            self.searcher.clear_tt()
 
         # Seed global numpy RNG with eval_seed so episode outcomes are
         # deterministic regardless of order or worker count. The Python
@@ -167,7 +171,7 @@ class Benchmarker:
             if log_moves:
                 move_records.append(self._build_move_record(
                     run_id=run_id,
-                    episode_idx=0,
+                    episode_idx=episode_idx,
                     move_idx=steps,
                     worker_id=worker_id,
                     action=action,

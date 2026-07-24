@@ -70,6 +70,17 @@ def _drain_status_queue(status_queue):
     return msgs
 
 
+def paper_search_failure_reason(row):
+    """Return the paper-mode failure caused by an incomplete search result."""
+    cap_hits = int(row.get("total_cap_hits", 0))
+    unresolved = int(row.get("total_moves_unresolved", 0))
+    if cap_hits:
+        return f"search reported {cap_hits} cap hits"
+    if unresolved:
+        return f"search reported {unresolved} unresolved moves"
+    return None
+
+
 def run_benchmark(args):
     """Single-model benchmark entry point. Returns process exit code."""
     log_moves = bool(args.log_moves)
@@ -157,6 +168,7 @@ def run_benchmark(args):
                     continue
 
                 row = episode_to_row(result)
+                row["train_seed"] = args.train_seed
                 rows.append(row)
                 csv_writer.writerow_episode(row)
                 if log_moves and result.move_records:
@@ -169,6 +181,13 @@ def run_benchmark(args):
                     "max": result.max_tile,
                     "nps": f"{result.mean_nps:.0f}",
                 })
+                if args.paper_mode:
+                    search_failure = paper_search_failure_reason(row)
+                    if search_failure:
+                        failed = True
+                        failure_msg = search_failure
+                        stop_event.set()
+                        break
     except KeyboardInterrupt:
         interrupted = True
         stop_event.set()
@@ -186,6 +205,7 @@ def run_benchmark(args):
         try:
             result = result_queue.get_nowait()
             row = episode_to_row(result)
+            row["train_seed"] = args.train_seed
             rows.append(row)
             csv_writer.writerow_episode(row)
             if log_moves and result.move_records:

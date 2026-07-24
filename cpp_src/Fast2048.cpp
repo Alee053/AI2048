@@ -1,5 +1,22 @@
 #include "Fast2048.h"
 #include "RandomUtil.h"
+#include <stdexcept>
+
+namespace {
+
+void validate_board_exponents(const std::array<std::array<int, 4>, 4>& board, const char* context) {
+    for (const auto& row : board) {
+        for (int exponent : row) {
+            if (exponent < 0 || exponent > 15) {
+                throw std::invalid_argument(
+                    std::string(context) + " board exponents must be in the range 0..15."
+                );
+            }
+        }
+    }
+}
+
+}  // namespace
 
 Fast2048::Fast2048() {
     static std::once_flag flag;
@@ -23,13 +40,14 @@ void Fast2048::reset() {
 
 std::tuple<int, bool, bool> Fast2048::move(int direction) {
     int merge_score = 0;
+    auto next_board = board;
 
     bool moved=is_move_valid(direction);
     if (!moved)
         return {0, done, false};
 
     if (direction == 3) {
-        for (auto &row : board) {
+        for (auto &row : next_board) {
             int index=row_to_number(row);
             merge_score += move_reward_LUT[index];
             row = move_row_LUT[index];
@@ -37,7 +55,7 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
     }
     else if (direction == 1)
     {
-        for (auto &row : board) {
+        for (auto &row : next_board) {
             std::reverse(row.begin(), row.end());
             int index=row_to_number(row);
             merge_score += move_reward_LUT[index];
@@ -50,12 +68,12 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
         for (int col=0;col<4;col++) {
             std::array<int, 4> column;
             for (int row=0;row<4;row++)
-                column[row] = board[row][col];
+                column[row] = next_board[row][col];
             int index=row_to_number(column);
             merge_score += move_reward_LUT[index];
             column = move_row_LUT[index];
             for (int row=0;row<4;row++)
-                board[row][col] = column[row];
+                next_board[row][col] = column[row];
         }
     }
     else if (direction == 2)
@@ -63,16 +81,17 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
         for (int col=0;col<4;col++) {
             std::array<int, 4> column;
             for (int row=0;row<4;row++)
-                column[row] = board[3-row][col];
+                column[row] = next_board[3-row][col];
             int index=row_to_number(column);
             merge_score += move_reward_LUT[index];
             column = move_row_LUT[index];
             for (int row=0;row<4;row++)
-                board[3-row][col] = column[row];
+                next_board[3-row][col] = column[row];
         }
     }
+    validate_board_exponents(next_board, "Fast2048 move");
+    board = next_board;
     score += merge_score;
-
 
     generate_random();
     update_values();
@@ -87,16 +106,17 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
     if (!is_move_valid(direction)) {
         return {0, false};
     }
+    auto next_board = board;
 
     if (direction == 3) { // Left
-        for (auto &row : board) {
+        for (auto &row : next_board) {
             int index=row_to_number(row);
             merge_score += move_reward_LUT[index];
             row = move_row_LUT[index];
         }
     }
     else if (direction == 1) { // Right
-        for (auto &row : board) {
+        for (auto &row : next_board) {
             std::reverse(row.begin(), row.end());
             int index = row_to_number(row);
             merge_score += move_reward_LUT[index];
@@ -107,24 +127,26 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
     else if (direction == 0) { // Up
         for (int col = 0; col < 4; col++) {
             std::array<int, 4> column;
-            for (int row = 0; row < 4; row++) column[row] = board[row][col];
+            for (int row = 0; row < 4; row++) column[row] = next_board[row][col];
             int index = row_to_number(column);
             merge_score += move_reward_LUT[index];
             column = move_row_LUT[index];
-            for (int row = 0; row < 4; row++) board[row][col] = column[row];
+            for (int row = 0; row < 4; row++) next_board[row][col] = column[row];
         }
     }
     else if (direction == 2) { // Down
         for (int col = 0; col < 4; col++) {
             std::array<int, 4> column;
-            for (int row = 0; row < 4; row++) column[row] = board[3-row][col];
+            for (int row = 0; row < 4; row++) column[row] = next_board[3-row][col];
             int index = row_to_number(column);
             merge_score += move_reward_LUT[index];
             column = move_row_LUT[index];
-            for (int row = 0; row < 4; row++) board[3-row][col] = column[row];
+            for (int row = 0; row < 4; row++) next_board[3-row][col] = column[row];
         }
     }
 
+    validate_board_exponents(next_board, "Fast2048 simulated move");
+    board = next_board;
     return {merge_score, true};
 }
 bool Fast2048::is_move_valid(int direction) const {
@@ -167,6 +189,7 @@ std::array<std::array<int, 4>, 4> Fast2048::get_board() const {
 }
 
 void Fast2048::set_board(const std::array<std::array<int, 4>, 4> &new_board) {
+    validate_board_exponents(new_board, "Fast2048 set_board");
     board = new_board;
 
     score = 0;

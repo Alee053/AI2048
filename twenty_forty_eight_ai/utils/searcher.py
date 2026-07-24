@@ -31,8 +31,13 @@ _impl = _load_searcher_impl()
 class ExpectimaxSearcher:
     """Python wrapper that converts C++ SearchStats to a dict."""
 
-    def __init__(self, target_batch_size: int = 32768) -> None:
-        self._impl = _impl.ExpectimaxSearcher(target_batch_size)
+    def __init__(
+        self,
+        target_batch_size: int = 32768,
+        *,
+        use_transposition_table: bool = True,
+    ) -> None:
+        self._impl = _impl.ExpectimaxSearcher(target_batch_size, use_transposition_table)
 
     def clear_tt(self) -> None:
         """Explicitly wipe the persistent transposition table."""
@@ -47,7 +52,7 @@ class ExpectimaxSearcher:
         """Find the best move for the given board.
 
         Args:
-            board: 4x4 numpy array of tile values (0-16, log2-encoded).
+            board: 4x4 numpy array of tile values (0-15, log2-encoded).
             depth: Search depth for expectimax.
             batch_eval_func: Callback(list[np.ndarray]) -> list[float] for CNN evaluation.
 

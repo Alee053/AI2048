@@ -2,6 +2,8 @@
 
 project(Fast2048Cpp)
 
+enable_testing()
+
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 REQUIRED)
 
@@ -14,6 +16,10 @@ pybind11_add_module(_searcher_cpp
 )
 
 target_compile_features(_searcher_cpp PRIVATE cxx_std_17)
+
+add_executable(test_tt test_tt.cpp Fast2048.cpp RandomUtil.cpp)
+target_compile_features(test_tt PRIVATE cxx_std_17)
+add_test(NAME transposition_table_zero_key COMMAND test_tt)
 
 
 if(CMAKE_CONFIGURATION_TYPES)

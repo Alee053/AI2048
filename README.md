@@ -608,15 +608,20 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 | `--model-version` | str | none | Free-form version label, recorded in `config.json` |
 | `--model-dir` | str | none | Multi-seed mode placeholder; currently returns an error |
 | `--parallel` | flag | off | Parallel across seeds (multi-seed mode only) |
+| `--paper-mode` | flag | off | Require clean, complete, provenance-bound paper-grade output |
+| `--allow-dirty-paper-run` | flag | off | Allow a dirty tree, marking output non-paper-grade |
+| `--effective-config` | path | model-adjacent file | Resolved training config used for paper provenance |
 
 **Quick examples:**
 
 ```bash
-# Paper-grade single-worker, depth-3, 100 episodes
+# Paper-grade single-worker, depth-3, 100 episodes.
+# The model directory must contain its matching effective_config.json.
 uv run python -m scripts.benchmark \
   data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 3 --workers 1 --device cuda \
-  --output v3_depth3_final --base-eval-seed 0
+  --output v3_depth3_final --base-eval-seed 0 --train-seed <training-seed> \
+  --paper-mode
 
 # Throughput-mode: 8 CPU workers, depth-3
 uv run python -m scripts.benchmark \
@@ -731,7 +736,7 @@ All board-snapshot fields (`board_state`, `canonical_board_hash`, `empty_cells_b
 
 | Notable field | Notes |
 |---|---|
-| `board_state` | 16 comma-separated log-tile values in row-major order; `0`=empty, `11`=2048-tile, `16`=65536-tile |
+| `board_state` | 16 comma-separated log-tile values in row-major order; `0`=empty, `11`=2048-tile; frozen C++ search rejects exponents above `15` |
 | `canonical_board_hash` | `BoardEncoder::canonicalize` uint64 (D4-canonical form), base-10 string |
 | `score_up/right/down/left` | C++ root-move scores (or `NaN` in raw-policy mode) |
 | `move_time_ms` | Wall-time around the full move (search + env step) |
@@ -982,10 +987,11 @@ Evaluate with visualization:
 uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
-Run full benchmark suite (paper-grade):
+Run full benchmark suite (paper-grade; the model directory must contain its matching `effective_config.json`):
 ```bash
 uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
-  --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test
+  --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test \
+  --base-eval-seed 0 --train-seed <training-seed> --paper-mode
 ```
 
 Throughput-mode benchmark (CPU, 8 workers):

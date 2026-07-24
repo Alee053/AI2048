@@ -33,3 +33,5 @@ class TestDepth4Convergence:
             f"Depth-4 search used {stats['batches_eval']} batches, "
             "expected ≤ 20 with per-move batching"
         )
+        assert stats['cap_hits'] == 0
+        assert stats['moves_unresolved'] == 0

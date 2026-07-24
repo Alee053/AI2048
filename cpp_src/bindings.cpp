@@ -49,7 +49,8 @@ PYBIND11_MODULE(searcher, m) {
         .def_static("canonicalize_packed", static_cast<uint64_t(*)(uint64_t)>(&BoardEncoder::canonicalize));
 
     py::class_<ExpectimaxSearcher>(m, "ExpectimaxSearcher")
-        .def(py::init<size_t>(), py::arg("target_batch_size") = 32768)
+        .def(py::init<size_t, bool>(), py::arg("target_batch_size") = 32768,
+             py::arg("use_transposition_table") = true)
         .def("find_best_move", &ExpectimaxSearcher::find_best_move,
              "Returns SearchStats with best move and search statistics.",
              py::arg("board"), py::arg("depth"), py::arg("batch_eval_func"))

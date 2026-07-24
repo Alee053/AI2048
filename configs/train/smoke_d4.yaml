@@ -1,0 +1,22 @@
+project_name: "2048-ppo-smoke"
+run_name: "smoke_d4"
+output_dir: "/tmp/ai2048-freeze-smoke"
+load_model: false
+checkpoint_path: null
+seed: 0
+total_timesteps: 16
+n_envs: 1
+save_interval: 16
+ppo_params:
+  n_steps: 8
+  gamma: 0.9500241783796721
+  ent_coef: 0.000006683561172757891
+  learning_rate:
+    type: "linear_decay"
+    initial_value: 0.0002506795165161916
+  clip_range: 0.2
+  batch_size: 8
+  n_epochs: 1
+features_dim: 256
+env_kwargs:
+  d4_augment: true
