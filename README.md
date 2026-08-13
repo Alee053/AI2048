@@ -332,10 +332,10 @@ def calculate_reward(board, merge_score, moved):
 
 #### **Custom Neural Network Architecture**
 
-The feature extractor ([`architecture.py`](twenty_forty_eight_ai/agent/architecture.py)) is a 2048-aware CNN. Each tile is an **integer log2 index (0–16)** fed into a learned **`nn.Embedding(17, 128)`** (not a float-normalized board); the embedded 128-channel 4×4 grid then passes through three **depthwise-separable** conv pathways that look for row, column, and 2×2-block patterns, before being concatenated and projected to `features_dim = 256`:
+The feature extractor ([`architecture.py`](twenty_forty_eight_ai/agent/architecture.py)) is a 2048-aware CNN. Each operational tile is an **integer log2 index (0–15)** fed into a learned **`nn.Embedding(17, 128)`** (the extra slot remains for frozen-checkpoint compatibility; it is not part of the operational board contract); the embedded 128-channel 4×4 grid then passes through three **depthwise-separable** conv pathways that look for row, column, and 2×2-block patterns, before being concatenated and projected to `features_dim = 256`:
 
 ```text
-Input: board (int64 log2 tile indices, 0=empty … 16=65536)   shape (1, 4, 4)
+Input: board (int64 log2 tile indices, 0=empty … 15=32768)   shape (1, 4, 4)
        │  nn.Embedding(num_embeddings=17, embedding_dim=128)
        ▼
 128-channel 4×4 grid                                    shape (128, 4, 4)
@@ -352,7 +352,7 @@ Input: board (int64 log2 tile indices, 0=empty … 16=65536)   shape (1, 4, 4)
 
 **Why a custom CNN over an MLP?**
 - 2048 exhibits **structural patterns** (e.g., a `[2,4,8,16]` row matters regardless of where it sits); the row/column/block pathways encode these directly.
-- **Learned tile embeddings** represent the huge dynamic range of tile values (2 … 65536) without log-normalization hacks, and depthwise-separable convs share weights across positions, improving sample efficiency.
+- **Learned tile embeddings** represent the huge dynamic range of operational tile values (2 … 32768) without log-normalization hacks, and depthwise-separable convs share weights across positions, improving sample efficiency.
 
 ---
 

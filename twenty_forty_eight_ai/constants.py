@@ -1,0 +1,1 @@
+MAX_EXPONENT = 15

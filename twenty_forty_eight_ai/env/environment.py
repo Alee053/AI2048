@@ -3,6 +3,7 @@ from gymnasium import Env
 from gymnasium.spaces import Discrete, Box
 from typing import Tuple, Dict, Any, Optional
 
+from ..constants import MAX_EXPONENT
 from .game import Fast2048
 from ..utils.tensor_utils import board_to_tensor
 from .reward import calculate_reward
@@ -57,7 +58,9 @@ class Game2048Env(Env):
         self.action_space = Discrete(4)
 
         # Observation space: 1x4x4 grid with log2 values of the tiles.
-        self.observation_space = Box(low=0, high=16, shape=(1, 4, 4), dtype=np.int64)
+        self.observation_space = Box(
+            low=0, high=MAX_EXPONENT, shape=(1, 4, 4), dtype=np.int64
+        )
 
         self.d4_augment = d4_augment
         self._d4_rng = np.random.default_rng(d4_seed)

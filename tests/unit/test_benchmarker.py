@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from twenty_forty_eight_ai.constants import MAX_EXPONENT
+
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _PRODUCTION_MODEL = os.path.join(
@@ -264,7 +266,7 @@ def test_benchmarker_log_moves_populates_move_records(production_model_path):
     assert 0 <= first.n_legal_actions <= 4
     parts = first.board_state.split(",")
     assert len(parts) == 16
-    assert all(0 <= int(p) <= 16 for p in parts)
+    assert all(0 <= int(p) <= MAX_EXPONENT for p in parts)
     assert not math.isnan(first.score_up)
 
 

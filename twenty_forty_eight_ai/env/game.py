@@ -1,6 +1,8 @@
 ﻿import numpy as np
 from numba import njit
 
+from ..constants import MAX_EXPONENT
+
 # Constants
 UP, RIGHT, DOWN, LEFT = 0, 1, 2, 3
 
@@ -52,6 +54,10 @@ class Fast2048:
 
     def is_move_valid(self, action):
         """Check move validity."""
+        _raise_if_invalid_board(self.board)
+        if board_would_overflow(self.board, action):
+            return False
+
         if action == LEFT:
             for i in range(4):
                 if self.move_valid_LUT[row_to_number(self.board[i])]: return True
@@ -88,6 +94,13 @@ class Fast2048:
 
     def move(self, direction) -> tuple[int, bool, bool]:
         """Execute move. Returns (score, done, moved)."""
+        _raise_if_invalid_board(self.board)
+        if board_would_overflow(self.board, direction):
+            raise ValueError(
+                f"Move would exceed max exponent {MAX_EXPONENT} by producing "
+                f"{MAX_EXPONENT + 1}."
+            )
+
         board_before_move = self.board.copy()
         merge_score = 0
 
@@ -126,6 +139,55 @@ class Fast2048:
 def row_to_number(row):
     """Row to 16-bit integer."""
     return row[0] | (row[1] << 4) | (row[2] << 8) | (row[3] << 12)
+
+
+def _raise_if_invalid_board(board):
+    if board_has_invalid_exponent(board):
+        raise ValueError(
+            f"Board exponents must be in the range 0..{MAX_EXPONENT}."
+        )
+
+
+@njit
+def board_has_invalid_exponent(board):
+    for r in range(4):
+        for c in range(4):
+            if board[r, c] < 0 or board[r, c] > MAX_EXPONENT:
+                return True
+    return False
+
+
+@njit
+def row_would_overflow(row):
+    """Return whether stacking this row would merge two maximum tiles."""
+    stacked = row.copy()
+    stack_row(stacked)
+    for i in range(1, 4):
+        if stacked[i - 1] == MAX_EXPONENT and stacked[i] == MAX_EXPONENT:
+            return True
+    return False
+
+
+@njit
+def board_would_overflow(board, direction):
+    """Return whether a move would create an exponent outside the contract."""
+    if direction == LEFT:
+        for i in range(4):
+            if row_would_overflow(board[i]):
+                return True
+    elif direction == RIGHT:
+        for i in range(4):
+            if row_would_overflow(board[i, ::-1]):
+                return True
+    elif direction == UP:
+        for i in range(4):
+            if row_would_overflow(board[:, i]):
+                return True
+    elif direction == DOWN:
+        for i in range(4):
+            if row_would_overflow(board[::-1, i]):
+                return True
+    return False
 
 @njit
 def stack_row(row):

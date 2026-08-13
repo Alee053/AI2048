@@ -31,7 +31,7 @@ class CustomCNN(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim)
 
         embedding_dim = 128
-        n_tile_types = 17  # 0 for empty, plus 2^1 through 2^16
+        n_tile_types = 17  # 0..15 operational; slot 16 remains for frozen checkpoints
 
         # Embedding Layer
         self.embedding = nn.Embedding(num_embeddings=n_tile_types, embedding_dim=embedding_dim)
