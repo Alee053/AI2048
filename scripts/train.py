@@ -37,6 +37,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
+from twenty_forty_eight_ai.agent.policy import ValueNormalizedMaskablePolicy
 try:
     from scripts.benchmark_provenance import collect_runtime_provenance, sha256_file
 except ModuleNotFoundError:  # Support `python scripts/train.py`.
@@ -201,6 +202,13 @@ def resolve_training_config(config: dict) -> tuple[dict, list[SeedSequence]]:
         ],
     )
     return effective_config, d4_rank_seed_sequences
+
+
+def select_training_policy(config: dict):
+    """Use the normalized critic only for the v3 experiments."""
+    if config.get("run_name") in V3_EXPERIMENT_CONDITIONS:
+        return ValueNormalizedMaskablePolicy
+    return "CnnPolicy"
 
 
 def validate_v3_seed_sweep(config: dict, requested_seed_count: int) -> None:
@@ -373,7 +381,7 @@ def train(config: dict):
             ppo_params['learning_rate'] = lambda p: p * lr_config['initial_value']
 
         model = MaskablePPO(
-            "CnnPolicy", vec_env, policy_kwargs=policy_kwargs,
+            select_training_policy(config), vec_env, policy_kwargs=policy_kwargs,
             verbose=1, seed=seed, **ppo_params
         )
         model.learn(
