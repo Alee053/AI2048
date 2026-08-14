@@ -12,11 +12,12 @@ class Fast2048:
     move_reward_LUT: list = []
     move_valid_LUT: list = []
 
-    def __init__(self):
+    def __init__(self, seed: int | np.random.SeedSequence | None = None):
         """Initialize game and LUTs."""
         if not Fast2048.move_row_LUT:
             self.init_LUT()
 
+        self._rng = np.random.default_rng(seed)
         self.board = np.zeros((4, 4), dtype=np.int32)
         self.max_tile: int = 0
         self.score: int = 0
@@ -38,8 +39,11 @@ class Fast2048:
             Fast2048.move_reward_LUT.append(reward)
             Fast2048.move_valid_LUT.append(not np.array_equal(original_row, row))
 
-    def reset(self):
-        """Reset game state."""
+    def reset(self, seed: int | np.random.SeedSequence | None = None):
+        """Reset game state, optionally restarting the tile RNG stream."""
+        if seed is not None:
+            self._rng = np.random.default_rng(seed)
+
         self.board.fill(0)
         self.max_tile = 0
         self.score = 0
@@ -74,13 +78,13 @@ class Fast2048:
 
     def generate_random(self):
         """Spawn random tile."""
-        num = 1 if np.random.random() < 0.9 else 2
+        num = 1 if self._rng.random() < 0.9 else 2
         empty_cells = np.argwhere(self.board == 0)
 
         if empty_cells.size == 0:
             return
 
-        chosen_position = empty_cells[np.random.choice(len(empty_cells))]
+        chosen_position = empty_cells[self._rng.choice(len(empty_cells))]
 
         self.board[chosen_position[0], chosen_position[1]] = num
 

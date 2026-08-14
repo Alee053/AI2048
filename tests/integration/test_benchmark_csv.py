@@ -139,8 +139,8 @@ def test_reproducibility_same_seed_same_score(tmp_path):
 def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
     """--workers 1 vs --workers 2 must produce identical episode outcomes.
 
-    With per-episode np.random seeding, exact match should hold across
-    worker counts.
+    With per-episode environment reset seeding, exact match should hold
+    across worker counts.
     """
     out1 = tmp_path / "w1"
     out4 = tmp_path / "w4"
@@ -164,9 +164,9 @@ def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
             f"eval_seed mismatch at episode_idx={a['episode_idx']}: "
             f"{a['eval_seed']} vs {b['eval_seed']}"
         )
-        # With per-episode np.random seeding, score/max_tile/steps
-        # are now deterministic across worker counts (same eval_seed
-        # => same tile spawn sequence => same game).
+        # With per-episode reset seeding, score/max_tile/steps are
+        # deterministic across worker counts (same eval_seed => same
+        # private tile RNG stream => same game).
         assert a["score"] == b["score"], (
             f"score mismatch at episode_idx={a['episode_idx']}: "
             f"{a['score']} vs {b['score']}"

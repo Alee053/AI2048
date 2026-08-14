@@ -426,6 +426,7 @@ output_dir: "data/" # Base directory for outputs
 total_timesteps: 200_000_000 # Total training steps
 n_envs: 32 # Parallel environments
 save_interval: 5_000_000 # Checkpoint frequency (steps)
+seed: 0 # Root seed for PPO, gameplay streams, and D4 rank derivation
 features_dim: 256 # CNN feature extractor output size
 
 # PPO Hyperparameters
@@ -699,7 +700,8 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
 Field semantics:
 
 - `benchmark_schema_version`: semver. `aggregate.py` accepts same-major; rejects others.
-- `env_seed_base`: seed for Python/numpy RNG used by `Fast2048.generate_random()`.
+- `env_seed_base`: root used to derive each episode's `eval_seed`; the episode
+  passes that seed to `Game2048Env.reset()`, which owns the private tile RNG.
 - `eval_seed_strategy`: `"deterministic-offset"` (master assigns `eval_seed = env_seed_base + episode_idx`) or `"random"` (when `base_eval_seed` is unset).
 - `total_wall_time_s`: full run wall-clock (includes worker spawn + summary write).
 - `status`: `"completed"` | `"interrupted"` | `"failed"`.
@@ -797,9 +799,17 @@ seeds = [0, 1, 2, 3, 4, 5, 6, 7]
               worker 2 = [4, 5]          worker 3 = [6, 7]
 ```
 
-Per-worker RNG is seeded once at process start (`np.random.seed(env_seed_base + worker_id * 10_000)`). The C++ searcher's chance-node evaluation is **deterministic** — it enumerates every empty cell with both tile values 2 and 4 and computes the exact expected value, so no C++ RNG seeding is required (verified by `tests/unit/test_searcher_determinism.py`).
+Gameplay does not use a process-global NumPy RNG. Each episode seeds its
+environment directly; the C++ searcher's chance-node evaluation is
+**deterministic** — it enumerates every empty cell with both tile values 2 and
+4 and computes the exact expected value, so no C++ RNG seeding is required
+(verified by `tests/unit/test_searcher_determinism.py`).
 
-**Reproducibility:** with a fixed `--base-eval-seed`, each episode reseeds NumPy with its own evaluation seed, so episode outcomes (`score`, `max_tile`, and `steps`) are worker-count invariant. This is covered by the integration test for one and two workers. Worker IDs, result arrival order, timing metrics, and queue scheduling can still differ between runs.
+**Reproducibility:** with a fixed `--base-eval-seed`, each episode calls
+`env.reset(seed=eval_seed)`, so episode outcomes (`score`, `max_tile`, and
+`steps`) are worker-count invariant. This is covered by the integration test
+for one and two workers. Worker IDs, result arrival order, timing metrics, and
+queue scheduling can still differ between runs.
 
 #### Interrupt + crash handling
 

@@ -57,8 +57,10 @@ class _FakeEnv:
         self.game = _FakeGame()
         self._moves_until_done = moves_until_done
         self._steps = 0
+        self.reset_seeds = []
 
     def reset(self, *, seed):
+        self.reset_seeds.append(seed)
         self._steps = 0
         self.game.board.fill(0)
         return np.zeros((1, 4, 4), dtype=np.int64), {}
@@ -185,6 +187,27 @@ def test_benchmarker_raw_depth_zero_uses_policy_without_search(monkeypatch):
     assert model.predict_calls == 1
     assert result.use_expectimax is False
     assert result.effective_depth == 0
+
+
+def test_benchmarker_uses_episode_seed_without_global_numpy_seed(monkeypatch):
+    env = _FakeEnv()
+    bencher, _ = _make_benchmarker(
+        monkeypatch,
+        use_expectimax=False,
+        search_depth=0,
+        env=env,
+    )
+    monkeypatch.setattr(
+        np.random,
+        "seed",
+        lambda *_args, **_kwargs: pytest.fail(
+            "benchmark must not seed global numpy RNG"
+        ),
+    )
+
+    bencher.run_episode(eval_seed=314, log_moves=False, run_id="test-run")
+
+    assert env.reset_seeds == [314]
 
 
 def test_benchmarker_raw_policy_returns_episode_result(production_model_path):

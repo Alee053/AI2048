@@ -274,9 +274,6 @@ class TestEnvironmentD4Augmentation:
         and stepping must produce the same canonical game.board as
         picking ACTION_TO_CANONICAL[t][a] in a non-augmented env with
         the same canonical starting state."""
-        # Seed global RNG so the random-tile generation is reproducible.
-        np.random.seed(1000)
-
         # Build the starting canonical state with two deterministic tiles.
         canonical_board = np.zeros((4, 4), dtype=np.int32)
         canonical_board[0, 0] = 2
@@ -284,24 +281,23 @@ class TestEnvironmentD4Augmentation:
 
         # --- Reference: step in canonical coords with ACTION_TO_CANONICAL[t][a]
         ref_env = Game2048Env()
+        ref_env.game.reset(seed=2000)
         ref_env.game.board = canonical_board.copy()
         ref_env.game.max_tile = int(canonical_board.max())
         ref_env.game.score = 0
         ref_env.game.done = False
         canonical_action = int(ACTION_TO_CANONICAL[forced_t, 0])  # use action 0 (Up) as probe
-        np.random.seed(2000)
         ref_env.game.move(canonical_action)
         expected_canonical = ref_env.game.board.copy()
 
         # --- Augmented env: forced transform, then step with action 0
         aug_env = Game2048Env(d4_augment=True, d4_seed=7)
-        aug_env.reset()
+        aug_env.game.reset(seed=2000)
         aug_env.game.board = canonical_board.copy()
         aug_env.game.max_tile = int(canonical_board.max())
         aug_env.game.score = 0
         aug_env.game.done = False
         aug_env._current_d4 = forced_t
-        np.random.seed(2000)
         aug_env.step(0)
 
         np.testing.assert_array_equal(
@@ -371,6 +367,7 @@ class TestD4AugmentationProperty:
 
         # --- Reference (non-augmented) ---
         ref = Game2048Env()
+        ref.game.reset(seed=4000)
         ref.game.board = canonical_start.copy()
         ref.game.max_tile = int(canonical_start.max())
         ref.game.score = 0
@@ -378,13 +375,13 @@ class TestD4AugmentationProperty:
 
         # --- Augmented ---
         aug = Game2048Env(d4_augment=True, d4_seed=11)
-        aug.reset()
+        aug.game.reset(seed=4000)
         aug.game.board = canonical_start.copy()
         aug.game.max_tile = int(canonical_start.max())
         aug.game.score = 0
         aug.game.done = False
 
-        for step_i, agent_action in enumerate(probe_actions):
+        for agent_action in probe_actions:
             # Pin the augmented env's transform so the test isolates the
             # action-permutation behavior from the random-resample behavior.
             aug._current_d4 = forced_t
@@ -392,17 +389,15 @@ class TestD4AugmentationProperty:
             canonical_action = int(
                 ACTION_TO_CANONICAL[forced_t, agent_action]
             )
-            np.random.seed(4000 + step_i)
             ref.game.move(canonical_action)
 
-            np.random.seed(4000 + step_i)
             aug.step(agent_action)
 
             np.testing.assert_array_equal(
                 aug.game.board,
                 ref.game.board,
                 err_msg=(
-                    f"mismatch at step {step_i}, transform={forced_t}, "
+                    f"mismatch at transform={forced_t}, "
                     f"agent_action={agent_action}, canonical={canonical_action}"
                 ),
             )

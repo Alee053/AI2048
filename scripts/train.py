@@ -262,7 +262,7 @@ def train(config: dict):
 
         model = MaskablePPO(
             "CnnPolicy", vec_env, policy_kwargs=policy_kwargs,
-            verbose=1, **ppo_params
+            verbose=1, seed=seed, **ppo_params
         )
         model.learn(
             total_timesteps=config['total_timesteps'],

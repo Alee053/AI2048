@@ -84,12 +84,8 @@ class Benchmarker:
         if self.searcher is not None:
             self.searcher.clear_tt()
 
-        # Seed global numpy RNG with eval_seed so episode outcomes are
-        # deterministic regardless of order or worker count. The Python
-        # Fast2048.generate_random() uses the global np.random (not the
-        # Gymnasium-env-scoped RNG), so this is the authoritative seed
-        # source for tile spawns during this episode.
-        np.random.seed(eval_seed)
+        # The environment owns independent game and D4 RNG streams. Seeding
+        # the reset makes this episode independent of worker order.
         obs, _ = self.env.reset(seed=eval_seed)
         done = False
         steps = 0

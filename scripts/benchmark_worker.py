@@ -10,21 +10,8 @@ from __future__ import annotations
 import multiprocessing as mp
 import traceback
 
-import numpy as np
-
 from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
 from scripts.benchmark_io import EpisodeResult
-
-
-def seed_worker_rng(env_seed_base: int, worker_id: int) -> None:
-    """Seed the worker's Python numpy RNG.
-
-    The C++ searcher's chance-node evaluation is deterministic (no
-    RandomUtil calls during search), so only numpy is seeded here.
-    The 10_000 offset keeps worker streams from accidentally
-    aliasing with episode seeds.
-    """
-    np.random.seed(env_seed_base + worker_id * 10_000)
 
 
 def run_worker(
@@ -46,7 +33,6 @@ def run_worker(
     On exception, posts "failed" with traceback to status_queue and re-raises.
     On stop_event, posts "stopped" and exits cleanly.
     """
-    seed_worker_rng(env_seed_base, worker_id)
     try:
         bench = Benchmarker(model_path, depth > 0, depth, device)
         for eval_seed in eval_seeds:

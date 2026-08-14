@@ -4,7 +4,6 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 
-import numpy as np
 import pytest
 
 
@@ -13,18 +12,6 @@ _PRODUCTION_MODEL = os.path.join(
     _REPO_ROOT, "data", "models", "release",
     "Hybrid-PPO-Expectimax-v3.zip",
 )
-
-
-def test_seed_worker_rng_isolates_streams():
-    from scripts.benchmark_worker import seed_worker_rng
-
-    seed_worker_rng(env_seed_base=1000, worker_id=0)
-    a = np.random.randint(0, 1_000_000)
-
-    seed_worker_rng(env_seed_base=1000, worker_id=1)
-    b = np.random.randint(0, 1_000_000)
-
-    assert a != b, "Different worker_id with same env_seed_base must produce different streams"
 
 
 def test_run_worker_posts_episode_result_to_queue():

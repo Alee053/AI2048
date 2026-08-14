@@ -44,12 +44,9 @@ class Game2048Env(Env):
             d4_seed: optional integer or SeedSequence for the per-env D4
                 sampler. Independent from the game's tile-placement RNG.
 
-        Note on vec_env usage: when constructing a vectorized environment
-        with `make_vec_env(..., env_kwargs={'d4_seed': N})`, every parallel
-        env receives the SAME seed, so they sample the same transform
-        sequence (degraded diversity). Leave d4_seed=None (the default) so
-        each env draws its own OS-entropy seed and the transform sequences
-        are independent.
+        When an explicit reset seed is supplied, the environment derives
+        independent game and D4 streams from that seed. A d4_seed override
+        replaces the derived D4 stream while leaving the game stream intact.
         """
         super().__init__()
         self.game = Fast2048()
@@ -63,6 +60,7 @@ class Game2048Env(Env):
         )
 
         self.d4_augment = d4_augment
+        self._d4_seed = d4_seed
         self._d4_rng = np.random.default_rng(d4_seed)
         self._current_d4: int = ID
 
@@ -77,10 +75,21 @@ class Game2048Env(Env):
             return self.game.board
         return apply_d4(self.game.board, self._current_d4)
 
-    def reset(self, *, seed: int = None, options: Dict[str, Any] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Reset environment."""
         super().reset(seed=seed)
-        self.game.reset()
+        if seed is None:
+            self.game.reset()
+        else:
+            game_seed, derived_d4_seed = np.random.SeedSequence(seed).spawn(2)
+            self.game.reset(seed=game_seed)
+            d4_seed = self._d4_seed if self._d4_seed is not None else derived_d4_seed
+            self._d4_rng = np.random.default_rng(d4_seed)
         self._current_d4 = self._sample_d4()
         observation = board_to_tensor(self._view_board())
         info = {}
