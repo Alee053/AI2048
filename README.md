@@ -299,7 +299,7 @@ below.
 
 #### **Reward Shaping: Merge + Free Cells + Snake Gradient**
 
-The reward function in [`reward.py`](twenty_forty_eight_ai/env/reward.py) (Numba `@njit`) combines three terms, computed on the **canonical (untransformed) board** so it is invariant to the D4 augmentation:
+The reward function in [`reward.py`](twenty_forty_eight_ai/env/reward.py) (Numba `@njit`) combines three terms. The board is stored as tile exponents (`0..15`), and the gradient term is invariant to all eight D4 symmetries:
 
 ```python
 # reward.py — reward = log-merge + free-cells bonus + snake-gradient bonus
@@ -308,6 +308,7 @@ FREE_CELLS_COEF   = 0.1
 GRADIENT_COEF     = 1e-4
 ROW_GRADIENT      = np.arange(16, dtype=np.float32).reshape(4, 4)   # snake along a row
 COL_GRADIENT      = ROW_GRADIENT.T                                   # snake along a column
+D4_GRADIENTS      = the 8 D4 transforms of ROW_GRADIENT
 
 @njit
 def calculate_reward(board, merge_score, moved):
@@ -315,9 +316,8 @@ def calculate_reward(board, merge_score, moved):
         return -1.0
     merge_reward      = np.log2(merge_score) if merge_score > 0 else 0.0
     free_cells_reward = np.sum(board == 0)
-    log_board         = _njit_log2_where_zero(board.astype(np.float32))
-    gradient_reward   = max(np.sum(log_board * ROW_GRADIENT),
-                            np.sum(log_board * COL_GRADIENT))
+    gradient_reward   = max(np.sum(board * gradient)
+                            for gradient in D4_GRADIENTS)
     return (MERGE_REWARD_COEF * merge_reward
             + FREE_CELLS_COEF  * free_cells_reward
             + GRADIENT_COEF    * gradient_reward)
@@ -326,7 +326,7 @@ def calculate_reward(board, merge_score, moved):
 **Why this works:**
 - **Log merge score:** reduces variance as tile values grow exponentially.
 - **Free-cells bonus:** discourages filling the board (more empty cells = more moves available).
-- **Snake gradient:** soft prior toward keeping the max tile in a corner with descending values along a row/column.
+- **Snake gradient:** soft prior toward keeping the max tile in a corner with descending values along a row/column, evaluated directly on the board exponents and maximized over all D4 orientations.
 
 ---
 
