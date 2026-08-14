@@ -122,6 +122,104 @@ def test_python_game_rejects_max_merge_in_every_direction(direction, positions):
     assert game.score == score_before
 
 
+@pytest.mark.parametrize(
+    ("direction", "positions"),
+    [
+        (LEFT, ((0, 0), (0, 1))),
+        (RIGHT, ((0, 2), (0, 3))),
+        (UP, ((0, 0), (1, 0))),
+        (DOWN, ((2, 0), (3, 0))),
+    ],
+)
+def test_python_and_cpp_reject_max_merge_as_invalid(direction, positions):
+    board = np.zeros((4, 4), dtype=np.int32)
+    for row, col in positions:
+        board[row, col] = MAX_EXPONENT
+
+    python_game = Fast2048()
+    python_game.board = board.copy()
+    cpp_game = _impl.Fast2048()
+    cpp_game.set_board(_cpp_board(board))
+
+    assert python_game.is_move_valid(direction) is False
+    assert cpp_game.is_move_valid(direction) is False
+
+
+@pytest.mark.parametrize(
+    ("direction", "positions"),
+    [
+        (LEFT, ((0, 0), (0, 1))),
+        (RIGHT, ((0, 2), (0, 3))),
+        (UP, ((0, 0), (1, 0))),
+        (DOWN, ((2, 0), (3, 0))),
+    ],
+)
+def test_cpp_overflow_move_is_a_noop(direction, positions):
+    board = np.zeros((4, 4), dtype=np.int32)
+    for row, col in positions:
+        board[row, col] = MAX_EXPONENT
+
+    game = _impl.Fast2048()
+    game.set_board(_cpp_board(board))
+    board_before = game.get_board()
+    score_before = game.score
+
+    assert game.move(direction) == (0, False, False)
+    assert game.get_board() == board_before
+    assert game.score == score_before
+
+
+def test_python_and_cpp_move_validity_matches_for_valid_boards():
+    rng = np.random.default_rng(2048)
+    boards = [rng.integers(0, MAX_EXPONENT + 1, size=(4, 4), dtype=np.int32)
+              for _ in range(32)]
+    boards.append(np.array([
+        [15, 15, 0, 0],
+        [0, 0, 15, 15],
+        [15, 0, 0, 15],
+        [0, 15, 15, 0],
+    ], dtype=np.int32))
+
+    python_game = Fast2048()
+    cpp_game = _impl.Fast2048()
+    for board in boards:
+        python_game.board = board.copy()
+        cpp_game.set_board(_cpp_board(board))
+        for direction in range(4):
+            assert bool(python_game.is_move_valid(direction)) == cpp_game.is_move_valid(
+                direction
+            )
+
+
+def test_python_and_cpp_normal_moves_match_without_random_spawn():
+    board = np.array([
+        [1, 1, 0, 0],
+        [2, 0, 0, 0],
+        [0, 3, 0, 0],
+        [0, 0, 0, 0],
+    ], dtype=np.int32)
+    python_game = Fast2048()
+    python_game.board = board.copy()
+    python_game.generate_random = lambda: None
+    cpp_game = _impl.Fast2048()
+    cpp_game.set_board(_cpp_board(board))
+
+    python_merge_score, _, python_moved = python_game.move(LEFT)
+    cpp_merge_score, _, cpp_moved = cpp_game.move(LEFT)
+
+    assert (python_merge_score, python_moved) == (cpp_merge_score, cpp_moved)
+    assert cpp_game.score == python_game.score == python_merge_score
+
+    cpp_board = np.asarray(cpp_game.get_board())
+    differences = np.argwhere(cpp_board != python_game.board)
+    assert len(differences) == 1
+    row, col = differences[0]
+    assert python_game.board[row, col] == 0
+    assert cpp_board[row, col] in (1, 2)
+    cpp_board[row, col] = 0
+    np.testing.assert_array_equal(cpp_board, python_game.board)
+
+
 def test_python_game_rejects_preexisting_invalid_exponent_before_lut_access():
     game = Fast2048()
     game.board = _board_with_exponent(MAX_EXPONENT + 1)

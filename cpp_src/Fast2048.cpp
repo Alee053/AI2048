@@ -4,10 +4,12 @@
 
 namespace {
 
+constexpr int MAX_EXPONENT = 15;
+
 void validate_board_exponents(const std::array<std::array<int, 4>, 4>& board, const char* context) {
     for (const auto& row : board) {
         for (int exponent : row) {
-            if (exponent < 0 || exponent > 15) {
+            if (exponent < 0 || exponent > MAX_EXPONENT) {
                 throw std::invalid_argument(
                     std::string(context) + " board exponents must be in the range 0..15."
                 );
@@ -151,12 +153,20 @@ std::tuple<int, bool, bool> Fast2048::move(int direction) {
 }
 bool Fast2048::is_move_valid(int direction) const {
     if (direction == 3) {
+        for (const auto &row : board) {
+            if (move_overflow_LUT[row_to_number(row)]) return false;
+        }
         for (auto &row : board) {
             if (move_valid_LUT[row_to_number(row)])return true;
         }
     }
     else if (direction == 1)
     {
+        for (const auto &row : board) {
+            std::array<int, 4> reversed_row = row;
+            std::reverse(reversed_row.begin(), reversed_row.end());
+            if (move_overflow_LUT[row_to_number(reversed_row)]) return false;
+        }
         for (auto &row : board) {
             std::array<int, 4> reversed_row = row;
             std::reverse(reversed_row.begin(), reversed_row.end());
@@ -169,11 +179,23 @@ bool Fast2048::is_move_valid(int direction) const {
             std::array<int, 4> column;
             for (int row=0;row<4;row++)
                 column[row] = board[row][col];
+            if (move_overflow_LUT[row_to_number(column)]) return false;
+        }
+        for (int col=0;col<4;col++) {
+            std::array<int, 4> column;
+            for (int row=0;row<4;row++)
+                column[row] = board[row][col];
             if (move_valid_LUT[row_to_number(column)])return true;
         }
     }
     else if (direction == 2)
     {
+        for (int col=0;col<4;col++) {
+            std::array<int, 4> column;
+            for (int row=0;row<4;row++)
+                column[row] = board[3-row][col];
+            if (move_overflow_LUT[row_to_number(column)]) return false;
+        }
         for (int col=0;col<4;col++) {
             std::array<int, 4> column;
             for (int row=0;row<4;row++)
@@ -223,8 +245,13 @@ void Fast2048::init_LUT() {
         }
         // Merge
         int reward = 0;
+        bool overflow = false;
         for (int j=1;j<4;j++) {
             if (row[j-1]==row[j] && row[j]!=0) {
+                if (row[j-1] == MAX_EXPONENT) {
+                    overflow = true;
+                    continue;
+                }
                 row[j-1]++;
                 row[j] = 0;
                 reward += (1 << row[j-1]);
@@ -241,7 +268,8 @@ void Fast2048::init_LUT() {
 
         move_row_LUT.push_back(row);
         move_reward_LUT.push_back(reward);
-        move_valid_LUT.push_back(original_row != row);
+        move_valid_LUT.push_back(!overflow && original_row != row);
+        move_overflow_LUT.push_back(overflow);
     }
 }
 
@@ -292,3 +320,4 @@ int Fast2048::row_to_number(const std::array<int, 4> &row) const {
 std::vector<std::array<int, 4>> Fast2048::move_row_LUT;
 std::vector<int> Fast2048::move_reward_LUT;
 std::vector<bool> Fast2048::move_valid_LUT;
+std::vector<bool> Fast2048::move_overflow_LUT;

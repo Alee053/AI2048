@@ -37,4 +37,5 @@ private:
     static std::vector<std::array<int, 4>> move_row_LUT;
     static std::vector<int> move_reward_LUT;
     static std::vector<bool> move_valid_LUT;
+    static std::vector<bool> move_overflow_LUT;
 };

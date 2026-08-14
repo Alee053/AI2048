@@ -70,18 +70,17 @@ class TestBoardEncoder:
         with pytest.raises(ValueError, match="0.*15"):
             game.set_board(board)
 
-    def test_fast2048_move_rejects_exponent_overflow_before_lut_reuse(self):
+    def test_fast2048_move_ignores_exponent_overflow_without_mutation(self):
         game = _load_extension().Fast2048()
         board = ((15, 15, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))
         game.set_board(board)
         score_before = game.score
 
-        with pytest.raises(ValueError, match="move.*0.*15"):
-            game.move(3)
+        assert game.is_move_valid(3) is False
+        assert game.move(3) == (0, False, False)
 
         assert tuple(tuple(row) for row in game.get_board()) == board
         assert game.score == score_before
-        assert game.is_move_valid(3)
 
     def test_canonicalize_identity(self, encoder):
         """Canonicalizing the same board twice gives the same result."""

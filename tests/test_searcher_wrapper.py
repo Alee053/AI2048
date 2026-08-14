@@ -55,12 +55,16 @@ def test_search_rejects_out_of_range_input_before_simulation():
         searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
 
 
-def test_search_rejects_simulated_exponent_overflow():
+def test_search_ignores_root_moves_that_would_overflow_exponent_contract():
     searcher = ExpectimaxSearcher()
     board = np.array([[15, 15, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
 
-    with pytest.raises(ValueError, match="simulated move.*0.*15"):
-        searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
+    result = searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
+
+    assert result["best_move"] == 2
+    assert np.isneginf(result["move_scores"][0])
+    assert np.isneginf(result["move_scores"][1])
+    assert np.isneginf(result["move_scores"][3])
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])

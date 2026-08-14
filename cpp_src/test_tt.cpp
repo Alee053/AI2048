@@ -28,14 +28,14 @@ int main() {
     }};
     game.set_board(board);
     const int score_before = game.get_score();
-    try {
-        game.move_simulated(3);
-        std::cerr << "simulated overflow did not throw\n";
+    if (game.is_move_valid(3)) {
+        std::cerr << "simulated overflow was reported as valid\n";
         return 1;
-    } catch (const std::invalid_argument&) {
     }
+    auto [simulated_score, simulated_moved] = game.move_simulated(3);
 
-    if (game.get_board() != board || game.get_score() != score_before || !game.is_move_valid(3)) {
+    if (simulated_score != 0 || simulated_moved || game.get_board() != board ||
+        game.get_score() != score_before || game.is_move_valid(3)) {
         std::cerr << "simulated overflow mutated game state\n";
         return 1;
     }
