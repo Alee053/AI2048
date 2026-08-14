@@ -166,6 +166,23 @@ def seed_from_config(config: dict) -> int:
     return config.get("seed", 0)
 
 
+def linear_decay_learning_rate(
+    initial_value: float, current_timestep: float, total_timesteps: float
+) -> float:
+    """Return a linearly decayed learning rate that never becomes negative."""
+    computed_lr = initial_value * (1.0 - current_timestep / total_timesteps)
+    return max(0.0, computed_lr)
+
+
+def make_linear_decay_schedule(initial_value: float, total_timesteps: float):
+    """Build an SB3 schedule from the remaining-progress convention."""
+    return lambda progress_remaining: linear_decay_learning_rate(
+        initial_value,
+        (1.0 - progress_remaining) * total_timesteps,
+        total_timesteps,
+    )
+
+
 def resume_settings(config: dict) -> tuple[bool, str | None]:
     """Return validated resume settings, defaulting to fresh training."""
     load_model = bool(config.get("load_model", False))
@@ -358,8 +375,9 @@ def train(config: dict):
                 progress_this_run = 1.0 - progress_remaining
                 steps_this_run = progress_this_run * remaining_steps
                 current_global_steps = current_steps + steps_this_run
-                global_progress_remaining = 1.0 - (current_global_steps / total_steps)
-                return global_progress_remaining * lr_config['initial_value']
+                return linear_decay_learning_rate(
+                    lr_config['initial_value'], current_global_steps, total_steps
+                )
 
             model.learning_rate = resumed_lr_schedule
 
@@ -378,7 +396,9 @@ def train(config: dict):
         # New LR schedule
         lr_config = ppo_params.pop('learning_rate')
         if lr_config['type'] == 'linear_decay':
-            ppo_params['learning_rate'] = lambda p: p * lr_config['initial_value']
+            ppo_params['learning_rate'] = make_linear_decay_schedule(
+                lr_config['initial_value'], config['total_timesteps']
+            )
 
         model = MaskablePPO(
             select_training_policy(config), vec_env, policy_kwargs=policy_kwargs,
