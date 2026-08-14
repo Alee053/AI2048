@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 from stable_baselines3.common.monitor import Monitor
 
 from twenty_forty_eight_ai.utils.effective_config import (
@@ -32,6 +33,58 @@ def test_v3_conditions_differ_only_by_d4_augment():
     )
 
     assert diff == {"env_kwargs.d4_augment": (True, False)}
+
+
+def test_v3_configs_explicitly_define_fresh_four_seed_experiments():
+    for path, expected_d4 in ((D4_CONFIG, True), (NO_D4_CONFIG, False)):
+        config = load_effective_config(path)
+
+        assert config["seed"] == 0
+        assert config["training_seeds"] == [0, 1, 2, 3]
+        assert config["load_model"] is False
+        assert config["checkpoint_path"] is None
+        assert type(config["env_kwargs"]["d4_augment"]) is bool
+        assert config["env_kwargs"]["d4_augment"] is expected_d4
+
+
+@pytest.mark.parametrize(
+    "invalid_config",
+    [
+        {
+            "run_name": "hybrid_ppo_v3",
+            "seed": 0,
+            "training_seeds": [0, 1, 2, 3],
+            "load_model": False,
+            "checkpoint_path": None,
+            "env_kwargs": {},
+        },
+        {
+            "run_name": "hybrid_ppo_v3_no_d4",
+            "seed": 0,
+            "training_seeds": [0, 1, 2, 3],
+            "load_model": True,
+            "checkpoint_path": "legacy.zip",
+            "env_kwargs": {"d4_augment": False},
+        },
+    ],
+)
+def test_v3_validation_rejects_implicit_condition_or_legacy_resume(invalid_config):
+    from twenty_forty_eight_ai.utils.effective_config import (
+        validate_v3_experiment_config,
+    )
+
+    with pytest.raises(ValueError):
+        validate_v3_experiment_config(invalid_config)
+
+
+def test_v3_seed_sweep_requires_all_four_configured_seeds():
+    from scripts.train import validate_v3_seed_sweep
+
+    config = load_effective_config(D4_CONFIG)
+    validate_v3_seed_sweep(config, requested_seed_count=4)
+
+    with pytest.raises(ValueError, match="training_seeds"):
+        validate_v3_seed_sweep(config, requested_seed_count=3)
 
 
 def test_resolved_training_config_records_d4_seed_provenance():

@@ -11,6 +11,8 @@ checkpoint_path: null # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model
 total_timesteps: 100_000_000
 n_envs: 128
 save_interval: 5_000_000
+seed: 0
+training_seeds: [0, 1, 2, 3]
 
 # --- PPO Hyperparameters---
 ppo_params:

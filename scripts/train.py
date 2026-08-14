@@ -26,6 +26,7 @@ import subprocess
 import yaml
 import argparse
 import wandb
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from numpy.random import SeedSequence
 from sb3_contrib import MaskablePPO
@@ -37,17 +38,21 @@ from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
 try:
-    from scripts.benchmark_provenance import sha256_file
+    from scripts.benchmark_provenance import collect_runtime_provenance, sha256_file
 except ModuleNotFoundError:  # Support `python scripts/train.py`.
-    from benchmark_provenance import sha256_file
+    from benchmark_provenance import collect_runtime_provenance, sha256_file
 from twenty_forty_eight_ai.utils.effective_config import (
     D4_SEED_DERIVATION,
+    V3_EXPERIMENT_CONDITIONS,
+    V3_TRAINING_SEEDS,
     derive_d4_rank_seed_sequences,
     materialize_training_config,
+    validate_v3_experiment_config,
 )
 
 SweepStatusPath = "sweep_status.json"
 EFFECTIVE_CONFIG_FILENAME = "effective_config.json"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_sweep_status(output_dir: str) -> dict:
@@ -103,6 +108,58 @@ def set_global_seed(seed: int) -> None:
             pass  # Some ops don't have deterministic fallback
 
 
+def collect_git_provenance() -> dict[str, str | bool]:
+    """Collect the commit and real porcelain worktree state for a run."""
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        git_status_porcelain = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=REPO_ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("Unable to collect git provenance") from exc
+    if not git_commit:
+        raise RuntimeError("Unable to collect git commit SHA")
+    return {
+        "git_commit": git_commit,
+        "git_status_porcelain": git_status_porcelain,
+        "git_dirty": bool(git_status_porcelain),
+    }
+
+
+def native_extension_identity() -> dict[str, str]:
+    """Identify the loaded C++ extension and verify its on-disk digest."""
+    try:
+        from twenty_forty_eight_ai.utils import searcher
+
+        extension_path = Path(searcher._impl.__file__).resolve()
+    except (AttributeError, ImportError, OSError) as exc:
+        raise RuntimeError("Unable to identify the loaded C++ extension") from exc
+    extension_sha256 = sha256_file(extension_path)
+    if not extension_sha256:
+        raise RuntimeError("Unable to hash the loaded C++ extension")
+    return {"path": str(extension_path), "sha256": extension_sha256}
+
+
+def relevant_package_versions() -> dict[str, str]:
+    """Return package versions that affect the v3 training runtime."""
+    packages = ("gymnasium", "numpy", "numba", "sb3-contrib", "pybind11")
+    versions = {}
+    for package in packages:
+        try:
+            versions[package] = version(package)
+        except PackageNotFoundError:
+            versions[package] = ""
+    return versions
+
+
 def seed_from_config(config: dict) -> int:
     """Get seed from config dict, defaulting to 0."""
     return config.get("seed", 0)
@@ -146,6 +203,18 @@ def resolve_training_config(config: dict) -> tuple[dict, list[SeedSequence]]:
     return effective_config, d4_rank_seed_sequences
 
 
+def validate_v3_seed_sweep(config: dict, requested_seed_count: int) -> None:
+    """Require the configured four-seed sweep for either v3 condition."""
+    if config.get("run_name") not in V3_EXPERIMENT_CONDITIONS:
+        return
+    validate_v3_experiment_config(config)
+    if requested_seed_count != len(V3_TRAINING_SEEDS):
+        raise ValueError(
+            "v3 training requires requested seed count to match training_seeds "
+            f"({len(V3_TRAINING_SEEDS)} seeds)"
+        )
+
+
 def persist_effective_config(model_dir: str | Path, effective_config: dict) -> Path:
     """Write the resolved training configuration beside checkpoints and final model."""
     path = Path(model_dir) / EFFECTIVE_CONFIG_FILENAME
@@ -156,21 +225,64 @@ def persist_effective_config(model_dir: str | Path, effective_config: dict) -> P
 
 def persist_training_manifest(model_dir: str | Path, model_path: str, model, effective_config: dict) -> Path:
     """Persist immutable provenance bound to the final saved model."""
-    try:
-        git_commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
-        ).strip()
-    except subprocess.SubprocessError:
-        git_commit = ""
+    effective_config_path = Path(model_dir) / EFFECTIVE_CONFIG_FILENAME
+    if not effective_config_path.is_file():
+        raise RuntimeError("Effective config must exist before writing training manifest")
+    env_kwargs = effective_config.get("env_kwargs")
+    d4_augment = env_kwargs.get("d4_augment") if isinstance(env_kwargs, dict) else None
+    if type(d4_augment) is not bool:
+        raise RuntimeError("Effective config must record a boolean D4 condition")
+
+    git_provenance = collect_git_provenance()
+    runtime_provenance = collect_runtime_provenance(
+        model_path=model_path,
+        effective_config=str(effective_config_path),
+    )
+    extension = native_extension_identity()
+    package_versions = relevant_package_versions()
+    required_runtime_fields = (
+        "effective_config_sha256",
+        "python_version",
+        "torch_version",
+        "sb3_version",
+    )
+    missing_runtime_fields = [
+        field for field in required_runtime_fields if not runtime_provenance.get(field)
+    ]
+    missing_package_versions = [
+        package for package, package_version in package_versions.items()
+        if not package_version
+    ]
+    if missing_runtime_fields or missing_package_versions:
+        missing = missing_runtime_fields + missing_package_versions
+        raise RuntimeError("Missing training provenance: " + ", ".join(missing))
+
     manifest = {
-        "git_commit": git_commit,
-        "git_dirty": bool(subprocess.call(["git", "diff", "--quiet"])),
+        **git_provenance,
+        "effective_config": effective_config,
+        "effective_config_path": str(effective_config_path),
+        "training_seed": effective_config["root_training_seed"],
+        "d4_augment": d4_augment,
+        "d4_condition": "d4" if d4_augment else "no_d4",
+        "versions": {
+            "python": runtime_provenance["python_version"],
+            "torch": runtime_provenance["torch_version"],
+            "stable-baselines3": runtime_provenance["sb3_version"],
+            **package_versions,
+        },
+        "runtime": {
+            "cuda_runtime": runtime_provenance.get("cuda_runtime", ""),
+            "gpu_name": runtime_provenance.get("gpu_name", ""),
+            "compiler": runtime_provenance.get("compiler", ""),
+        },
+        "native_extension": extension,
         "root_training_seed": effective_config["root_training_seed"],
-        "effective_config_sha256": sha256_file(Path(model_dir) / EFFECTIVE_CONFIG_FILENAME),
-        "uv_lock_sha256": sha256_file(Path("uv.lock")),
-        "native_extension_sha256": sha256_file(
-            Path("twenty_forty_eight_ai/utils/_searcher_cpp.cpython-312-x86_64-linux-gnu.so")
-        ),
+        "effective_config_sha256": runtime_provenance["effective_config_sha256"],
+        "uv_lock_sha256": runtime_provenance.get("uv_lock_sha256", ""),
+        "native_extension_sha256": extension["sha256"],
+        "python_version": runtime_provenance["python_version"],
+        "torch_version": runtime_provenance["torch_version"],
+        "sb3_version": runtime_provenance["sb3_version"],
         "model_sha256": sha256_file(model_path),
         "final_timestep": model.num_timesteps,
     }
@@ -286,6 +398,7 @@ def main_with_sweep(config: dict):
         return
 
     n_seeds = sweep_cfg["n_seeds"]
+    validate_v3_seed_sweep(config, n_seeds)
     sweep_name = config.get("run_name", f"sweep_{int(time.time())}")
     output_dir = os.path.join(config["output_dir"], "models", sweep_name)
 

@@ -9,6 +9,11 @@ import yaml
 
 
 D4_SEED_DERIVATION = "numpy.random.SeedSequence(seed).spawn(n_envs)"
+V3_EXPERIMENT_CONDITIONS = {
+    "hybrid_ppo_v3": True,
+    "hybrid_ppo_v3_no_d4": False,
+}
+V3_TRAINING_SEEDS = [0, 1, 2, 3]
 _IDENTIFIER_ONLY_KEYS = {"run_name"}
 
 
@@ -19,8 +24,41 @@ def derive_d4_rank_seed_sequences(
     return np.random.SeedSequence(training_seed).spawn(n_envs)
 
 
+def validate_v3_experiment_config(config: Mapping[str, Any]) -> None:
+    """Reject implicit D4 conditions, resumes, or seed sets for v3 runs."""
+    run_name = config.get("run_name")
+    if run_name not in V3_EXPERIMENT_CONDITIONS:
+        return
+
+    env_kwargs = config.get("env_kwargs")
+    if not isinstance(env_kwargs, Mapping) or "d4_augment" not in env_kwargs:
+        raise ValueError("v3 config must explicitly define env_kwargs.d4_augment")
+    d4_augment = env_kwargs["d4_augment"]
+    if type(d4_augment) is not bool:
+        raise ValueError("v3 config env_kwargs.d4_augment must be a boolean")
+    if d4_augment is not V3_EXPERIMENT_CONDITIONS[run_name]:
+        expected = V3_EXPERIMENT_CONDITIONS[run_name]
+        raise ValueError(
+            f"v3 config {run_name} must set env_kwargs.d4_augment={expected}"
+        )
+
+    if config.get("load_model") is not False or "checkpoint_path" not in config:
+        raise ValueError("v3 experiment must start from scratch with load_model=false")
+    if config["checkpoint_path"] is not None:
+        raise ValueError("v3 experiment must not define a legacy checkpoint")
+
+    seed = config.get("seed")
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed not in V3_TRAINING_SEEDS:
+        raise ValueError(f"v3 config seed must be one of {V3_TRAINING_SEEDS}")
+    if config.get("training_seeds") != V3_TRAINING_SEEDS:
+        raise ValueError(
+            f"v3 config training_seeds must equal {V3_TRAINING_SEEDS}"
+        )
+
+
 def materialize_training_config(config: Mapping[str, Any]) -> dict[str, Any]:
     """Copy a training config and make its training-only D4 default explicit."""
+    validate_v3_experiment_config(config)
     effective_config = deepcopy(dict(config))
     env_kwargs = dict(effective_config.get("env_kwargs", {}))
     env_kwargs.setdefault("d4_augment", True)
