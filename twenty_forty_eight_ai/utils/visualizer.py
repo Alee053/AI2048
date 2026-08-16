@@ -7,12 +7,11 @@ import numpy as np
 import pygame
 import pygame_gui
 from pygame_gui.core.object_id import ObjectID
-import torch
-from sb3_contrib import MaskablePPO
 
+from ..evaluation.value_evaluator import D4ValueEvaluator
 from ..env.environment import Game2048Env
+from ..agent.ppo import load_ppo_model
 from ..utils.searcher import ExpectimaxSearcher
-from ..utils.tensor_utils import board_to_tensor
 
 # Config
 THEME = {
@@ -358,7 +357,10 @@ class Visualizer:
 
         # Setup RL
         self.env = Game2048Env()
-        self.model = MaskablePPO.load(model_path)
+        self.model = load_ppo_model(model_path)
+        self.value_evaluator = D4ValueEvaluator(
+            self.model.policy, self.model.device
+        )
 
         # Init searcher if needed
         self.searcher = ExpectimaxSearcher() if use_expectimax else None
@@ -376,17 +378,7 @@ class Visualizer:
 
     def _evaluate_batch(self, boards_list: List[np.ndarray]) -> List[float]:
         """Callback for C++ searcher to evaluate batch of boards."""
-        if not boards_list:
-            return []
-
-        batch_array = np.array(boards_list)
-        batch_tensor = board_to_tensor(batch_array)
-
-        with torch.no_grad():
-            values = self.model.policy.predict_values(
-                torch.as_tensor(batch_tensor).to(self.model.device)
-            )
-        return values.cpu().numpy().flatten().tolist()
+        return self.value_evaluator(boards_list)
 
     def _get_font_for_tile(self, value: int) -> pygame.font.Font:
         if value < 100:

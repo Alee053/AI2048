@@ -11,12 +11,12 @@ import statistics
 import time
 
 import numpy as np
-import torch
-from sb3_contrib import MaskablePPO
+from sb3_contrib import MaskablePPO  # Compatibility seam for legacy tests/models.
 
+from twenty_forty_eight_ai.evaluation.value_evaluator import D4ValueEvaluator
 from twenty_forty_eight_ai.env.environment import Game2048Env
+from twenty_forty_eight_ai.agent.ppo import load_ppo_model
 from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
-from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
 from scripts.benchmark_io import (
     EpisodeResult, MoveRecord, EPISODE_SCHEMA_VERSION, ACTION_NAMES,
@@ -40,9 +40,10 @@ class Benchmarker:
         self.search_depth = search_depth
         self.model_path = model_path
 
-        self.model = MaskablePPO.load(model_path, device=device)
+        self.model = load_ppo_model(model_path, device=device)
         self.model.policy.eval()
         self.device = self.model.device
+        self.value_evaluator = D4ValueEvaluator(self.model.policy, self.device)
 
         self.env = Game2048Env()
 
@@ -54,15 +55,7 @@ class Benchmarker:
 
     # The C++ searcher calls this callback per batch of leaf boards.
     def _evaluate_batch(self, boards_list: list) -> list:
-        if not boards_list:
-            return []
-        batch_array = np.array(boards_list)
-        batch_tensor = board_to_tensor(batch_array)
-        with torch.no_grad():
-            values = self.model.policy.predict_values(
-                torch.as_tensor(batch_tensor).to(self.device)
-            )
-        return values.cpu().numpy().flatten().tolist()
+        return self.value_evaluator(boards_list)
 
     def run_episode(
         self,
