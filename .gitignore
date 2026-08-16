@@ -25,6 +25,9 @@ logs
 .superpowers
 .superset/
 data/benchmarks/
+# Local diagnostic outputs and temporary mini-training models
+data/diagnostics/
+data/models/v3_diagnostic_*/
 /AGENTS.md
 
 
