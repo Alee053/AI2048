@@ -190,14 +190,142 @@ def test_save_load_preserves_normalized_value_architecture(tmp_path):
 
 
 def test_training_uses_normalized_policy_only_for_v3():
-    from scripts.train import select_training_policy
+    from sb3_contrib import MaskablePPO
+    from scripts.train import select_training_policy, select_training_ppo
+    from twenty_forty_eight_ai.utils.effective_config import load_effective_config
 
-    assert select_training_policy({"run_name": "hybrid_ppo_v3"}) is ValueNormalizedMaskablePolicy
+    v3_config = load_effective_config(CONFIG_DIR / "hybrid_ppo_v3.yaml")
+    assert select_training_policy(v3_config) is ValueNormalizedMaskablePolicy
     assert (
-        select_training_policy({"run_name": "hybrid_ppo_v3_no_d4"})
+        select_training_policy(
+            load_effective_config(CONFIG_DIR / "hybrid_ppo_v3_no_d4.yaml")
+        )
         is ValueNormalizedMaskablePolicy
     )
+    assert select_training_policy({"run_name": "hybrid_ppo_v3"}) == "CnnPolicy"
+    assert select_training_ppo({"run_name": "hybrid_ppo_v3"}) is MaskablePPO
     assert select_training_policy({"run_name": "hybrid_ppo_v1"}) == "CnnPolicy"
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+@pytest.mark.parametrize(
+    "config_name", ("hybrid_ppo_v3.yaml", "hybrid_ppo_v3_no_d4.yaml")
+)
+def test_seed_sweep_resolves_actual_v3_components(config_name, seed):
+    from scripts.train import (
+        resolve_training_config,
+        select_training_policy,
+        select_training_ppo,
+        select_value_head_lr_multiplier,
+    )
+    from twenty_forty_eight_ai.agent.policy import ValueNormalizedMaskablePolicy
+    from twenty_forty_eight_ai.agent.ppo import ValueHeadLRMaskablePPO
+    from twenty_forty_eight_ai.utils.effective_config import load_effective_config
+
+    config = load_effective_config(CONFIG_DIR / config_name)
+    config["seed"] = seed
+    config["run_name"] = f"{config['run_name']}-seed{seed}"
+    effective_config, _ = resolve_training_config(config)
+
+    assert select_training_policy(effective_config) is ValueNormalizedMaskablePolicy
+    assert select_training_ppo(effective_config) is ValueHeadLRMaskablePPO
+    assert select_value_head_lr_multiplier(effective_config) == 10.0
+
+
+def test_fresh_model_construction_uses_resolved_v3_components(monkeypatch):
+    from scripts import train as train_module
+    from twenty_forty_eight_ai.utils.effective_config import load_effective_config
+
+    captured = {}
+
+    class FakePPO:
+        def __init__(self, policy, env, **kwargs):
+            captured["policy"] = policy
+            captured["env"] = env
+            captured.update(kwargs)
+
+    class FakePolicy:
+        pass
+
+    monkeypatch.setattr(train_module, "ValueHeadLRMaskablePPO", FakePPO)
+    monkeypatch.setattr(train_module, "ValueNormalizedMaskablePolicy", FakePolicy)
+    effective_config = load_effective_config(CONFIG_DIR / "hybrid_ppo_v3.yaml")
+    effective_config["run_name"] = "hybrid_ppo_v3-seed0"
+
+    train_module.build_fresh_model(
+        effective_config,
+        vec_env="vec-env",
+        policy_kwargs={"features_dim": 256},
+        ppo_params={},
+        seed=0,
+    )
+
+    assert captured["policy"] is FakePolicy
+    assert captured["env"] == "vec-env"
+    assert captured["value_head_lr_multiplier"] == 10.0
+
+
+@pytest.mark.parametrize("field", ["policy_class", "ppo_class"])
+def test_v3_component_resolver_rejects_unregistered_class_path(field):
+    from scripts.train import select_training_policy, select_training_ppo
+    from twenty_forty_eight_ai.utils.effective_config import load_effective_config
+
+    config = load_effective_config(CONFIG_DIR / "hybrid_ppo_v3.yaml")
+    config["experiment_definition"][field] = "not.a.registered.class"
+
+    resolver = select_training_policy if field == "policy_class" else select_training_ppo
+    with pytest.raises(ValueError, match="Unsupported v3"):
+        resolver(config)
+
+
+@pytest.mark.parametrize(
+    "config_name", ("hybrid_ppo_v3.yaml", "hybrid_ppo_v3_no_d4.yaml")
+)
+def test_real_seed_sweep_path_constructs_v3_components_for_all_seeds(
+    config_name, tmp_path, monkeypatch
+):
+    from scripts import train as train_module
+    from twenty_forty_eight_ai.utils.effective_config import load_effective_config
+
+    constructed = []
+
+    class FakePPO:
+        def __init__(self, policy, _env, **kwargs):
+            constructed.append((policy, kwargs["value_head_lr_multiplier"]))
+
+    class FakePolicy:
+        pass
+
+    monkeypatch.setattr(train_module, "ValueHeadLRMaskablePPO", FakePPO)
+    monkeypatch.setattr(train_module, "ValueNormalizedMaskablePolicy", FakePolicy)
+    monkeypatch.setattr(train_module.wandb, "finish", lambda: None)
+
+    config = load_effective_config(CONFIG_DIR / config_name)
+    config["output_dir"] = str(tmp_path)
+    config["__sweep"] = {
+        "enabled": True,
+        "n_seeds": 4,
+        "resume": False,
+        "parallel": False,
+        "dry_run": False,
+    }
+
+    def fake_train(seed_config):
+        effective_config, _ = train_module.resolve_training_config(seed_config)
+        train_module.build_fresh_model(
+            effective_config,
+            vec_env="vec-env",
+            policy_kwargs={},
+            ppo_params={},
+            seed=seed_config["seed"],
+        )
+
+    monkeypatch.setattr(train_module, "train", fake_train)
+    train_module.main_with_sweep(config)
+
+    assert len(constructed) == 4
+    assert all(policy is FakePolicy for policy, _ in constructed)
+    assert all(multiplier == 10.0 for _, multiplier in constructed)
 
 
 @pytest.mark.parametrize(

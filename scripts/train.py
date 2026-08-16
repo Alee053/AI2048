@@ -22,10 +22,12 @@ Examples:
 import os
 import time
 import json as _json
+import re
 import subprocess
 import yaml
 import argparse
 import wandb
+from collections.abc import Mapping
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from numpy.random import SeedSequence
@@ -38,13 +40,14 @@ from twenty_forty_eight_ai.env.environment import Game2048Env
 from twenty_forty_eight_ai.agent.architecture import CustomCNN
 from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
 from twenty_forty_eight_ai.agent.policy import ValueNormalizedMaskablePolicy
+from twenty_forty_eight_ai.agent.ppo import ValueHeadLRMaskablePPO
 try:
     from scripts.benchmark_provenance import collect_runtime_provenance, sha256_file
 except ModuleNotFoundError:  # Support `python scripts/train.py`.
     from benchmark_provenance import collect_runtime_provenance, sha256_file
 from twenty_forty_eight_ai.utils.effective_config import (
     D4_SEED_DERIVATION,
-    V3_EXPERIMENT_CONDITIONS,
+    V3_EXPERIMENT_DEFINITION,
     V3_TRAINING_SEEDS,
     derive_d4_rank_seed_sequences,
     materialize_training_config,
@@ -161,6 +164,12 @@ def relevant_package_versions() -> dict[str, str]:
     return versions
 
 
+def qualified_class_name(value) -> str:
+    """Return a stable module-qualified class name for an object or class."""
+    cls = value if isinstance(value, type) else type(value)
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
 def seed_from_config(config: dict) -> int:
     """Get seed from config dict, defaulting to 0."""
     return config.get("seed", 0)
@@ -222,17 +231,67 @@ def resolve_training_config(config: dict) -> tuple[dict, list[SeedSequence]]:
 
 
 def select_training_policy(config: dict):
-    """Use the normalized critic only for the v3 experiments."""
-    if config.get("run_name") in V3_EXPERIMENT_CONDITIONS:
+    """Resolve the policy class from the materialized experiment definition."""
+    definition = config.get("experiment_definition")
+    if isinstance(definition, Mapping) and definition.get("name") == "v3":
+        if definition.get("policy_class") != V3_EXPERIMENT_DEFINITION["policy_class"]:
+            raise ValueError("Unsupported v3 policy class in experiment definition")
         return ValueNormalizedMaskablePolicy
     return "CnnPolicy"
 
 
+def select_training_ppo(config: dict):
+    """Resolve the PPO algorithm class from the materialized definition."""
+    definition = config.get("experiment_definition")
+    if isinstance(definition, Mapping) and definition.get("name") == "v3":
+        if definition.get("ppo_class") != V3_EXPERIMENT_DEFINITION["ppo_class"]:
+            raise ValueError("Unsupported v3 PPO class in experiment definition")
+        return ValueHeadLRMaskablePPO
+    return MaskablePPO
+
+
+def select_value_head_lr_multiplier(config: dict) -> float:
+    """Return the configured value-head multiplier for the selected PPO class."""
+    definition = config.get("experiment_definition")
+    if isinstance(definition, Mapping) and definition.get("name") == "v3":
+        multiplier = float(definition.get("value_head_lr_multiplier", float("nan")))
+        if multiplier != V3_EXPERIMENT_DEFINITION["value_head_lr_multiplier"]:
+            raise ValueError("Unsupported v3 value-head multiplier")
+        return multiplier
+    return 1.0
+
+
+def build_fresh_model(
+    effective_config: dict,
+    vec_env,
+    policy_kwargs: dict,
+    ppo_params: dict,
+    seed: int,
+):
+    """Construct a fresh model from the materialized experiment definition."""
+    ppo_class = select_training_ppo(effective_config)
+    ppo_kwargs = {}
+    if ppo_class is ValueHeadLRMaskablePPO:
+        ppo_kwargs["value_head_lr_multiplier"] = (
+            select_value_head_lr_multiplier(effective_config)
+        )
+    return ppo_class(
+        select_training_policy(effective_config),
+        vec_env,
+        policy_kwargs=policy_kwargs,
+        verbose=1,
+        seed=seed,
+        **ppo_kwargs,
+        **ppo_params,
+    )
+
+
 def validate_v3_seed_sweep(config: dict, requested_seed_count: int) -> None:
     """Require the configured four-seed sweep for either v3 condition."""
-    if config.get("run_name") not in V3_EXPERIMENT_CONDITIONS:
-        return
     validate_v3_experiment_config(config)
+    definition = config.get("experiment_definition")
+    if not isinstance(definition, Mapping) or definition.get("name") != "v3":
+        return
     if requested_seed_count != len(V3_TRAINING_SEEDS):
         raise ValueError(
             "v3 training requires requested seed count to match training_seeds "
@@ -253,20 +312,41 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
     effective_config_path = Path(model_dir) / EFFECTIVE_CONFIG_FILENAME
     if not effective_config_path.is_file():
         raise RuntimeError("Effective config must exist before writing training manifest")
+    try:
+        with effective_config_path.open() as stream:
+            persisted_config = _json.load(stream)
+    except (OSError, _json.JSONDecodeError) as exc:
+        raise RuntimeError("Effective config is not readable") from exc
+    if persisted_config != effective_config:
+        raise RuntimeError("Effective config on disk differs from in-memory config")
+    validate_v3_experiment_config(effective_config)
     env_kwargs = effective_config.get("env_kwargs")
     d4_augment = env_kwargs.get("d4_augment") if isinstance(env_kwargs, dict) else None
     if type(d4_augment) is not bool:
         raise RuntimeError("Effective config must record a boolean D4 condition")
 
+    resolved_model_path = Path(model_path).resolve()
+    resolved_effective_config_path = effective_config_path.resolve()
+    expected_model_path = Path(model_dir).resolve() / "final_model.zip"
+    expected_effective_config_path = Path(model_dir).resolve() / EFFECTIVE_CONFIG_FILENAME
+    if resolved_model_path != expected_model_path:
+        raise RuntimeError("Training manifest must bind model_dir/final_model.zip")
+    if resolved_effective_config_path != expected_effective_config_path:
+        raise RuntimeError(
+            "Training manifest must bind model_dir/effective_config.json"
+        )
     git_provenance = collect_git_provenance()
     runtime_provenance = collect_runtime_provenance(
-        model_path=model_path,
-        effective_config=str(effective_config_path),
+        model_path=str(resolved_model_path),
+        effective_config=str(resolved_effective_config_path),
     )
     extension = native_extension_identity()
+    extension_path = Path(extension["path"]).resolve()
+    model_sha256 = sha256_file(resolved_model_path)
+    effective_config_sha256 = sha256_file(resolved_effective_config_path)
+    native_extension_sha256 = sha256_file(extension_path)
     package_versions = relevant_package_versions()
     required_runtime_fields = (
-        "effective_config_sha256",
         "python_version",
         "torch_version",
         "sb3_version",
@@ -278,17 +358,86 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
         package for package, package_version in package_versions.items()
         if not package_version
     ]
-    if missing_runtime_fields or missing_package_versions:
+    if (
+        missing_runtime_fields
+        or missing_package_versions
+        or not model_sha256
+        or not effective_config_sha256
+        or not native_extension_sha256
+    ):
         missing = missing_runtime_fields + missing_package_versions
+        if not model_sha256:
+            missing.append("model_sha256")
+        if not effective_config_sha256:
+            missing.append("effective_config_sha256")
+        if not native_extension_sha256:
+            missing.append("native_extension_sha256")
         raise RuntimeError("Missing training provenance: " + ", ".join(missing))
+    if not isinstance(git_provenance.get("git_dirty"), bool):
+        raise RuntimeError("git_dirty must be a boolean")
+    if not isinstance(git_provenance.get("git_status_porcelain"), str):
+        raise RuntimeError("git_status_porcelain must be a string")
+    if not re.fullmatch(r"[0-9a-f]{40}", git_provenance.get("git_commit", "")):
+        raise RuntimeError("git_commit must be a 40-character hexadecimal SHA")
+    if git_provenance["git_dirty"] != bool(git_provenance.get("git_status_porcelain")):
+        raise RuntimeError("git_dirty does not match git_status_porcelain")
+    for field, actual in (
+        ("model_sha256", model_sha256),
+        ("effective_config_sha256", effective_config_sha256),
+        ("native_extension_sha256", native_extension_sha256),
+    ):
+        recorded = runtime_provenance.get(field)
+        if recorded and recorded != actual:
+            raise RuntimeError(f"Runtime provenance {field} does not match the artifact")
+
+    definition = effective_config.get("experiment_definition", {})
+    is_v3 = definition.get("name") == "v3"
+    policy_class = qualified_class_name(model.policy)
+    ppo_class = qualified_class_name(model)
+    value_head_lr_multiplier = float(
+        getattr(model, "value_head_lr_multiplier", definition.get(
+            "value_head_lr_multiplier", 1.0
+        ))
+    )
+    if is_v3:
+        if policy_class != definition["policy_class"]:
+            raise RuntimeError(
+                "Training policy does not match effective experiment definition"
+            )
+        if ppo_class != definition["ppo_class"]:
+            raise RuntimeError(
+                "Training PPO class does not match effective experiment definition"
+            )
+        if value_head_lr_multiplier != float(definition["value_head_lr_multiplier"]):
+            raise RuntimeError(
+                "Training value-head multiplier does not match effective experiment definition"
+            )
+
+    fresh_training = (
+        effective_config.get("load_model") is False
+        and effective_config.get("checkpoint_path") is None
+    )
+    if is_v3 and not fresh_training:
+        raise RuntimeError("v3 training manifest requires a fresh training run")
+    git_dirty = git_provenance["git_dirty"]
 
     manifest = {
         **git_provenance,
         "effective_config": effective_config,
-        "effective_config_path": str(effective_config_path),
+        "effective_config_path": str(resolved_effective_config_path),
         "training_seed": effective_config["root_training_seed"],
         "d4_augment": d4_augment,
         "d4_condition": "d4" if d4_augment else "no_d4",
+        "condition": "d4" if d4_augment else "no_d4",
+        "model_path": str(resolved_model_path),
+        "model_sha256": model_sha256,
+        "policy_class": policy_class,
+        "ppo_class": ppo_class,
+        "value_head_lr_multiplier": value_head_lr_multiplier,
+        "fresh_training": fresh_training,
+        "load_model": effective_config.get("load_model"),
+        "checkpoint_path": effective_config.get("checkpoint_path"),
+        "paper_grade": git_dirty is False,
         "versions": {
             "python": runtime_provenance["python_version"],
             "torch": runtime_provenance["torch_version"],
@@ -300,21 +449,220 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
             "gpu_name": runtime_provenance.get("gpu_name", ""),
             "compiler": runtime_provenance.get("compiler", ""),
         },
-        "native_extension": extension,
+        "native_extension": {
+            "path": str(extension_path),
+            "sha256": native_extension_sha256,
+        },
         "root_training_seed": effective_config["root_training_seed"],
-        "effective_config_sha256": runtime_provenance["effective_config_sha256"],
+        "effective_config_sha256": effective_config_sha256,
         "uv_lock_sha256": runtime_provenance.get("uv_lock_sha256", ""),
-        "native_extension_sha256": extension["sha256"],
+        "native_extension_sha256": native_extension_sha256,
         "python_version": runtime_provenance["python_version"],
         "torch_version": runtime_provenance["torch_version"],
         "sb3_version": runtime_provenance["sb3_version"],
-        "model_sha256": sha256_file(model_path),
-        "final_timestep": model.num_timesteps,
+        "final_timestep": int(model.num_timesteps),
     }
     path = Path(model_dir) / "training_manifest.json"
     with path.open("w") as stream:
         _json.dump(manifest, stream, indent=2, sort_keys=True)
     return path
+
+
+def validate_training_manifest(manifest_path: str | Path) -> dict:
+    """Verify a model-bound training manifest and return its parsed contents."""
+    path = Path(manifest_path)
+    manifest_dir = path.resolve().parent
+    try:
+        with path.open() as stream:
+            manifest = _json.load(stream)
+    except (OSError, _json.JSONDecodeError) as exc:
+        raise ValueError(f"Unreadable training manifest: {path}") from exc
+
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise ValueError(message)
+
+    def manifest_path(field: str) -> Path:
+        value = manifest.get(field)
+        require(isinstance(value, str) and value, f"manifest {field} is missing")
+        return Path(value)
+
+    model_path = manifest_path("model_path")
+    effective_config_path = manifest_path("effective_config_path")
+    native_extension = manifest.get("native_extension", {})
+    require(isinstance(native_extension, dict), "manifest native extension is missing")
+    native_extension_path = native_extension.get("path")
+    require(
+        isinstance(native_extension_path, str) and native_extension_path,
+        "manifest native extension path is missing",
+    )
+    native_extension_path = Path(native_extension_path)
+    require(
+        model_path == model_path.parent / "final_model.zip",
+        "manifest model_path must point to final_model.zip",
+    )
+    require(
+        effective_config_path == effective_config_path.parent / EFFECTIVE_CONFIG_FILENAME,
+        "manifest effective_config_path must be adjacent effective_config.json",
+    )
+    require(
+        model_path.parent == manifest_dir
+        and effective_config_path.parent == manifest_dir,
+        "manifest, model, and effective config must share a directory",
+    )
+    require(model_path.is_absolute(), "manifest model_path must be absolute")
+    require(effective_config_path.is_absolute(), "manifest effective_config_path must be absolute")
+    require(native_extension_path.is_absolute(), "manifest native extension path must be absolute")
+    require(model_path.is_file(), f"model artifact is missing: {model_path}")
+    require(effective_config_path.is_file(), f"effective config is missing: {effective_config_path}")
+    require(native_extension_path.is_file(), f"native extension is missing: {native_extension_path}")
+
+    require(
+        sha256_file(model_path) == manifest.get("model_sha256"),
+        "model_sha256 does not match model artifact",
+    )
+    require(
+        sha256_file(effective_config_path) == manifest.get("effective_config_sha256"),
+        "effective_config_sha256 does not match effective config",
+    )
+    native_sha256 = sha256_file(native_extension_path)
+    require(
+        native_sha256 == native_extension.get("sha256")
+        and native_sha256 == manifest.get("native_extension_sha256"),
+        "native_extension_sha256 does not match native extension",
+    )
+
+    try:
+        with effective_config_path.open() as stream:
+            effective_config = _json.load(stream)
+    except (OSError, _json.JSONDecodeError) as exc:
+        raise ValueError(f"Unreadable effective config: {effective_config_path}") from exc
+    require(
+        manifest.get("effective_config") == effective_config,
+        "manifest effective_config does not match effective config file",
+    )
+    validate_v3_experiment_config(effective_config)
+    require(
+        isinstance(manifest.get("git_commit"), str)
+        and re.fullmatch(r"[0-9a-f]{40}", manifest["git_commit"]) is not None,
+        "manifest git_commit is missing",
+    )
+    require(isinstance(manifest.get("git_dirty"), bool), "manifest git_dirty is invalid")
+    require(
+        isinstance(manifest.get("git_status_porcelain"), str),
+        "manifest git_status_porcelain is invalid",
+    )
+    require(
+        manifest["git_dirty"] == bool(manifest.get("git_status_porcelain")),
+        "manifest git_dirty does not match git_status_porcelain",
+    )
+    for field in ("python_version", "torch_version", "sb3_version"):
+        require(bool(manifest.get(field)), f"manifest {field} is missing")
+    versions = manifest.get("versions")
+    require(isinstance(versions, dict), "manifest versions are missing")
+    require(versions.get("python") == manifest["python_version"], "python version mismatch")
+    require(versions.get("torch") == manifest["torch_version"], "torch version mismatch")
+    require(
+        versions.get("stable-baselines3") == manifest["sb3_version"],
+        "sb3 version mismatch",
+    )
+    for dependency in ("gymnasium", "numpy", "numba", "sb3-contrib", "pybind11"):
+        require(bool(versions.get(dependency)), f"manifest {dependency} version is missing")
+    require(bool(manifest.get("uv_lock_sha256")), "manifest uv.lock hash is missing")
+    require(
+        sha256_file(REPO_ROOT / "uv.lock") == manifest["uv_lock_sha256"],
+        "manifest uv_lock_sha256 does not match uv.lock",
+    )
+    runtime = manifest.get("runtime")
+    require(isinstance(runtime, dict), "manifest runtime provenance is missing")
+    require(bool(runtime.get("compiler")), "manifest compiler provenance is missing")
+    final_timestep = manifest.get("final_timestep")
+    require(
+        isinstance(final_timestep, int)
+        and not isinstance(final_timestep, bool)
+        and final_timestep >= 0,
+        "manifest final_timestep is invalid",
+    )
+
+    definition = effective_config.get("experiment_definition", {})
+    if definition.get("name") == "v3":
+        require(
+            manifest.get("condition") == manifest.get("d4_condition"),
+            "manifest condition fields disagree",
+        )
+        expected_condition = "d4" if effective_config["env_kwargs"]["d4_augment"] else "no_d4"
+        require(
+            manifest.get("d4_augment") == effective_config["env_kwargs"]["d4_augment"],
+            "manifest d4_augment does not match effective config",
+        )
+        require(
+            manifest.get("condition") == expected_condition,
+            "manifest condition does not match effective config",
+        )
+        require(
+            manifest.get("training_seed") == effective_config["root_training_seed"],
+            "manifest training seed does not match effective config",
+        )
+        require(
+            manifest.get("root_training_seed") == effective_config["root_training_seed"],
+            "manifest root training seed does not match effective config",
+        )
+        require(
+            manifest.get("root_training_seed") == effective_config.get("seed"),
+            "manifest root training seed does not match config seed",
+        )
+        require(
+            manifest.get("policy_class") == definition["policy_class"],
+            "manifest policy class does not match effective config",
+        )
+        require(
+            manifest.get("ppo_class") == definition["ppo_class"],
+            "manifest PPO class does not match effective config",
+        )
+        require(
+            manifest.get("value_head_lr_multiplier")
+            == float(definition["value_head_lr_multiplier"]),
+            "manifest value-head multiplier does not match effective config",
+        )
+        require(manifest.get("fresh_training") is True, "v3 manifest is not fresh training")
+        require(manifest.get("load_model") is False, "v3 manifest load_model must be false")
+        require(manifest.get("checkpoint_path") is None, "v3 manifest contains a checkpoint")
+
+        try:
+            loaded_model = ValueHeadLRMaskablePPO.load(model_path, device="cpu")
+        except Exception as exc:
+            raise ValueError("v3 model artifact could not be loaded") from exc
+        require(
+            qualified_class_name(loaded_model) == manifest.get("ppo_class"),
+            "manifest PPO class does not match saved model",
+        )
+        require(
+            qualified_class_name(loaded_model.policy) == manifest.get("policy_class"),
+            "manifest policy class does not match saved model",
+        )
+        require(
+            float(getattr(loaded_model, "value_head_lr_multiplier", float("nan")))
+            == float(manifest["value_head_lr_multiplier"]),
+            "manifest value-head multiplier does not match saved model",
+        )
+        actual_final_timestep = int(loaded_model.num_timesteps)
+        require(
+            actual_final_timestep == manifest["final_timestep"],
+            "manifest final_timestep does not match saved model",
+        )
+        configured_timesteps = effective_config.get("total_timesteps")
+        if configured_timesteps is not None:
+            require(
+                actual_final_timestep >= int(configured_timesteps),
+                "saved model did not reach configured total_timesteps",
+            )
+
+    git_dirty = manifest.get("git_dirty")
+    require(
+        manifest.get("paper_grade") is (git_dirty is False),
+        "manifest paper_grade does not match git_dirty",
+    )
+    return manifest
 
 
 def train(config: dict):
@@ -400,9 +748,12 @@ def train(config: dict):
                 lr_config['initial_value'], config['total_timesteps']
             )
 
-        model = MaskablePPO(
-            select_training_policy(config), vec_env, policy_kwargs=policy_kwargs,
-            verbose=1, seed=seed, **ppo_params
+        model = build_fresh_model(
+            effective_config,
+            vec_env,
+            policy_kwargs,
+            ppo_params,
+            seed,
         )
         model.learn(
             total_timesteps=config['total_timesteps'],
@@ -414,7 +765,10 @@ def train(config: dict):
     # Save model
     final_model_path = os.path.join(model_dir, "final_model.zip")
     model.save(final_model_path)
-    persist_training_manifest(model_dir, final_model_path, model, effective_config)
+    manifest_path = persist_training_manifest(
+        model_dir, final_model_path, model, effective_config
+    )
+    validate_training_manifest(manifest_path)
     print(f"Final model saved to: {final_model_path}")
     print("Training complete!")
 

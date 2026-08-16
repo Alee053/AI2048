@@ -34,3 +34,9 @@ features_dim: 256
 
 env_kwargs:
   d4_augment: false
+
+experiment_definition:
+  name: "v3"
+  policy_class: "twenty_forty_eight_ai.agent.policy.ValueNormalizedMaskablePolicy"
+  ppo_class: "twenty_forty_eight_ai.agent.ppo.ValueHeadLRMaskablePPO"
+  value_head_lr_multiplier: 10.0

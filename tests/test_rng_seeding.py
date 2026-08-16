@@ -197,6 +197,7 @@ def test_training_passes_training_seed_to_maskable_ppo(tmp_path, monkeypatch):
     monkeypatch.setattr(train_module, "CheckpointCallback", lambda **kwargs: object())
     monkeypatch.setattr(train_module, "set_global_seed", lambda seed: None)
     monkeypatch.setattr(train_module, "persist_training_manifest", lambda *args: None)
+    monkeypatch.setattr(train_module, "validate_training_manifest", lambda *args: None)
     monkeypatch.setattr(train_module.wandb, "init", lambda **kwargs: object())
 
     train_module.train(
