@@ -8,8 +8,41 @@ from typing import Iterable
 import numpy as np
 import torch
 
-from twenty_forty_eight_ai.env.d4_transforms import NUM_TRANSFORMS, apply_d4
+from twenty_forty_eight_ai.env.d4_transforms import NUM_TRANSFORMS
 from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
+
+
+_BOARD_ROWS, _BOARD_COLS = np.indices((4, 4), dtype=np.intp)
+_D4_ROW_INDICES = np.stack(
+    (
+        _BOARD_ROWS,
+        3 - _BOARD_COLS,
+        3 - _BOARD_ROWS,
+        _BOARD_COLS,
+        _BOARD_ROWS,
+        3 - _BOARD_ROWS,
+        _BOARD_COLS,
+        3 - _BOARD_COLS,
+    )
+)
+_D4_COL_INDICES = np.stack(
+    (
+        _BOARD_COLS,
+        _BOARD_ROWS,
+        3 - _BOARD_COLS,
+        3 - _BOARD_ROWS,
+        3 - _BOARD_COLS,
+        _BOARD_COLS,
+        _BOARD_ROWS,
+        3 - _BOARD_ROWS,
+    )
+)
+
+
+def _expand_d4_batch(boards: np.ndarray) -> np.ndarray:
+    """Return boards expanded in the established board-major D4 order."""
+    expanded = boards[:, _D4_ROW_INDICES, _D4_COL_INDICES]
+    return np.ascontiguousarray(expanded.reshape(-1, 4, 4))
 
 
 class D4ValueEvaluator:
@@ -55,13 +88,7 @@ class D4ValueEvaluator:
             )
 
         started_at = time.perf_counter()
-        expanded = np.stack(
-            [
-                apply_d4(board, transform)
-                for board in boards
-                for transform in range(NUM_TRANSFORMS)
-            ]
-        ).astype(np.int32, copy=False)
+        expanded = _expand_d4_batch(boards)
         tensor = board_to_tensor(expanded)
 
         neural_started_at = time.perf_counter()

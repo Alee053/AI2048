@@ -8,8 +8,12 @@ import pytest
 import torch
 
 from twenty_forty_eight_ai.env.d4_transforms import NUM_TRANSFORMS, apply_d4
-from twenty_forty_eight_ai.evaluation.value_evaluator import D4ValueEvaluator
+from twenty_forty_eight_ai.evaluation.value_evaluator import (
+    D4ValueEvaluator,
+    _expand_d4_batch,
+)
 from twenty_forty_eight_ai.utils.searcher import ExpectimaxSearcher
+from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
 
 class _FakePolicy:
@@ -35,6 +39,39 @@ class _FakePolicy:
         return (flat * weights).sum(dim=1, keepdim=True)
 
 
+class _ReferenceD4Evaluator:
+    """The pre-optimization evaluator, retained only as a test oracle."""
+
+    def __init__(self, policy):
+        self.policy = policy
+
+    def __call__(self, boards_list):
+        boards = np.asarray(list(boards_list), dtype=np.int32)
+        if boards.size == 0:
+            return []
+        expanded = np.stack(
+            [
+                apply_d4(board, transform)
+                for board in boards
+                for transform in range(NUM_TRANSFORMS)
+            ]
+        )
+        tensor = board_to_tensor(expanded)
+        with torch.no_grad():
+            values = self.policy.predict_values(
+                torch.as_tensor(tensor, device=self.policy.device)
+            ).flatten()
+        return (
+            values.reshape(len(boards), NUM_TRANSFORMS)
+            .mean(dim=1)
+            .detach()
+            .cpu()
+            .numpy()
+            .astype(np.float32)
+            .tolist()
+        )
+
+
 def _board() -> np.ndarray:
     return np.asarray(
         [
@@ -45,6 +82,26 @@ def _board() -> np.ndarray:
         ],
         dtype=np.int32,
     )
+
+
+@pytest.mark.parametrize("batch_size", (1, 2, 7, 32))
+def test_vectorized_d4_expansion_matches_apply_d4_for_all_batch_sizes(batch_size):
+    rng = np.random.default_rng(2048 + batch_size)
+    boards = rng.integers(0, 16, size=(batch_size, 4, 4), dtype=np.int32)
+    boards[0] = np.arange(16, dtype=np.int32).reshape(4, 4)
+
+    expected = np.stack(
+        [
+            apply_d4(board, transform)
+            for board in boards
+            for transform in range(NUM_TRANSFORMS)
+        ]
+    )
+    actual = _expand_d4_batch(boards)
+
+    assert actual.dtype == np.int32
+    assert actual.flags.c_contiguous
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_eight_way_average_is_invariant_for_all_d4_inputs():
@@ -73,6 +130,22 @@ def test_evaluator_expands_inputs_in_one_batch_and_matches_individual_calls():
     np.testing.assert_allclose(batched, individual, rtol=0.0, atol=1e-6)
     assert batched_policy.batch_sizes == [2 * NUM_TRANSFORMS]
     assert individual_policy.batch_sizes == [NUM_TRANSFORMS, NUM_TRANSFORMS]
+
+
+def test_vectorized_evaluator_preserves_search_results_against_reference():
+    board = _board()
+    vectorized = ExpectimaxSearcher(target_batch_size=8192).find_best_move(
+        board, 2, D4ValueEvaluator(_FakePolicy())
+    )
+    reference = ExpectimaxSearcher(target_batch_size=8192).find_best_move(
+        board, 2, _ReferenceD4Evaluator(_FakePolicy())
+    )
+
+    assert vectorized["best_move"] == reference["best_move"]
+    np.testing.assert_array_equal(vectorized["move_scores"], reference["move_scores"])
+    for key in vectorized.keys() & reference.keys():
+        if key != "think_ms":
+            assert vectorized[key] == reference[key], key
 
 
 def test_evaluator_starts_from_received_orientation_without_recanonicalizing():
