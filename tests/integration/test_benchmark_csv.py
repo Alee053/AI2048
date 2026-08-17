@@ -34,11 +34,13 @@ def benchmark_output_dir(tmp_path):
     return out
 
 
-def _run_benchmark(args: list, timeout: int = 600) -> subprocess.CompletedProcess:
+def _run_benchmark(
+    args: list, timeout: int = 600, env: dict | None = None,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "scripts.benchmark", *args],
         cwd=str(_REPO_ROOT),
-        capture_output=True, text=True, timeout=timeout,
+        capture_output=True, text=True, timeout=timeout, env=env,
     )
 
 
@@ -63,6 +65,11 @@ def test_single_worker_benchmark_writes_all_files(benchmark_output_dir):
         config = json.load(f)
     assert config["benchmark_schema_version"] == "1.0.0"
     assert config["n_workers"] == 1
+    assert config["worker_timeout"] == 300.0
+    assert config["worker_inactivity_timeout"] == 300.0
+    assert config["worker_timeout_scope"] == (
+        "per-worker-inactivity-between-episode-heartbeats"
+    )
     assert config["use_expectimax"] is False
     assert config["base_eval_seed"] == 42
     assert config["status"] == "completed"
@@ -186,6 +193,7 @@ def test_interrupt_writes_partial_output(tmp_path):
          str(_PRODUCTION_MODEL),
          "--n-runs", "10", "--depth", "0",
          "--workers", "1", "--device", "cpu",
+         "--log-moves", "--worker-timeout", "60",
          "--output", str(out), "--base-eval-seed", "1"],
         cwd=str(_REPO_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
@@ -200,7 +208,9 @@ def test_interrupt_writes_partial_output(tmp_path):
     proc.send_signal(signal.SIGINT)
     proc.wait(timeout=30)
 
+    assert proc.returncode == 2
     assert csv_path.exists()
+    assert (out / "moves.csv").exists()
     with open(csv_path) as f:
         rows = list(csv.DictReader(f))
     assert 0 < len(rows) < 10, f"Expected partial rows, got {len(rows)}"
@@ -303,4 +313,43 @@ def test_worker_crash_detection_marks_status_failed(tmp_path):
         cfg = json.load(f)
     assert cfg["status"] == "failed", (
         f"Expected status='failed', got {cfg.get('status')!r}"
+    )
+
+
+def test_sigkill_worker_detection_marks_status_failed(tmp_path):
+    out = tmp_path / "sigkill"
+    out.mkdir()
+    env = {**os.environ, "BENCHMARK_FORCE_SIGKILL": "1"}
+
+    result = _run_benchmark([
+        str(_PRODUCTION_MODEL), "--n-runs", "1", "--depth", "0",
+        "--workers", "1", "--device", "cpu", "--worker-timeout", "2",
+        "--output", str(out), "--base-eval-seed", "0",
+    ], timeout=30, env=env)
+
+    assert result.returncode != 0
+    with open(out / "config.json") as f:
+        config = json.load(f)
+    assert config["status"] == "failed"
+
+
+def test_hung_worker_times_out_and_marks_status_failed(tmp_path):
+    out = tmp_path / "hang"
+    out.mkdir()
+    env = {**os.environ, "BENCHMARK_FORCE_HANG": "1"}
+
+    result = _run_benchmark([
+        str(_PRODUCTION_MODEL), "--n-runs", "1", "--depth", "0",
+        "--workers", "1", "--device", "cpu", "--worker-timeout", "0.1",
+        "--output", str(out), "--base-eval-seed", "0",
+    ], timeout=30, env=env)
+
+    assert result.returncode != 0
+    with open(out / "config.json") as f:
+        config = json.load(f)
+    assert config["status"] == "failed"
+    assert config["worker_timeout"] == 0.1
+    assert config["worker_inactivity_timeout"] == 0.1
+    assert config["worker_timeout_scope"] == (
+        "per-worker-inactivity-between-episode-heartbeats"
     )

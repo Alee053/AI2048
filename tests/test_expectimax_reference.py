@@ -157,3 +157,40 @@ def test_high_leaf_values_match_independent_exhaustive_expectimax_without_alpha_
     assert result["alpha_beta_cuts"] == 0
     assert result["best_move"] == expected_action
     assert result["move_scores"] == expected_scores
+
+
+def test_leaf_values_below_the_old_finite_sentinel_are_preserved():
+    board = np.array([
+        [1, 1, 2, 0],
+        [2, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ], dtype=np.int32)
+
+    def very_negative_leaf_value(_board):
+        return _float32(-2_000_000_000)
+
+    expected_scores = _root_scores(
+        tuple(tuple(row) for row in board),
+        depth=2,
+        leaf_value=very_negative_leaf_value,
+    )
+    expected_action = min(
+        action for action, score in enumerate(expected_scores) if score == max(expected_scores)
+    )
+    result = ExpectimaxSearcher(
+        target_batch_size=32768,
+        use_transposition_table=False,
+    ).find_best_move(
+        board,
+        2,
+        lambda boards: [very_negative_leaf_value(values) for values in boards],
+    )
+
+    assert result["has_legal_move"] is True
+    assert result["search_complete"] is True
+    assert result["best_move"] == expected_action
+    np.testing.assert_allclose(result["move_scores"], expected_scores, rtol=0.0, atol=512.0)
+    finite_scores = [score for score in result["move_scores"] if np.isfinite(score)]
+    assert finite_scores
+    assert all(score < -1_000_000_000 for score in finite_scores)

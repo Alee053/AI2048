@@ -22,6 +22,8 @@ PYBIND11_MODULE(searcher, m) {
         .def_property_readonly("max_tile", &Fast2048::get_max_tile);
     py::class_<SearchStats>(m, "SearchStats")
         .def_readonly("best_move", &SearchStats::best_move)
+        .def_readonly("has_legal_move", &SearchStats::has_legal_move)
+        .def_readonly("search_complete", &SearchStats::search_complete)
         .def_readonly("think_ms", &SearchStats::think_ms)
         .def_readonly("nodes_visited", &SearchStats::nodes_visited)
         .def_readonly("batches_eval", &SearchStats::batches_eval)

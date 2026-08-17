@@ -42,3 +42,42 @@ def test_run_worker_posts_episode_result_to_queue():
     assert result.eval_seed == 42
     assert result.episode_idx == 0
     assert result.steps > 0
+
+
+def test_run_worker_flushes_results_before_stopped_ack(monkeypatch):
+    from scripts import benchmark_worker
+
+    events = []
+
+    class FakeQueue:
+        def put(self, message):
+            events.append(("status", message["status"]))
+
+    class StoppedEvent:
+        def is_set(self):
+            return True
+
+    monkeypatch.setattr(benchmark_worker, "Benchmarker", lambda *args: object())
+
+    monkeypatch.setattr(
+        benchmark_worker,
+        "_flush_result_queue",
+        lambda queue: events.append(("flush", "result")),
+    )
+    monkeypatch.setattr(
+        benchmark_worker,
+        "_flush_status_queue",
+        lambda queue: events.append(("flush", "status")),
+    )
+
+    benchmark_worker.run_worker(
+        0, "model.zip", "cpu", 0, [42], False, "run", 42,
+        FakeQueue(), FakeQueue(), StoppedEvent(),
+    )
+
+    assert events == [
+        ("status", "started"),
+        ("flush", "result"),
+        ("status", "stopped"),
+        ("flush", "status"),
+    ]

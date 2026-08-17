@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -43,6 +44,26 @@ _PAPER_REQUIRED_PROVENANCE = (
 )
 
 
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be > 0")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number > 0")
+    return parsed
+
+
 def _tqdm_iter(iterable=None, **kwargs):
     try:
         from tqdm import tqdm
@@ -61,7 +82,7 @@ def parse_args(argv=None):
     )
     p.add_argument("model_path", type=str, nargs="?", default=None,
                    help="Path to trained model .zip file (not required when --model-dir is set)")
-    p.add_argument("--n-runs", type=int, default=100,
+    p.add_argument("--n-runs", type=_positive_int, default=100,
                    help="Number of episodes to simulate (default: 100)")
     p.add_argument("--depth", type=int, default=0,
                    help="Expectimax search depth; 0 = raw policy (default: 0)")
@@ -74,6 +95,10 @@ def parse_args(argv=None):
                    help="Number of worker processes (default: 1). "
                         "Recommended: --device cpu --workers 4-8 for throughput; "
                         "--device cuda --workers 1 for paper-grade latency.")
+    p.add_argument(
+        "--worker-timeout", type=_positive_float, default=300.0,
+        help="Maximum worker inactivity time in seconds (default: 300)",
+    )
     p.add_argument("--log-moves", action="store_true",
                    help="Write per-move CSV (moves.csv). Off by default.")
     p.add_argument("--yes-large-move-log", action="store_true",
@@ -241,6 +266,7 @@ def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_i
             model_path=args.model_path,
             effective_config=str(effective_config) if effective_config else None,
         )
+    worker_timeout = float(getattr(args, "worker_timeout", 300.0))
     config = {
         "benchmark_schema_version": "1.0.0",
         "run_name": run_name,
@@ -251,6 +277,9 @@ def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_i
         "env_seed_base": env_seed_base,
         "n_runs": args.n_runs,
         "n_workers": args.workers,
+        "worker_timeout": worker_timeout,
+        "worker_inactivity_timeout": worker_timeout,
+        "worker_timeout_scope": "per-worker-inactivity-between-episode-heartbeats",
         "device": args.device,
         "cuda_device_name": cuda_name,
         "cuda_runtime": cuda_runtime,

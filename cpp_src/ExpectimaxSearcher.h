@@ -6,6 +6,7 @@
 #include <map>
 #include <functional>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <unordered_map>
 
@@ -15,6 +16,8 @@ using LeafCache = std::unordered_map<uint64_t, float>;
 
 struct SearchStats {
     int best_move;
+    bool has_legal_move;
+    bool search_complete;
     double think_ms;
     size_t nodes_visited;
     size_t batches_eval;

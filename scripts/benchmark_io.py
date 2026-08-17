@@ -139,6 +139,8 @@ class EpisodeResult:
     p95_move_time_ms: float
     max_move_time_ms: float
     termination_reason: str
+    terminated: bool
+    truncated: bool
     win_1024: bool
     win_2048: bool
     win_4096: bool
@@ -207,6 +209,14 @@ class MoveRecord:
     best_move: int
 
 
+def _validate_termination_flags(terminated: Any, truncated: Any) -> None:
+    """Validate the mutually exclusive Gymnasium episode outcome flags."""
+    if type(terminated) is not bool or type(truncated) is not bool:
+        raise ValueError("terminated and truncated must be bool")
+    if terminated and truncated:
+        raise ValueError("terminated and truncated cannot both be True")
+
+
 def episode_to_row(result: EpisodeResult) -> dict[str, Any]:
     """Convert an EpisodeResult to a dict matching EPISODE_COLUMNS exactly.
 
@@ -217,6 +227,14 @@ def episode_to_row(result: EpisodeResult) -> dict[str, Any]:
         "move_records is a list of MoveRecord objects; it must not be "
         "serialized into the per-episode CSV row."
     )
+    try:
+        terminated = result.terminated
+        truncated = result.truncated
+    except AttributeError as exc:
+        raise ValueError(
+            "episode result must include terminated and truncated"
+        ) from exc
+    _validate_termination_flags(terminated, truncated)
     return {k: getattr(result, k) for k in EPISODE_COLUMNS}
 
 

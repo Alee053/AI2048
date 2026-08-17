@@ -23,6 +23,45 @@ def test_expectimax_searcher_returns_dict():
     assert 'tt_size' in result
     assert 'tt_lookups' in result
     assert 'tt_hits' in result
+    assert result['has_legal_move'] is True
+    assert result['search_complete'] is True
+    assert result['failure_reason'] is None
+
+
+def test_no_legal_move_is_reported_as_a_terminal_search_outcome():
+    searcher = ExpectimaxSearcher()
+    board = np.array([
+        [1, 2, 1, 2],
+        [2, 1, 2, 1],
+        [1, 2, 1, 2],
+        [2, 1, 2, 1],
+    ])
+
+    result = searcher.find_best_move(board, 1, lambda boards: [0.0] * len(boards))
+
+    assert result['best_move'] == -1
+    assert result['has_legal_move'] is False
+    assert result['search_complete'] is True
+    assert result['failure_reason'] == 'no_legal_move'
+    assert all(np.isneginf(score) for score in result['move_scores'])
+
+
+def test_incomplete_root_search_has_no_action_outcome():
+    searcher = ExpectimaxSearcher(target_batch_size=1)
+    board = np.array([
+        [1, 2, 3, 4],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ])
+
+    result = searcher.find_best_move(board, 2, lambda boards: [0.0] * len(boards))
+
+    assert result['has_legal_move'] is True
+    assert result['search_complete'] is False
+    assert result['failure_reason'] == 'search_incomplete'
+    assert result['best_move'] == -1
+    assert result['cap_hits'] > 0
 
 
 def test_depth_zero_directs_callers_to_raw_ppo_path():
@@ -120,6 +159,24 @@ def test_leaf_callback_must_return_one_value_per_board():
 
     with pytest.raises(ValueError, match="expected .* got"):
         searcher.find_best_move(board, 1, short_leaf_callback)
+
+
+def test_search_rejects_non_finite_arithmetic_results():
+    searcher = ExpectimaxSearcher(use_transposition_table=False)
+    board = np.array([
+        [1, 1, 2, 0],
+        [2, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ])
+    max_float32 = float(np.finfo(np.float32).max)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        searcher.find_best_move(
+            board,
+            2,
+            lambda boards: [max_float32] * len(boards),
+        )
 
 
 @pytest.mark.parametrize("use_transposition_table", [True, False])

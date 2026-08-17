@@ -121,6 +121,8 @@ class Visualizer:
         self._game_id = 0
         self._current_result = None
         self._current_board_for_search = None
+        self.terminated = False
+        self.search_failure_reason = None
 
         # Setup Pygame
         pygame.init()
@@ -447,6 +449,8 @@ class Visualizer:
                 pygame.event.post(pygame.event.Event(self.SEARCH_COMPLETE))
             except Exception as e:
                 print(f"Search worker error: {e}")
+                self.terminated = True
+                self.search_failure_reason = "search_exception"
             finally:
                 self._searching = False
 
@@ -458,8 +462,20 @@ class Visualizer:
             return
         if game_id != self._game_id:
             return
-        self._current_result = stats
+        self._current_result = None
         self._searching = False
+        if not stats.get("has_legal_move", False):
+            self.terminated = True
+            self.search_failure_reason = "no_legal_move"
+            print(f"Search failed: {self.search_failure_reason}")
+            return
+        if not stats.get("search_complete", False):
+            self.terminated = True
+            self.search_failure_reason = "search_incomplete"
+            print(f"Search failed: {self.search_failure_reason}")
+            return
+        self.search_failure_reason = None
+        self._current_result = stats
 
     def _start_search_if_idle(self):
         """Post SEARCH_REQUEST if not already searching."""
@@ -476,6 +492,7 @@ class Visualizer:
         self._searching = False
         self._current_result = None
         self.terminated = False
+        self.search_failure_reason = None
         self.paused = False
         self.pause_button.set_text("Pause")
         self.env.reset()
@@ -510,8 +527,8 @@ class Visualizer:
             self._start_search_if_idle()
 
     def _execute_action(self, action: int, result=None):
-        obs, _, terminated, _, _ = self.env.step(action)
-        self.terminated = terminated
+        obs, _, terminated, truncated, _ = self.env.step(action)
+        self.terminated = bool(terminated or truncated)
 
         if result:
             stats = result.copy()
@@ -531,7 +548,7 @@ class Visualizer:
             self.think_time_history = self.think_time_history[-100:]
             self.nodes_history = self.nodes_history[-100:]
 
-        if terminated:
+        if self.terminated:
             self._draw_game_over(self.env.game.score, 2**self.env.game.max_tile)
 
     def _update_history_display(self):
@@ -600,8 +617,8 @@ class Visualizer:
                 "think_ms": 0,
                 "nodes_visited": 0,
                 "batches_eval": 0,
-                "best_move": 0,
-                "move_scores": [-1e9] * 4,
+                "best_move": None,
+                "move_scores": [],
             }
         )
 
@@ -611,11 +628,18 @@ class Visualizer:
         self.nodes_label.set_text(f"nodes: {last_s.get('nodes_visited', 0):,} ({self.cumulative['total_nodes']:,})")
         self.batches_label.set_text(f"batches: {last_s.get('batches_eval', 0)} ({self.cumulative['total_batches']:,})")
 
-        scores = last_s.get("move_scores", [-1e9] * 4)
-        best = last_s.get("best_move", 0)
+        scores = last_s.get("move_scores", [])
+        best = last_s.get("best_move")
         action_names = ["UP", "RIGHT", "DOWN", "LEFT"]
-        best_score = scores[best] if best < len(scores) else 0.0
-        self.best_move_label.set_text(f"best: {action_names[best]} ({best_score:.2f})")
+        if (
+            isinstance(best, (int, np.integer))
+            and 0 <= best < len(action_names)
+            and best < len(scores)
+            and np.isfinite(scores[best])
+        ):
+            self.best_move_label.set_text(f"best: {action_names[best]} ({scores[best]:.2f})")
+        else:
+            self.best_move_label.set_text("best: --")
 
         tt_size = last_s.get("tt_size", 0)
         tt_lookups = last_s.get("tt_lookups", 0)
@@ -627,10 +651,13 @@ class Visualizer:
         total_hit_rate = (self.cumulative["total_tt_hits"] / self.cumulative["total_tt_lookups"] * 100) if self.cumulative["total_tt_lookups"] > 0 else 0
         self.tt_hits_label.set_text(f"hit rate: {hit_rate:.0f}% (tot {total_hit_rate:.0f}%)")
 
-        max_score = max(scores) if max(scores) > -1e8 else 1.0
+        finite_scores = [score for score in scores if np.isfinite(score)]
+        max_score = max(finite_scores, default=1.0)
+        if max_score == 0.0:
+            max_score = 1.0
         for i, (bar, score_label) in enumerate(zip(self.score_bars, self.score_labels)):
-            s = scores[i] if i < len(scores) else -1e9
-            if s > -1e8:
+            if i < len(scores) and np.isfinite(scores[i]):
+                s = scores[i]
                 pct = max(0.0, min(100.0, (s / max_score) * 100.0))
                 bar.set_current_progress(pct)
                 score_label.set_text(f"{s:.2f}")

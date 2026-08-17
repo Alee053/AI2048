@@ -57,8 +57,9 @@ class ExpectimaxSearcher:
             batch_eval_func: Callback(list[np.ndarray]) -> list[float] for CNN evaluation.
 
         Returns:
-            dict with keys: best_move, think_ms, nodes_visited, batches_eval,
-            move_scores, tt_size, tt_lookups, tt_hits
+            dict with keys: best_move, has_legal_move, search_complete,
+            failure_reason, think_ms, nodes_visited, batches_eval, move_scores,
+            tt_size, tt_lookups, tt_hits
         """
         stats = self._impl.find_best_move(board, depth, batch_eval_func)
         # Handle move_scores - pybind11 may return a float (0th element) instead of
@@ -69,8 +70,16 @@ class ExpectimaxSearcher:
             move_scores = [float(raw_scores)] * 4
         else:
             move_scores = [float(raw_scores[i]) for i in range(4)]
+        failure_reason = None
+        if not stats.has_legal_move:
+            failure_reason = 'no_legal_move'
+        elif not stats.search_complete:
+            failure_reason = 'search_incomplete'
         return {
             'best_move': int(stats.best_move),
+            'has_legal_move': bool(stats.has_legal_move),
+            'search_complete': bool(stats.search_complete),
+            'failure_reason': failure_reason,
             'think_ms': float(stats.think_ms),
             'nodes_visited': int(stats.nodes_visited),
             'batches_eval': int(stats.batches_eval),

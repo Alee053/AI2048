@@ -15,6 +15,7 @@ def make_episode(**overrides) -> "EpisodeResult":
         use_expectimax=True, score=0, max_tile=0, max_log_tile=0, steps=0,
         episode_time_s=0.0, mean_move_time_ms=0.0, median_move_time_ms=0.0,
         p95_move_time_ms=0.0, max_move_time_ms=0.0, termination_reason="",
+        terminated=False, truncated=False,
         win_1024=False, win_2048=False, win_4096=False, win_8192=False,
         total_think_ms=0.0, total_nodes=0, total_batches=0,
         total_tt_lookups=0, total_tt_hits=0, total_tt_collisions=0,
@@ -55,6 +56,23 @@ def test_schema_version_is_semver():
     parts = EPISODE_SCHEMA_VERSION.split(".")
     assert len(parts) == 3
     assert all(p.isdigit() for p in parts)
+    assert parts[:2] == ["1", "0"]
+
+
+def test_episode_to_row_keeps_termination_flags_internal():
+    from scripts.benchmark_io import EPISODE_COLUMNS, episode_to_row
+
+    result = make_episode(
+        termination_reason="max_steps", terminated=False, truncated=True,
+    )
+    row = episode_to_row(result)
+
+    assert "terminated" not in EPISODE_COLUMNS
+    assert "truncated" not in EPISODE_COLUMNS
+    assert result.terminated is False
+    assert result.truncated is True
+    assert "terminated" not in row
+    assert "truncated" not in row
 
 
 def test_episode_columns_is_nonempty_list_of_str():
@@ -122,6 +140,28 @@ def test_episode_to_row_keys_match_episode_columns():
     assert row["schema_version"] == "1.0.0"
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"terminated": None},
+        {"truncated": 0},
+        {"terminated": True, "truncated": True},
+    ],
+)
+def test_episode_to_row_rejects_invalid_termination_flags(overrides):
+    from scripts.benchmark_io import episode_to_row
+
+    with pytest.raises(ValueError, match="terminated.*truncated"):
+        episode_to_row(make_episode(**overrides))
+
+
+def test_episode_to_row_rejects_missing_termination_flags():
+    from scripts.benchmark_io import episode_to_row
+
+    with pytest.raises(ValueError, match="terminated.*truncated"):
+        episode_to_row(object())
+
+
 def test_move_to_row_keys_match_move_columns():
     from scripts.benchmark_io import move_to_row, MOVE_COLUMNS
     rec = make_move(action=0, score_up=float("nan"), score_right=float("nan"),
@@ -171,6 +211,19 @@ def test_csvwriter_writes_episode_csv(tmp_path):
     config_path = tmp_path / "config.json"
     assert config_path.exists()
     assert config_path.read_text() == '{"benchmark_schema_version": "1.0.0", "run_name": "t"}'
+
+
+def test_csvwriter_accepts_legacy_episode_row_without_termination_flags(tmp_path):
+    from scripts.benchmark_io import CSVWriter, EPISODE_COLUMNS
+
+    row = {
+        column: ""
+        for column in EPISODE_COLUMNS
+        if column not in {"terminated", "truncated"}
+    }
+
+    with CSVWriter(tmp_path, log_moves=False) as writer:
+        writer.writerow_episode(row)
 
 
 def test_csvwriter_moves_only_when_enabled(tmp_path):
