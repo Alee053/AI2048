@@ -106,7 +106,7 @@ class Game2048Env(Env):
         observation = board_to_tensor(self._view_board())
         reward = calculate_reward(self.game.board, merge_score, moved)
 
-        info = {}
+        info = {"merge_score": int(merge_score)}
         if done:
             info['max_tile'] = self.game.max_tile
             info['score'] = self.game.score

@@ -23,6 +23,7 @@ def test_expectimax_searcher_returns_dict():
     assert 'tt_size' in result
     assert 'tt_lookups' in result
     assert 'tt_hits' in result
+    assert 'alpha_beta_cuts' not in result
     assert result['has_legal_move'] is True
     assert result['search_complete'] is True
     assert result['failure_reason'] is None

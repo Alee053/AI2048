@@ -16,10 +16,11 @@ from typing import Any
 
 # --- Schema versioning (semver) ---------------------------------------------
 
-EPISODE_SCHEMA_VERSION = "1.0.0"
+# v2 removes the non-implemented alpha-beta diagnostic from paper output.
+EPISODE_SCHEMA_VERSION = "2.0.0"
 
 # Any major version change requires an aggregate.py migration.
-SUPPORTED_SCHEMA_MAJOR = 1
+SUPPORTED_SCHEMA_MAJOR = 2
 
 
 # --- Column lists (exact order matches on-disk CSV) ------------------------
@@ -58,7 +59,6 @@ EPISODE_COLUMNS: list[str] = [
     "total_moves_resolved",
     "total_moves_unresolved",
     "total_cap_hits",
-    "total_alpha_beta_cuts",
     "total_chance_nodes",
     "total_max_nodes",
     "mean_chance_value",
@@ -155,7 +155,6 @@ class EpisodeResult:
     total_moves_resolved: int
     total_moves_unresolved: int
     total_cap_hits: int
-    total_alpha_beta_cuts: int
     total_chance_nodes: int
     total_max_nodes: int
     mean_chance_value: float
@@ -289,6 +288,12 @@ class CSVWriter:
 
     def writerow_episode(self, row: dict) -> None:
         with self._lock:
+            missing = [column for column in EPISODE_COLUMNS if column not in row]
+            if missing:
+                raise ValueError(
+                    "episode row is missing required columns: "
+                    + ", ".join(missing)
+                )
             self._episodes_writer.writerow(row)
             self._episodes_file.flush()
 

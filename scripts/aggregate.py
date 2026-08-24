@@ -24,9 +24,7 @@ from collections import defaultdict
 import numpy as np
 
 from scripts.benchmark_summary import compute_summary_from_rows
-from scripts.benchmark_io import EPISODE_COLUMNS
-
-SUPPORTED_SCHEMA_MAJOR = 1
+from scripts.benchmark_io import EPISODE_COLUMNS, SUPPORTED_SCHEMA_MAJOR
 
 _REQUIRED_PAPER_PROVENANCE = (
     "git_commit", "model_sha256", "effective_config_sha256", "uv_lock_sha256",
@@ -46,13 +44,17 @@ _INT_EPISODE_FIELDS = {
     "effective_depth", "score", "max_tile", "max_log_tile", "steps", "total_nodes",
     "total_batches", "total_tt_lookups", "total_tt_hits", "total_tt_collisions",
     "total_tt_same_key_overwrites", "total_moves_resolved", "total_moves_unresolved",
-    "total_cap_hits", "total_alpha_beta_cuts", "total_chance_nodes", "total_max_nodes",
+    "total_cap_hits", "total_chance_nodes", "total_max_nodes",
     "min_empty_cells",
 }
 _FLOAT_EPISODE_FIELDS = {
     "episode_time_s", "mean_move_time_ms", "median_move_time_ms", "p95_move_time_ms",
     "max_move_time_ms", "total_think_ms", "mean_chance_value", "mean_empty_cells",
     "mean_merge_score", "mean_nps", "mean_tt_hit_rate", "mean_nodes_per_batch_call",
+}
+_REQUIRED_EPISODE_METRICS = {
+    *_INT_EPISODE_FIELDS - {"train_seed"},
+    *_FLOAT_EPISODE_FIELDS,
 }
 
 
@@ -162,16 +164,36 @@ def _load_episode_rows(path: Path) -> list[dict]:
                 raise ValueError(
                     f"{path}: missing required episode CSV columns: {', '.join(missing)}"
                 )
+            unexpected = sorted(set(reader.fieldnames or []) - set(EPISODE_COLUMNS))
+            if unexpected:
+                raise ValueError(
+                    f"{path}: unexpected episode CSV columns: {', '.join(unexpected)}"
+                )
             rows = list(reader)
     except OSError as exc:
         raise ValueError(f"{path}: unreadable episodes CSV") from exc
-    for row in rows:
+    for row_index, row in enumerate(rows, start=2):
+        missing_metrics = [
+            key for key in _REQUIRED_EPISODE_METRICS
+            if row.get(key) in (None, "")
+        ]
+        if missing_metrics:
+            raise ValueError(
+                f"{path}: missing episode metric values at row {row_index}: "
+                f"{', '.join(sorted(missing_metrics))}"
+            )
         for key in _INT_EPISODE_FIELDS:
             if key in row and row[key] not in (None, ""):
                 row[key] = int(row[key])
         for key in _FLOAT_EPISODE_FIELDS:
             if key in row and row[key] not in (None, ""):
-                row[key] = float(row[key])
+                value = float(row[key])
+                if not math.isfinite(value):
+                    raise ValueError(
+                        f"{path}: episode metric {key} must be finite "
+                        f"at row {row_index}"
+                    )
+                row[key] = value
         row["use_expectimax"] = _parse_bool(row["use_expectimax"], path)
     return rows
 
@@ -372,21 +394,11 @@ def _pstdev(values):
 
 
 def load_episodes_csv(run_dir):
-    """Load episodes.csv from a run folder as a list of dicts.
-
-    Returns an empty list if the file doesn't exist or pandas is missing.
-    """
-    try:
-        import pandas as pd
-    except ImportError:
-        print("Error: aggregate.py requires pandas for the new CSV layout.")
-        print("Install with: uv add pandas")
-        sys.exit(1)
+    """Load and strictly validate episodes.csv from a run folder."""
     csv_path = Path(run_dir) / "episodes.csv"
     if not csv_path.exists():
         return []
-    df = pd.read_csv(csv_path)
-    return df.to_dict("records")
+    return _load_episode_rows(csv_path)
 
 
 def parse_args(argv=None):
@@ -409,14 +421,14 @@ def main(argv=None):
     sweep_name = args.sweep
     output_dir = Path(args.output or benchmark_dir)
 
-    # Schema-version check: aggregate.py only accepts major version 1.
+    # Schema-version check: aggregate.py only accepts the current major version.
     if not args.legacy:
         schema_violations = _check_schema_versions(benchmark_dir, sweep_name)
         if schema_violations:
             print("Error: unsupported benchmark_schema_version in some run folders:")
             for path, ver in schema_violations:
                 print(f"  {path}: {ver}")
-            print("aggregate.py only accepts major version 1.x.x.")
+            print(f"aggregate.py only accepts major version {SUPPORTED_SCHEMA_MAJOR}.x.x.")
             print("Re-run with --legacy to consume the old JSON layout.")
             sys.exit(2)
 
@@ -499,7 +511,6 @@ def main(argv=None):
                     ("avg_moves_resolved", "total_moves_resolved"),
                     ("avg_moves_unresolved", "total_moves_unresolved"),
                     ("avg_cap_hits", "total_cap_hits"),
-                    ("avg_alpha_beta_cuts", "total_alpha_beta_cuts"),
                     ("avg_chance_nodes", "total_chance_nodes"),
                     ("avg_max_nodes", "total_max_nodes"),
                     ("avg_nodes_per_sec", "mean_nps"),

@@ -90,7 +90,7 @@ The ablation study reveals how the learned value function behaves as a search he
 A 1-ply lookahead only edges out the raw policy (7,930 vs 6,080, +30%) because one ply barely reaches the next merge. The large jump comes at depth 2 (20,696, +161% over d=1): two ply is enough to evaluate the board *after* a merge and the subsequent tile spawn, so the search rewards moves that open productive merges. Depth 2 is also the first depth where reaching 2048 becomes common (35% vs 1% at d=1).
 
 #### **2. Depth 3: "search as regularization"**
-Going to depth 3 aggregates value estimates over **~141M leaf nodes per game** (avg 9,532 CNN batch calls), which **filters noise** in $V(s)$ the way Monte-Carlo averaging does. Mean score reaches 38,431 (+86% over d=2) and the 2048+ win rate steps from 35% to 87%, with 24% of games reaching 4096. The search converges cleanly on every game (`moves_unresolved=0`, `cap_hits=0`, `alpha_beta_cuts=0`).
+Going to depth 3 aggregates value estimates over **~141M leaf nodes per game** (avg 9,532 CNN batch calls), which **filters noise** in $V(s)$ the way Monte-Carlo averaging does. Mean score reaches 38,431 (+86% over d=2) and the 2048+ win rate steps from 35% to 87%, with 24% of games reaching 4096. The search converges cleanly on every game (`moves_unresolved=0`, `cap_hits=0`).
 
 **Connection to Bayesian Optimization:** This mirrors the exploration-exploitation trade-off in GP-UCB (Krause et al., 2009). Deeper search increases sample complexity but reduces epistemic uncertainty, similar to how UCB balances mean prediction with confidence bounds.
 
@@ -245,8 +245,7 @@ while (std::isinf(move_scores[rm.move_id])) {
 
 On top of TT memoization, the current searcher adds:
 
-- **Root move ordering via CNN pre-evaluation.** Before searching, the four root post-move boards are batch-evaluated by the value net and sorted best-first, which improves pruning effectiveness.
-- **Alpha-beta pruning at MAX nodes** (`max_value >= beta`), guarded by `if (!any_unresolved)` so it only fires once a subtree is fully resolved. *Soundness caveat:* in expectimax the chance-node parent *averages* its children, so a hard beta-cut can in principle prune a child that would have pulled the average back into bounds — the cut is therefore tracked via the `alpha_beta_cuts` diagnostic. In the n=100 paper runs this cut fires **0 times** (it is conservative in practice).
+- **Root move ordering via CNN pre-evaluation.** Before searching, the four root post-move boards are batch-evaluated by the value net and sorted best-first, prioritizing promising moves.
 - **Corrected chance-node divisor.** `E[V] = (1/N)·Σ_c (0.9·V(c,2) + 0.1·V(c,4))` over the N empty cells — the earlier `2N` divisor half-scaled the chance value and biased the search.
 - **Log2 immediate-merge reward** folded into node values.
 - **Batch deduplication** (canonical keys are `sort`+`unique`'d before the Python call) and a hard iteration cap that converts any pathological re-eval into a logged warning instead of a hang.
@@ -255,7 +254,7 @@ On top of TT memoization, the current searcher adds:
 
 - **TT hit rate:** **20.34%** at depth 3, rising over each episode as the persistent TT warms up. It is higher at shallower depths (46.7% at d=1, 33.9% at d=2) because smaller trees reuse a larger share of nodes. The key is the **canonical D4 form** of the board, so rotated/reflected boards share entries.
 - **Throughput:** depth-3 search averages **~141M nodes visited per game** across ~6,907 resolved root moves, at **485,708 nodes/sec**, in ~9,532 CNN batches/game (~291 s/game on an RTX 3070 Ti Laptop GPU).
-- **Convergence:** every game resolves cleanly — `moves_unresolved = 0`, `cap_hits = 0`, `alpha_beta_cuts = 0`.
+- **Convergence:** every game resolves cleanly — `moves_unresolved = 0`, `cap_hits = 0`.
 
 ---
 
@@ -669,7 +668,7 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
 
 ```json
 {
-  "benchmark_schema_version": "1.0.0",
+  "benchmark_schema_version": "2.0.0",
   "run_id": "uuid4...",
   "run_name": "v3_depth3_final",
   "model_path": "data/models/release/Hybrid-PPO-Expectimax-v3.zip",
@@ -707,7 +706,7 @@ Field semantics:
 - `status`: `"completed"` | `"interrupted"` | `"failed"`.
 - `interrupted`: `true` only when the master handles `SIGINT`/`SIGTERM`.
 
-#### `episodes.csv` columns (43 fields)
+#### `episodes.csv` columns (42 fields)
 
 The column list lives in `scripts/benchmark_io.py:EPISODE_COLUMNS` — single source of truth for both the writer (`benchmark.py`) and the consumer (`aggregate.py`). Adding a column means updating that list AND the `EpisodeResult` dataclass together.
 
@@ -725,7 +724,7 @@ Per-episode fields:
 | `total_think_ms`, `total_nodes`, `total_batches` | C++ search think-time aggregates |
 | `total_tt_lookups`, `total_tt_hits`, `total_tt_collisions`, `total_tt_same_key_overwrites` | Transposition table |
 | `total_moves_resolved`, `total_moves_unresolved`, `total_cap_hits` | Resolution + iteration-cap hits |
-| `total_alpha_beta_cuts`, `total_chance_nodes`, `total_max_nodes` | Search internals |
+| `total_chance_nodes`, `total_max_nodes` | Search node-type counts |
 | `mean_chance_value` | Average chance-node value |
 | `mean_empty_cells`, `min_empty_cells`, `mean_merge_score` | Board-state distributions |
 | `mean_nps`, `mean_tt_hit_rate`, `mean_nodes_per_batch_call` | Derived rates |
@@ -744,6 +743,16 @@ All board-snapshot fields (`board_state`, `canonical_board_hash`, `empty_cells_b
 | `move_time_ms` | Wall-time around the full move (search + env step) |
 | `think_ms` | Just the C++ `find_best_move` time |
 
+**Metric semantics:**
+
+- `total_nodes` is the sum of `nodes_visited`: every MAX/CHANCE traversal, including re-traversals and traversals that return from the TT; it is not a unique-state count.
+- `total_batches` is the sum of `batches_eval`: exact calls to the Python batch evaluator, including root pre-evaluation and deferred leaf batches.
+- `total_tt_lookups` counts probes; `total_tt_hits` counts exact key/depth/type matches; `mean_tt_hit_rate` is the per-episode `total_tt_hits / total_tt_lookups` rate.
+- `total_tt_collisions` counts insertions into full four-way buckets that replace an entry. It is not a hash-collision proof. `total_tt_same_key_overwrites` counts replacement of an existing identical key/depth/type entry.
+- `total_chance_nodes` and `total_max_nodes` count node-function entries, including TT hits. `mean_chance_value` is based only on newly computed, fully resolved chance-node returns; cached TT returns are excluded.
+- `merge_score` in `moves.csv` is the exact merge score reported by the environment for each move. `mean_merge_score` in `episodes.csv` is the arithmetic mean of those per-move values.
+- Missing required telemetry is an error; it is never replaced with a zero default.
+
 `--log-moves` writes a single warning + estimated row count and disk usage before any worker spawns. The estimate uses a fixed 500-step-per-episode heuristic, so it can underestimate long depth-3 episodes. If the estimate exceeds 5,000,000 rows, the run refuses to start unless `--yes-large-move-log` is passed.
 
 #### `summary.json`
@@ -752,7 +761,7 @@ Aggregate metrics for quick inspection. Mirrors the shape of the old `results.js
 
 ```json
 {
-  "benchmark_schema_version": "1.0.0",
+  "benchmark_schema_version": "2.0.0",
   "status": "completed",
   "n_completed": 100,
   "n_runs_requested": 100,
@@ -767,7 +776,7 @@ Aggregate metrics for quick inspection. Mirrors the shape of the old `results.js
     "avg_nodes_per_sec": 29040.0, "avg_tt_hit_rate": 12.4,
     "avg_tt_collisions": 0.8, "avg_tt_same_key_overwrites": 0.1,
     "avg_moves_resolved": 3.85, "avg_moves_unresolved": 0.15,
-    "avg_cap_hits": 0.0, "avg_alpha_beta_cuts": 14.2,
+    "avg_cap_hits": 0.0,
     "avg_chance_nodes": 287.4, "avg_max_nodes": 145.6,
     "avg_chance_value": 0.087,
     "score_ci95_low": 22612.0, "score_ci95_high": 26029.0
@@ -845,7 +854,7 @@ uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --le
 
 **Discovery convention:** the folder under `data/benchmarks/` must match `{sweep_name}_depth{N}` for `aggregate.py` to find it. This is enforced by `--output` naming in `benchmark.py`.
 
-**Schema-version safety:** by default, `aggregate.py` walks each run folder, reads `config.json`, and refuses to consume a run whose `benchmark_schema_version` major differs from `1`. To override (e.g. reprocess very old runs), pass `--legacy`.
+**Schema-version safety:** by default, `aggregate.py` walks each run folder, reads `config.json`, and refuses to consume a run whose `benchmark_schema_version` major differs from `2`. Schema `2.0.0` removes the non-implemented alpha-beta diagnostic from paper-grade output. To reprocess historical JSON runs, pass `--legacy`.
 
 **Arguments:**
 
@@ -875,7 +884,7 @@ uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --le
 - `avg_score`, `std_score`, `min_score`, `max_score`, `avg_steps`
 - `win_rate_1024+`, `win_rate_2048+`, `win_rate_4096+`, `win_rate_8192+`
 - `max_tile_eq_1024_pct`, `max_tile_eq_2048_pct`, `max_tile_eq_4096_pct`, `max_tile_eq_8192_pct`
-- Search-mode metrics (when present): `avg_think_ms`, `avg_nodes_visited`, `avg_batches_eval`, `avg_nodes_per_sec`, `avg_tt_hit_rate`, `avg_tt_collisions`, `avg_tt_same_key_overwrites`, `avg_moves_resolved`, `avg_moves_unresolved`, `avg_cap_hits`, `avg_alpha_beta_cuts`, `avg_chance_nodes`, `avg_max_nodes`, `avg_chance_value`
+- Search-mode metrics (when present): `avg_think_ms`, `avg_nodes_visited`, `avg_batches_eval`, `avg_nodes_per_sec`, `avg_tt_hit_rate`, `avg_tt_collisions`, `avg_tt_same_key_overwrites`, `avg_moves_resolved`, `avg_moves_unresolved`, `avg_cap_hits`, `avg_chance_nodes`, `avg_max_nodes`, `avg_chance_value`
 
 ---
 

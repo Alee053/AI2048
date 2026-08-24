@@ -127,7 +127,6 @@ def test_search_modes_match_independent_exhaustive_expectimax_without_alpha_beta
     ).find_best_move(board, 2, evaluator)
 
     for result in (fresh_result, warmed_result, disabled_result):
-        assert result["alpha_beta_cuts"] == 0
         assert result["best_move"] == expected_action
         assert result["move_scores"] == expected_scores
 
@@ -154,7 +153,6 @@ def test_high_leaf_values_match_independent_exhaustive_expectimax_without_alpha_
         lambda boards: [high_leaf_value(values) for values in boards],
     )
 
-    assert result["alpha_beta_cuts"] == 0
     assert result["best_move"] == expected_action
     assert result["move_scores"] == expected_scores
 

@@ -35,6 +35,7 @@ from scripts.benchmark_provenance import (
     SEARCH_TRANSPOSITION_TABLE,
     collect_runtime_provenance,
 )
+from scripts.benchmark_io import EPISODE_SCHEMA_VERSION
 
 
 _PAPER_REQUIRED_PROVENANCE = (
@@ -268,7 +269,7 @@ def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_i
         )
     worker_timeout = float(getattr(args, "worker_timeout", 300.0))
     config = {
-        "benchmark_schema_version": "1.0.0",
+        "benchmark_schema_version": EPISODE_SCHEMA_VERSION,
         "run_name": run_name,
         "model_path": str(args.model_path),
         "model_md5": "",

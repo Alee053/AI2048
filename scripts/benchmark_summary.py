@@ -5,12 +5,14 @@ import math
 import statistics
 from typing import Any
 
+from scripts.benchmark_io import EPISODE_SCHEMA_VERSION
+
 
 def compute_summary_from_rows(rows, config, total_time_s):
     """Compute summary.json from collected episode rows."""
     if not rows:
         return {
-            "benchmark_schema_version": "1.0.0",
+            "benchmark_schema_version": EPISODE_SCHEMA_VERSION,
             "run_name": config.get("run_name", ""),
             "status": config.get("status", "unknown"),
             "interrupted": config.get("interrupted", False),
@@ -75,9 +77,6 @@ def compute_summary_from_rows(rows, config, total_time_s):
         metrics["avg_cap_hits"] = float(statistics.fmean(
             r["total_cap_hits"] for r in rows
         ))
-        metrics["avg_alpha_beta_cuts"] = float(statistics.fmean(
-            r["total_alpha_beta_cuts"] for r in rows
-        ))
         metrics["avg_chance_nodes"] = float(statistics.fmean(
             r["total_chance_nodes"] for r in rows
         ))
@@ -103,7 +102,7 @@ def compute_summary_from_rows(rows, config, total_time_s):
         max_tile_dist[str(t)] = max_tiles.count(t)
 
     return {
-        "benchmark_schema_version": "1.0.0",
+        "benchmark_schema_version": EPISODE_SCHEMA_VERSION,
         "run_name": config.get("run_name", ""),
         "config": _config_subset(config),
         "metrics": metrics,

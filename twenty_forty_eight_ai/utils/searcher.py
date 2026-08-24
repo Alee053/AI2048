@@ -59,7 +59,7 @@ class ExpectimaxSearcher:
         Returns:
             dict with keys: best_move, has_legal_move, search_complete,
             failure_reason, think_ms, nodes_visited, batches_eval, move_scores,
-            tt_size, tt_lookups, tt_hits
+            TT counters, resolution counters, cap_hits, and chance-node counters.
         """
         stats = self._impl.find_best_move(board, depth, batch_eval_func)
         # Handle move_scores - pybind11 may return a float (0th element) instead of
@@ -92,7 +92,6 @@ class ExpectimaxSearcher:
             'moves_resolved': int(stats.moves_resolved),
             'moves_unresolved': int(stats.moves_unresolved),
             'cap_hits': int(stats.cap_hits),
-            'alpha_beta_cuts': int(stats.alpha_beta_cuts),
             'chance_nodes_evaluated': int(stats.chance_nodes_evaluated),
             'max_nodes_evaluated': int(stats.max_nodes_evaluated),
             'chance_value_sum': float(stats.chance_value_sum),

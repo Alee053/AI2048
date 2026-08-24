@@ -10,7 +10,7 @@ def make_episode(**overrides) -> "EpisodeResult":
     """Build an EpisodeResult with sensible defaults; override fields per test."""
     from scripts.benchmark_io import EpisodeResult
     base = dict(
-        schema_version="1.0.0", run_id="r", episode_idx=0, worker_id=0,
+        schema_version="2.0.0", run_id="r", episode_idx=0, worker_id=0,
         train_seed=None, eval_seed=42, requested_depth=3, effective_depth=3,
         use_expectimax=True, score=0, max_tile=0, max_log_tile=0, steps=0,
         episode_time_s=0.0, mean_move_time_ms=0.0, median_move_time_ms=0.0,
@@ -20,7 +20,7 @@ def make_episode(**overrides) -> "EpisodeResult":
         total_think_ms=0.0, total_nodes=0, total_batches=0,
         total_tt_lookups=0, total_tt_hits=0, total_tt_collisions=0,
         total_tt_same_key_overwrites=0, total_moves_resolved=0,
-        total_moves_unresolved=0, total_cap_hits=0, total_alpha_beta_cuts=0,
+        total_moves_unresolved=0, total_cap_hits=0,
         total_chance_nodes=0, total_max_nodes=0, mean_chance_value=0.0,
         mean_empty_cells=0.0, min_empty_cells=0, mean_merge_score=0.0,
         mean_nps=0.0, mean_tt_hit_rate=0.0, mean_nodes_per_batch_call=0.0,
@@ -34,7 +34,7 @@ def make_move(**overrides) -> "MoveRecord":
     """Build a MoveRecord with sensible defaults; override fields per test."""
     from scripts.benchmark_io import MoveRecord
     base = dict(
-        schema_version="1.0.0", run_id="r", episode_idx=0, move_idx=0,
+        schema_version="2.0.0", run_id="r", episode_idx=0, move_idx=0,
         worker_id=0, action=0, action_name="UP",
         canonical_board_hash="0",
         board_state="0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0",
@@ -56,7 +56,7 @@ def test_schema_version_is_semver():
     parts = EPISODE_SCHEMA_VERSION.split(".")
     assert len(parts) == 3
     assert all(p.isdigit() for p in parts)
-    assert parts[:2] == ["1", "0"]
+    assert parts[:2] == ["2", "0"]
 
 
 def test_episode_to_row_keeps_termination_flags_internal():
@@ -84,6 +84,7 @@ def test_episode_columns_is_nonempty_list_of_str():
     assert "schema_version" in EPISODE_COLUMNS
     assert "score" in EPISODE_COLUMNS
     assert "max_tile" in EPISODE_COLUMNS
+    assert "total_alpha_beta_cuts" not in EPISODE_COLUMNS
 
 
 def test_move_columns_is_nonempty_list_of_str():
@@ -137,7 +138,7 @@ def test_episode_to_row_keys_match_episode_columns():
     assert set(row.keys()) == set(EPISODE_COLUMNS)
     assert row["score"] == 1000
     assert row["max_tile"] == 128
-    assert row["schema_version"] == "1.0.0"
+    assert row["schema_version"] == "2.0.0"
 
 
 @pytest.mark.parametrize(
@@ -176,10 +177,10 @@ def test_csvwriter_writes_episode_csv(tmp_path):
     from scripts.benchmark_io import CSVWriter
 
     writer = CSVWriter(tmp_path, log_moves=False)
-    writer.write_config({"benchmark_schema_version": "1.0.0", "run_name": "t"})
+    writer.write_config({"benchmark_schema_version": "2.0.0", "run_name": "t"})
 
     row = {
-        "schema_version": "1.0.0", "run_id": "r1", "episode_idx": 0,
+        "schema_version": "2.0.0", "run_id": "r1", "episode_idx": 0,
         "worker_id": 0, "train_seed": None, "eval_seed": 42,
         "requested_depth": 3, "effective_depth": 3,
         "use_expectimax": True, "score": 1000, "max_tile": 128,
@@ -193,7 +194,7 @@ def test_csvwriter_writes_episode_csv(tmp_path):
         "total_tt_hits": 200, "total_tt_collisions": 1,
         "total_tt_same_key_overwrites": 0, "total_moves_resolved": 50,
         "total_moves_unresolved": 0, "total_cap_hits": 0,
-        "total_alpha_beta_cuts": 5, "total_chance_nodes": 200,
+        "total_chance_nodes": 200,
         "total_max_nodes": 100, "mean_chance_value": 0.1,
         "mean_empty_cells": 8.0, "min_empty_cells": 3,
         "mean_merge_score": 20.0, "mean_nps": 5263.0,
@@ -210,7 +211,7 @@ def test_csvwriter_writes_episode_csv(tmp_path):
 
     config_path = tmp_path / "config.json"
     assert config_path.exists()
-    assert config_path.read_text() == '{"benchmark_schema_version": "1.0.0", "run_name": "t"}'
+    assert config_path.read_text() == '{"benchmark_schema_version": "2.0.0", "run_name": "t"}'
 
 
 def test_csvwriter_accepts_legacy_episode_row_without_termination_flags(tmp_path):

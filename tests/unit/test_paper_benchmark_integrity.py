@@ -58,7 +58,7 @@ def _write_run(
 
     rows = rows or [_episode(0, 100), _episode(1, 101)]
     config = {
-        "benchmark_schema_version": "1.0.0",
+        "benchmark_schema_version": "2.0.0",
         "run_name": tmp_path.name,
         "run_id": "run",
         "n_runs": 2,
@@ -116,7 +116,7 @@ def _write_run(
 
 def _episode(index, eval_seed, **overrides):
     row = {
-        "schema_version": "1.0.0", "run_id": "run", "episode_idx": index,
+        "schema_version": "2.0.0", "run_id": "run", "episode_idx": index,
         "worker_id": 0, "train_seed": 7, "eval_seed": eval_seed,
         "requested_depth": 3, "effective_depth": 3, "use_expectimax": True,
         "score": 1000 + index, "max_tile": 128, "max_log_tile": 7,
@@ -128,7 +128,7 @@ def _episode(index, eval_seed, **overrides):
         "total_batches": 1, "total_tt_lookups": 1, "total_tt_hits": 0,
         "total_tt_collisions": 0, "total_tt_same_key_overwrites": 0,
         "total_moves_resolved": 1, "total_moves_unresolved": 0,
-        "total_cap_hits": 0, "total_alpha_beta_cuts": 0,
+        "total_cap_hits": 0,
         "total_chance_nodes": 1, "total_max_nodes": 1,
         "mean_chance_value": 1.0, "mean_empty_cells": 8.0,
         "min_empty_cells": 3, "mean_merge_score": 4.0, "mean_nps": 5.0,
@@ -406,9 +406,9 @@ def test_strict_validation_accepts_complete_consistent_artifact(tmp_path):
 @pytest.mark.parametrize(
     ("config_overrides", "summary_overrides", "episode_fieldnames", "rows", "error"),
     [
-        ({"benchmark_schema_version": "2.0.0"}, None, None, None, "schema"),
-        (None, {"benchmark_schema_version": "2.0.0"}, None, None, "summary schema"),
-        (None, None, None, [_episode(0, 100, schema_version="2.0.0"), _episode(1, 101)], "episode schema"),
+        ({"benchmark_schema_version": "1.0.0"}, None, None, None, "schema"),
+        (None, {"benchmark_schema_version": "1.0.0"}, None, None, "summary schema"),
+        (None, None, None, [_episode(0, 100, schema_version="1.0.0"), _episode(1, 101)], "episode schema"),
         (None, None, ["episode_idx", "eval_seed", "score"], None, "episode CSV columns"),
         (None, None, None, [_episode(0, 100, requested_depth=2), _episode(1, 101)], "requested_depth"),
         (None, None, None, [_episode(0, 100, effective_depth=2), _episode(1, 101)], "effective_depth"),
@@ -435,7 +435,7 @@ def test_strict_validation_rejects_schema_missing_columns_and_search_mismatches(
 def test_strict_aggregate_checks_schema_for_direct_single_run(tmp_path):
     from scripts.aggregate import main
 
-    _write_run(tmp_path, config_overrides={"benchmark_schema_version": "2.0.0"})
+    _write_run(tmp_path, config_overrides={"benchmark_schema_version": "1.0.0"})
 
     assert main([str(tmp_path), "--sweep", "unused", "--paper-mode"]) == 2
 

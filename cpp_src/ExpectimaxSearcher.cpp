@@ -459,7 +459,6 @@ SearchStats ExpectimaxSearcher::find_best_move(const Board& board, int depth, co
     stats.moves_resolved = moves_resolved_this_call;
     stats.moves_unresolved = moves_unresolved_this_call;
     stats.cap_hits = cap_hits_this_call;
-    stats.alpha_beta_cuts = 0;
     stats.chance_nodes_evaluated = chance_nodes_evaluated_;
     stats.max_nodes_evaluated = max_nodes_evaluated_;
     stats.chance_value_sum = chance_value_sum_;

@@ -30,7 +30,6 @@ struct SearchStats {
     int moves_resolved;
     int moves_unresolved;
     int cap_hits;
-    size_t alpha_beta_cuts = 0;
     size_t chance_nodes_evaluated = 0;
     size_t max_nodes_evaluated = 0;
     double chance_value_sum = 0.0;   // sum of chance-node return values (sanity check the divisor)

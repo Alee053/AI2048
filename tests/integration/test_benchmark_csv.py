@@ -63,7 +63,7 @@ def test_single_worker_benchmark_writes_all_files(benchmark_output_dir):
 
     with open(benchmark_output_dir / "config.json") as f:
         config = json.load(f)
-    assert config["benchmark_schema_version"] == "1.0.0"
+    assert config["benchmark_schema_version"] == "2.0.0"
     assert config["n_workers"] == 1
     assert config["worker_timeout"] == 300.0
     assert config["worker_inactivity_timeout"] == 300.0
@@ -80,6 +80,8 @@ def test_single_worker_benchmark_writes_all_files(benchmark_output_dir):
     for r in rows:
         assert int(r["eval_seed"]) in (42, 43, 44)
         assert int(r["worker_id"]) == 0
+        assert r["schema_version"] == "2.0.0"
+        assert "total_alpha_beta_cuts" not in r
         assert r["termination_reason"] == "board_full"
         assert int(r["score"]) >= 0
 
@@ -229,7 +231,7 @@ def test_aggregate_rejects_unsupported_schema_major(tmp_path):
     depth_dir.mkdir()
     with open(depth_dir / "config.json", "w") as f:
         json.dump({
-            "benchmark_schema_version": "2.0.0",
+            "benchmark_schema_version": "1.0.0",
             "run_name": "run_0",
             "n_runs": 1,
         }, f)

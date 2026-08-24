@@ -106,8 +106,20 @@ class _FakeSearcher:
         result = {
             "best_move": 0,
             "move_scores": [0.0] * 4,
+            "think_ms": 0.0,
+            "nodes_visited": 0,
+            "batches_eval": 0,
+            "tt_lookups": 0,
+            "tt_hits": 0,
+            "tt_collisions": 0,
+            "tt_same_key_overwrites": 0,
+            "moves_resolved": 0,
             "cap_hits": 0,
             "moves_unresolved": 0,
+            "chance_nodes_evaluated": 0,
+            "max_nodes_evaluated": 0,
+            "chance_value_sum": 0.0,
+            "chance_value_count": 0,
         }
         if self.include_flags:
             result.update({
@@ -258,8 +270,10 @@ def test_benchmarker_rejects_missing_or_malformed_search_flags_before_step(
 @pytest.mark.parametrize(
     "searcher",
     [
+        _FakeSearcher(omit_fields=("nodes_visited",)),
         _FakeSearcher(omit_fields=("cap_hits",)),
         _FakeSearcher(omit_fields=("moves_unresolved",)),
+        _FakeSearcher({"batches_eval": "0"}),
         _FakeSearcher({"cap_hits": True}),
         _FakeSearcher({"moves_unresolved": False}),
         _FakeSearcher({"cap_hits": 1.0}),

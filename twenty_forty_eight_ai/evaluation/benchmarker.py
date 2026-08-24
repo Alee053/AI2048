@@ -27,6 +27,21 @@ from scripts.benchmark_io import (
 
 
 _WIN_THRESHOLDS = (1024, 2048, 4096, 8192)
+_SEARCH_INT_METRICS = (
+    "nodes_visited",
+    "batches_eval",
+    "tt_lookups",
+    "tt_hits",
+    "tt_collisions",
+    "tt_same_key_overwrites",
+    "moves_resolved",
+    "moves_unresolved",
+    "cap_hits",
+    "chance_nodes_evaluated",
+    "max_nodes_evaluated",
+    "chance_value_count",
+)
+_SEARCH_FLOAT_METRICS = ("think_ms", "chance_value_sum")
 
 
 class BenchmarkEpisodeError(RuntimeError):
@@ -117,7 +132,6 @@ class Benchmarker:
         total_moves_resolved = 0
         total_moves_unresolved = 0
         total_cap_hits = 0
-        total_alpha_beta_cuts = 0
         total_chance_nodes = 0
         total_max_nodes = 0
         chance_value_sum = 0.0
@@ -169,29 +183,26 @@ class Benchmarker:
             t1 = time.perf_counter()
             move_time_ms = (t1 - t0) * 1000.0
 
-            merge_score = int(info.get("merge_score", 0))
+            merge_score = self._require_merge_score(info)
             move_times_ms.append(move_time_ms)
             empty_cells_samples.append(empty_cells_before)
             merge_score_samples.append(merge_score)
 
             if stats is not None:
-                total_think_ms += float(stats.get("think_ms", 0.0))
-                total_nodes += int(stats.get("nodes_visited", 0))
-                total_batches += int(stats.get("batches_eval", 0))
-                total_tt_lookups += int(stats.get("tt_lookups", 0))
-                total_tt_hits += int(stats.get("tt_hits", 0))
-                total_tt_collisions += int(stats.get("tt_collisions", 0))
-                total_tt_same_key_overwrites += int(
-                    stats.get("tt_same_key_overwrites", 0)
-                )
-                total_moves_resolved += int(stats.get("moves_resolved", 0))
-                total_moves_unresolved += int(stats.get("moves_unresolved", 0))
-                total_cap_hits += int(stats.get("cap_hits", 0))
-                total_alpha_beta_cuts += int(stats.get("alpha_beta_cuts", 0))
-                total_chance_nodes += int(stats.get("chance_nodes_evaluated", 0))
-                total_max_nodes += int(stats.get("max_nodes_evaluated", 0))
-                chance_value_sum += float(stats.get("chance_value_sum", 0.0))
-                chance_value_count += int(stats.get("chance_value_count", 0))
+                total_think_ms += float(stats["think_ms"])
+                total_nodes += int(stats["nodes_visited"])
+                total_batches += int(stats["batches_eval"])
+                total_tt_lookups += int(stats["tt_lookups"])
+                total_tt_hits += int(stats["tt_hits"])
+                total_tt_collisions += int(stats["tt_collisions"])
+                total_tt_same_key_overwrites += int(stats["tt_same_key_overwrites"])
+                total_moves_resolved += int(stats["moves_resolved"])
+                total_moves_unresolved += int(stats["moves_unresolved"])
+                total_cap_hits += int(stats["cap_hits"])
+                total_chance_nodes += int(stats["chance_nodes_evaluated"])
+                total_max_nodes += int(stats["max_nodes_evaluated"])
+                chance_value_sum += float(stats["chance_value_sum"])
+                chance_value_count += int(stats["chance_value_count"])
 
             if log_moves:
                 move_records.append(self._build_move_record(
@@ -301,7 +312,6 @@ class Benchmarker:
             total_moves_resolved=total_moves_resolved,
             total_moves_unresolved=total_moves_unresolved,
             total_cap_hits=total_cap_hits,
-            total_alpha_beta_cuts=total_alpha_beta_cuts,
             total_chance_nodes=total_chance_nodes,
             total_max_nodes=total_max_nodes,
             mean_chance_value=mean_chance_value,
@@ -321,6 +331,31 @@ class Benchmarker:
             raise BenchmarkEpisodeError(
                 "invalid_search_result", "search result must be a dict"
             )
+        for field in _SEARCH_INT_METRICS:
+            value = stats.get(field)
+            if (
+                field not in stats
+                or isinstance(value, bool)
+                or not isinstance(value, (int, np.integer))
+                or value < 0
+            ):
+                raise BenchmarkEpisodeError(
+                    "invalid_search_result",
+                    f"search result field {field} must be a non-negative integer",
+                )
+        for field in _SEARCH_FLOAT_METRICS:
+            value = stats.get(field)
+            if (
+                field not in stats
+                or isinstance(value, bool)
+                or not isinstance(value, Real)
+                or not math.isfinite(float(value))
+                or (field == "think_ms" and value < 0)
+            ):
+                raise BenchmarkEpisodeError(
+                    "invalid_search_result",
+                    f"search result field {field} must be a finite real number",
+                )
         for field in ("search_complete", "has_legal_move"):
             if field not in stats or type(stats[field]) is not bool:
                 raise BenchmarkEpisodeError(
@@ -399,6 +434,26 @@ class Benchmarker:
             )
 
     @staticmethod
+    def _require_merge_score(info) -> int:
+        """Require the environment to report the score produced by this move."""
+        if not isinstance(info, dict) or "merge_score" not in info:
+            raise BenchmarkEpisodeError(
+                "missing_merge_score",
+                "environment step info must include merge_score",
+            )
+        merge_score = info["merge_score"]
+        if (
+            isinstance(merge_score, bool)
+            or not isinstance(merge_score, (int, np.integer))
+            or merge_score < 0
+        ):
+            raise BenchmarkEpisodeError(
+                "invalid_merge_score",
+                "environment merge_score must be a non-negative integer",
+            )
+        return int(merge_score)
+
+    @staticmethod
     def _validate_action_mask(action_mask, action_space_n=None) -> np.ndarray:
         """Require the fixed four-action boolean contract before selecting a move."""
         try:
@@ -467,18 +522,18 @@ class Benchmarker:
         canonical_hash = str(cpp.BoardEncoder.canonicalize_board(board_before))
 
         if stats is not None:
-            nodes = int(stats.get("nodes_visited", 0))
-            batches = int(stats.get("batches_eval", 0))
-            tt_lookups = int(stats.get("tt_lookups", 0))
-            tt_hits = int(stats.get("tt_hits", 0))
+            nodes = int(stats["nodes_visited"])
+            batches = int(stats["batches_eval"])
+            tt_lookups = int(stats["tt_lookups"])
+            tt_hits = int(stats["tt_hits"])
             tt_hit_rate = (tt_hits / tt_lookups) if tt_lookups > 0 else 0.0
-            think_ms = float(stats.get("think_ms", 0.0))
-            moves_resolved = int(stats.get("moves_resolved", 0))
-            moves_unresolved = int(stats.get("moves_unresolved", 0))
-            cap_hits = int(stats.get("cap_hits", 0))
+            think_ms = float(stats["think_ms"])
+            moves_resolved = int(stats["moves_resolved"])
+            moves_unresolved = int(stats["moves_unresolved"])
+            cap_hits = int(stats["cap_hits"])
             is_unresolved = moves_unresolved > 0
             is_cap_hit = cap_hits > 0
-            best_move = int(stats.get("best_move", action))
+            best_move = int(stats["best_move"])
         else:
             nodes = 0
             batches = 0
