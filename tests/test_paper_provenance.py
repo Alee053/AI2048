@@ -307,7 +307,7 @@ def test_outcome_fingerprint_ignores_logged_twin_metadata():
     assert outcome_fingerprint([row]) != outcome_fingerprint([changed])
 
 
-def test_aggregator_ingests_manifest_run_with_arbitrary_folder_name(
+def test_aggregator_rejects_incomplete_manifest_design_with_arbitrary_folder_name(
     tmp_path, valid_artifacts,
 ):
     from scripts.aggregate import main
@@ -315,12 +315,10 @@ def test_aggregator_ingests_manifest_run_with_arbitrary_folder_name(
     run_dir = tmp_path / "not-a-depth-folder-name"
     _write_valid_paper_run(run_dir, valid_artifacts)
 
-    assert main([str(tmp_path), "--sweep", "paper-v3"]) == 0
-    assert (tmp_path / "summary.csv").exists()
-    assert "d4" in (tmp_path / "summary.csv").read_text()
+    assert main([str(tmp_path), "--sweep", "paper-v3"]) == 2
 
 
-def test_default_aggregation_accepts_runtime_bound_run_without_training_manifest(
+def test_default_aggregation_rejects_incomplete_runtime_bound_design(
     tmp_path, valid_artifacts,
 ):
     from scripts.aggregate import main
@@ -340,7 +338,7 @@ def test_default_aggregation_accepts_runtime_bound_run_without_training_manifest
     config["paper_grade"] = False
     config_path.write_text(json.dumps(config))
 
-    assert main([str(tmp_path), "--sweep", "paper-v3"]) == 0
+    assert main([str(tmp_path), "--sweep", "paper-v3"]) == 2
 
 
 @pytest.mark.parametrize(

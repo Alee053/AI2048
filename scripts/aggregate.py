@@ -35,6 +35,16 @@ from scripts.benchmark_provenance import (
     validate_artifact_sha256,
 )
 from scripts.paper_provenance import validate_benchmark_training_binding
+from scripts.benchmark_statistics import (
+    EXPECTED_TRAINING_SEEDS,
+    compute_model_metrics,
+    cross_depth_effects,
+    model_level_confidence_intervals,
+    paired_d4_no_d4_effects,
+    sample_sd,
+    student_t_critical_95,
+    validate_complete_design,
+)
 
 _REQUIRED_PAPER_PROVENANCE = (
     "git_commit", "sweep_name", "model_path", "model_sha256", "effective_config_path",
@@ -608,7 +618,7 @@ def compute_max_tile_eq_pct(raw_data: list, thresholds: list) -> dict:
 
 
 def aggregate_depth(depth_results: list) -> dict:
-    """Aggregate metrics across seeds for a single depth."""
+    """Aggregate legacy model results across training seeds."""
     avg_scores = [r["metrics"]["avg_score"] for r in depth_results]
     std_scores = [r["metrics"]["std_score"] for r in depth_results]
     min_scores = [r["metrics"]["min_score"] for r in depth_results]
@@ -620,7 +630,7 @@ def aggregate_depth(depth_results: list) -> dict:
 
     result = {
         "mean_score": np.mean(avg_scores),
-        "std_score": np.mean(std_scores),  # avg of per-seed stds
+        "std_score": sample_sd(avg_scores),
         "min_score": np.mean(min_scores),
         "max_score": np.mean(max_scores),
         "mean_steps": np.mean(avg_steps),
@@ -638,10 +648,12 @@ def aggregate_depth(depth_results: list) -> dict:
     return result
 
 
-def compute_ci(mean: float, std: float, n: int, z: float = 1.96) -> tuple:
-    """Compute 95% CI given mean, std, and n samples."""
-    se = std / np.sqrt(n)
-    return mean - z * se, mean + z * se
+def compute_ci(mean: float, std: float, n: int) -> tuple:
+    """Compute a model-level 95% Student-t CI for legacy results."""
+    if n < 2:
+        return float("nan"), float("nan")
+    margin = student_t_critical_95(n - 1) * std / np.sqrt(n)
+    return mean - margin, mean + margin
 
 
 def _pstdev(values):
@@ -672,6 +684,191 @@ def parse_args(argv=None):
     parser.add_argument("--paper-mode", "--strict", dest="paper_mode", action="store_true",
                         help="Reject incomplete, non-paper-grade, or unpaired result artifacts.")
     return parser.parse_args(argv)
+
+
+_MODEL_METRIC_FIELDS = [
+    "analysis_unit", "sweep_name", "condition", "training_seed", "depth", "model_path",
+    "model_sha256", "n_episodes", "mean_score", "mean_steps", "mean_max_tile",
+    "win_rate_1024", "win_rate_2048", "win_rate_4096", "win_rate_8192",
+    "mean_total_think_ms", "mean_total_nodes",
+    "mean_total_batches", "mean_tt_hit_rate", "mean_nps", "episode_uncertainty_unit",
+    "episode_score_sd_descriptive", "episode_score_ci95_low_descriptive",
+    "episode_score_ci95_high_descriptive",
+    "episode_win_rate_2048_ci95_low_descriptive",
+    "episode_win_rate_2048_ci95_high_descriptive",
+    "episode_win_rate_4096_ci95_low_descriptive",
+    "episode_win_rate_4096_ci95_high_descriptive",
+    "episode_win_rate_1024_ci95_low_descriptive",
+    "episode_win_rate_1024_ci95_high_descriptive",
+    "episode_win_rate_8192_ci95_low_descriptive",
+    "episode_win_rate_8192_ci95_high_descriptive",
+]
+_EFFECT_FIELDS = [
+    "analysis", "comparison", "condition", "depth", "depth_a", "depth_b",
+    "metric", "n_models", "df", "mean_delta", "sd_delta", "ci95_low",
+    "ci95_high", "unit", "ci_method",
+]
+_DELTA_FIELDS = [
+    "analysis", "comparison", "condition", "depth", "depth_a", "depth_b",
+    "training_seed", "metric", "delta", "unit",
+]
+_MODEL_CI_FIELDS = [
+    "analysis", "condition", "depth", "metric", "n_models", "df", "mean", "sd",
+    "ci95_low", "ci95_high", "unit", "ci_method",
+]
+_TWIN_FIELDS = [
+    "path", "twin_of", "condition", "training_seed", "depth", "outcome_fingerprint",
+]
+
+
+def _write_table(path: Path, rows: list[dict], fieldnames: list[str]) -> None:
+    with path.open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _with_ci_metadata(rows: list[dict]) -> list[dict]:
+    return [{**row, "ci_method": "student_t_95"} for row in rows]
+
+
+def _write_manifest_figures(model_metrics: list[dict], output_dir: Path) -> None:
+    """Write descriptive figures from model-level estimates, never pooled episodes."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+
+    figures_dir = output_dir / "paper_figures"
+    figures_dir.mkdir(exist_ok=True)
+    depths = sorted({model["depth"] for model in model_metrics})
+    for depth in depths:
+        models = sorted(
+            [model for model in model_metrics if model["depth"] == depth],
+            key=lambda model: (model["condition"], model["training_seed"]),
+        )
+        labels = [f"{model['condition']}/s{model['training_seed']}" for model in models]
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.bar(labels, [model["mean_score"] for model in models], color="steelblue")
+        ax.set_xlabel("Condition / training seed (model unit)")
+        ax.set_ylabel("Mean score per model")
+        ax.set_title(f"Model Mean Scores - Depth {depth}")
+        fig.autofmt_xdate()
+        fig.savefig(figures_dir / f"model_score_depth{depth}.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        values = [model["win_rate_2048"] for model in models]
+        ax.bar(labels, values, color="steelblue", alpha=0.7)
+        ax.axhline(float(math.fsum(values) / len(values)), color="orange", linestyle="--")
+        ax.set_xlabel("Condition / training seed (model unit)")
+        ax.set_ylabel("Win rate 2048+ per model")
+        ax.set_title(f"Model Win Rates - Depth {depth}")
+        fig.autofmt_xdate()
+        fig.savefig(figures_dir / f"bar_winrate_depth{depth}.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+    heatmap = np.array([
+        [
+            float(math.fsum(
+                model["mean_max_tile"]
+                for model in model_metrics
+                if model["condition"] == condition and model["depth"] == depth
+            ) / sum(
+                1 for model in model_metrics
+                if model["condition"] == condition and model["depth"] == depth
+            ))
+            for depth in depths
+        ]
+        for condition in ("d4", "no_d4")
+    ])
+    fig, ax = plt.subplots(figsize=(10, 4))
+    image = ax.imshow(heatmap, aspect="auto", cmap="YlOrRd")
+    ax.set_xticks(range(len(depths)), labels=[f"Depth {depth}" for depth in depths])
+    ax.set_yticks(range(2), labels=["d4", "no_d4"])
+    ax.set_xlabel("Search depth")
+    ax.set_ylabel("Condition")
+    ax.set_title("Mean Max Tile by Training Model")
+    fig.colorbar(image, ax=ax, label="Mean max tile per model")
+    fig.savefig(figures_dir / "heatmap_max_tile.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _aggregate_manifest_statistics(
+    manifest_runs: list[dict],
+    twins: list[dict],
+    output_dir: Path,
+    sweep_name: str,
+) -> int:
+    """Write model-level and paired seed-level statistics for CSV runs."""
+    model_metrics = [
+        compute_model_metrics(run["config"], run["episodes"])
+        for run in manifest_runs
+    ]
+    validate_complete_design(
+        model_metrics, expected_seeds=EXPECTED_TRAINING_SEEDS,
+    )
+    d4_effects, d4_deltas = paired_d4_no_d4_effects(
+        model_metrics, expected_seeds=EXPECTED_TRAINING_SEEDS,
+    )
+    model_cis = model_level_confidence_intervals(
+        model_metrics, expected_seeds=EXPECTED_TRAINING_SEEDS,
+    )
+    depth_effects, depth_deltas = cross_depth_effects(
+        model_metrics, expected_seeds=EXPECTED_TRAINING_SEEDS,
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_table(output_dir / "per_model_metrics.csv", model_metrics, _MODEL_METRIC_FIELDS)
+    # Keep summary.csv as a model-level table; it must not imply pooled episodes.
+    _write_table(output_dir / "summary.csv", model_metrics, _MODEL_METRIC_FIELDS)
+    _write_table(
+        output_dir / "paired_d4_no_d4_seed_deltas.csv", d4_deltas, _DELTA_FIELDS,
+    )
+    _write_table(
+        output_dir / "cross_depth_paired_seed_deltas.csv", depth_deltas, _DELTA_FIELDS,
+    )
+    d4_effects = _with_ci_metadata(d4_effects)
+    depth_effects = _with_ci_metadata(depth_effects)
+    _write_table(
+        output_dir / "paired_d4_no_d4_effects.csv", d4_effects, _EFFECT_FIELDS,
+    )
+    _write_table(
+        output_dir / "model_level_confidence_intervals.csv", model_cis, _MODEL_CI_FIELDS,
+    )
+    _write_table(
+        output_dir / "cross_depth_paired_effects.csv", depth_effects, _EFFECT_FIELDS,
+    )
+    _write_table(
+        output_dir / "cross_depth_ci_table.csv", depth_effects, _EFFECT_FIELDS,
+    )
+    _write_table(
+        output_dir / "confidence_intervals.csv",
+        d4_effects + depth_effects,
+        _EFFECT_FIELDS,
+    )
+    _write_table(
+        output_dir / "excluded_twins.csv",
+        [
+            {
+                "path": str(twin["path"]),
+                "twin_of": twin.get("twin_of", ""),
+                "condition": twin["config"].get("condition", ""),
+                "training_seed": twin["config"].get("training_seed", ""),
+                "depth": twin["config"].get("depth", ""),
+                "outcome_fingerprint": twin["config"].get("outcome_fingerprint", ""),
+            }
+            for twin in twins
+        ],
+        _TWIN_FIELDS,
+    )
+    _write_manifest_figures(model_metrics, output_dir)
+    print(f"Wrote {len(model_metrics)} model-level metric rows for sweep '{sweep_name}'.")
+    print(f"Wrote {len(d4_effects)} D4/No-D4 paired effects.")
+    print(f"Wrote {len(depth_effects)} cross-depth paired effects.")
+    print(f"Excluded {len(twins)} provenance twin artifact(s).")
+    return 0
 
 
 def main(argv=None):
@@ -726,6 +923,15 @@ def main(argv=None):
         print("  Expected completed config.json artifacts with sweep_name metadata.")
         print("  Unmanifested or incompatible artifacts remain legacy/non-paper-grade and were not ingested.")
         return 1
+
+    if not args.legacy:
+        try:
+            return _aggregate_manifest_statistics(
+                manifest_runs, twins, output_dir, sweep_name,
+            )
+        except ValueError as exc:
+            print(f"Error: statistical aggregation rejected: {exc}")
+            return 2
 
     print(f"Found depths: {sorted(depth_folders.keys())}")
     for depth, info in sorted(depth_folders.items()):
@@ -859,10 +1065,24 @@ def main(argv=None):
                 vals = [r["metrics"][key] for r in legacy_depth_results if key in r["metrics"]]
                 if vals:
                     agg_row[key] = round(np.mean(vals), 3 if key == "avg_think_ms" else 2 if key == "avg_tt_hit_rate" else 1)
-            # Compute aggregate win rates from pooled raw data
-            all_raw = [r for res in legacy_depth_results for r in res.get("raw_data", [])]
-            agg_win_rates = compute_win_rates(all_raw, REPORT_THRESHOLDS)
-            agg_tile_eq = compute_max_tile_eq_pct(all_raw, THRESHOLDS)
+            # Keep legacy summaries model-weighted: episodes are not independent
+            # treatment replicates.
+            model_win_rates = [
+                compute_win_rates(res.get("raw_data", []), REPORT_THRESHOLDS)
+                for res in legacy_depth_results
+            ]
+            model_tile_eq = [
+                compute_max_tile_eq_pct(res.get("raw_data", []), THRESHOLDS)
+                for res in legacy_depth_results
+            ]
+            agg_win_rates = {
+                key: float(np.mean([rates[key] for rates in model_win_rates]))
+                for key in model_win_rates[0]
+            }
+            agg_tile_eq = {
+                key: float(np.mean([rates[key] for rates in model_tile_eq]))
+                for key in model_tile_eq[0]
+            }
             agg_row.update(agg_win_rates)
             agg_row.update(agg_tile_eq)
             summary_rows.append(agg_row)
@@ -929,7 +1149,12 @@ def main(argv=None):
                 seed = seed_m.group(1) if seed_m else "0"
                 raw = result.get("raw_data", [])
                 scores = [r["score"] for r in raw]
-                return [{"seed": seed, "scores": scores, "raw": raw}]
+                return [{
+                    "seed": seed,
+                    "scores": scores,
+                    "mean_score": result.get("metrics", {}).get("avg_score", 0.0),
+                    "raw": raw,
+                }]
             if basename == "episodes.csv":
                 run_dir = os.path.dirname(result_path)
                 episodes = load_episodes_csv(run_dir)
@@ -945,38 +1170,34 @@ def main(argv=None):
                     "seed": seed,
                     "condition": condition,
                     "scores": scores,
+                    "mean_score": float(sum(scores) / len(scores)) if scores else 0.0,
                     "raw": raw,
                 }]
             return []
 
         for depth, info in sorted(depth_folders.items()):
             seed_data = []
-            all_raw = []
             for result_path in info["results"]:
                 entries = _load_scores_for_path(
                     result_path, info.get("run_by_result", {}).get(result_path),
                 )
                 seed_data.extend(entries)
-                for e in entries:
-                    all_raw.extend(e["raw"])
 
             if not seed_data:
                 continue
 
-            # 1. Violin plot of score distribution
+            # 1. Model-level mean score plot; episodes remain descriptive only.
             fig, ax = plt.subplots(figsize=(10, 6))
-            parts = ax.violinplot([d["scores"] for d in seed_data],
-                                  positions=list(range(len(seed_data))),
-                                  showmeans=True, showmedians=True)
+            ax.bar(range(len(seed_data)), [d["mean_score"] for d in seed_data], color="steelblue")
             ax.set_xticks(range(len(seed_data)))
             ax.set_xticklabels([
                 f"{d.get('condition', 'legacy')}/s{d['seed']}"
                 for d in seed_data
             ])
-            ax.set_xlabel("Condition / training seed")
-            ax.set_ylabel("Score")
-            ax.set_title(f"Score Distribution — Depth {depth}")
-            plt.savefig(figures_dir / f"violin_score_depth{depth}.png", dpi=150, bbox_inches="tight")
+            ax.set_xlabel("Condition / training seed (model unit)")
+            ax.set_ylabel("Mean score per model")
+            ax.set_title(f"Model Mean Scores — Depth {depth}")
+            plt.savefig(figures_dir / f"model_score_depth{depth}.png", dpi=150, bbox_inches="tight")
             plt.close(fig)
 
             # 2. Bar chart of win rates (per seed + aggregate)
@@ -986,7 +1207,7 @@ def main(argv=None):
                 wr = sum(1 for r in raw if r["max_tile"] >= 2048) / len(raw) if raw else 0
                 win_rates_per_seed.append(wr)
 
-            agg_wr = sum(1 for r in all_raw if r["max_tile"] >= 2048) / len(all_raw) if all_raw else 0
+            agg_wr = float(np.mean(win_rates_per_seed)) if win_rates_per_seed else 0.0
 
             fig, ax = plt.subplots(figsize=(10, 6))
             x = list(range(len(win_rates_per_seed)))
@@ -1014,6 +1235,8 @@ def main(argv=None):
                     for ti, tile in enumerate(tile_values):
                         count = sum(1 for r in raw if r["max_tile"] == tile)
                         heatmap_data[di, ti] += count / n if n else 0
+            if depth_folders[depth]["results"]:
+                heatmap_data[di] /= len(depth_folders[depth]["results"])
 
         fig, ax = plt.subplots(figsize=(12, 6))
         im = ax.imshow(heatmap_data, aspect="auto", cmap="YlOrRd")

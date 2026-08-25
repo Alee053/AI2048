@@ -862,7 +862,9 @@ Enabling `--log-moves` does NOT change `episodes.csv` content. This is enforced 
 
 ### **Aggregation (`scripts/aggregate.py`)**
 
-Consume `episodes.csv` outputs from one or more runs to produce paper-grade summary statistics and figures.
+Consume `episodes.csv` outputs from one or more runs to produce model-level
+summary statistics and paired treatment/depth effects. A training seed/model is
+the experimental unit; episodes only estimate that model's outcome.
 
 ```bash
 # Aggregate all depth results for a sweep
@@ -879,7 +881,9 @@ uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --le
 
 **Schema-version safety:** by default, `aggregate.py` reads manifest metadata and accepts exactly `2.1.0`. This schema adds training-manifest binding and outcome fingerprints on top of the `2.0.0` telemetry contract; older or future versions are not silently migrated. To reprocess historical JSON runs, pass `--legacy`.
 
-The default path strictly validates complete runtime artifacts and keys runs by `(condition, training_seed, depth)`. `--paper-mode` additionally requires a clean paper-grade benchmark and training manifest, and requires matching `d4`/`no_d4` pairs with identical evaluation seed sets and execution provenance. Relative artifact paths, malformed JSON, missing files, empty files, and hash mismatches are rejected rather than repaired.
+The default path strictly validates complete runtime artifacts and keys runs by `(condition, training_seed, depth)`. Statistical analysis requires training seeds `0,1,2,3` for every observed condition/depth and complete D4/No-D4 pairs. `--paper-mode` additionally requires a clean paper-grade benchmark and training manifest, with matching evaluation seed sets and execution provenance. Relative artifact paths, malformed JSON, missing files, empty files, and hash mismatches are rejected rather than repaired.
+
+The `--legacy` path is retained for historical JSON artifacts. Its summaries are model-weighted and use Student-t intervals, but legacy artifacts do not support the modern manifest-bound D4/No-D4 and cross-depth paired analysis.
 
 **Arguments:**
 
@@ -895,21 +899,40 @@ The default path strictly validates complete runtime artifacts and keys runs by 
 
 ```
 <output_dir>/
-├── summary.csv               # Per-seed + aggregate rows with all metrics
-├── cross_depth_ci_table.csv  # Depth comparison with 95% confidence intervals
+├── summary.csv                         # Per-model metrics; one row per training seed
+├── per_model_metrics.csv               # Machine-readable model-level estimates
+├── paired_d4_no_d4_seed_deltas.csv     # One D4-No-D4 delta per training seed
+├── paired_d4_no_d4_effects.csv         # Mean delta, SD, Student-t 95% CI
+├── cross_depth_paired_seed_deltas.csv  # One depth delta per condition/seed
+├── cross_depth_paired_effects.csv      # Paired depth effects and Student-t CIs
+├── cross_depth_ci_table.csv            # Compatibility alias of depth effects
+├── model_level_confidence_intervals.csv # Across-model CIs for primary metrics
+├── confidence_intervals.csv            # Paired effect CIs
+├── excluded_twins.csv                  # Provenance twins excluded from analysis
 └── paper_figures/
-    ├── violin_score_depth{N}.png
+    ├── model_score_depth{N}.png
     ├── bar_winrate_depth{N}.png
     └── heatmap_max_tile.png
 ```
 
-**`summary.csv` columns** (per-seed + aggregate row):
+**Statistical formulas:**
 
-- `sweep_name`, `depth`, `seed`
-- `avg_score`, `std_score`, `min_score`, `max_score`, `avg_steps`
-- `win_rate_1024+`, `win_rate_2048+`, `win_rate_4096+`, `win_rate_8192+`
-- `max_tile_eq_1024_pct`, `max_tile_eq_2048_pct`, `max_tile_eq_4096_pct`, `max_tile_eq_8192_pct`
-- Search-mode metrics (when present): `avg_think_ms`, `avg_nodes_visited`, `avg_batches_eval`, `avg_nodes_per_sec`, `avg_tt_hit_rate`, `avg_tt_collisions`, `avg_tt_same_key_overwrites`, `avg_moves_resolved`, `avg_moves_unresolved`, `avg_cap_hits`, `avg_chance_nodes`, `avg_max_nodes`, `avg_chance_value`
+- Per-model `mean_score` and win rates are calculated before any across-model aggregation.
+- D4/No-D4 effects are `D4 - No-D4`, paired by `training_seed`.
+- Depth effects are `depth_b - depth_a`, paired by `(condition, training_seed)`.
+- Effect uncertainty uses sample SD across paired model deltas and `mean +/- t(0.975, n_models - 1) * SD / sqrt(n_models)`.
+- Episode-level score/win-rate intervals are labeled `*_descriptive` and are never used as treatment-effect uncertainty.
+- Shared `eval_seed` values are not the inferential unit; they are only a possible descriptive CRN/nested pairing.
+
+**`per_model_metrics.csv` columns:**
+
+- `condition`, `training_seed`, `depth`, `n_episodes`
+- `mean_score`, `mean_steps`, `mean_max_tile`, `win_rate_1024`, `win_rate_2048`, `win_rate_4096`, `win_rate_8192`
+- `mean_total_think_ms`, `mean_total_nodes`, `mean_total_batches`, `mean_tt_hit_rate`, `mean_nps`
+- `episode_*_descriptive` fields for within-model diagnostics only
+
+Effect tables contain `n_models`, `df`, `mean_delta`, `sd_delta`, `ci95_low`,
+`ci95_high`, `unit=training_seed`, and `ci_method=student_t_95`.
 
 ---
 
