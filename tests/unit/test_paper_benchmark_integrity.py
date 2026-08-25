@@ -35,7 +35,36 @@ def _paper_args(tmp_path, **overrides):
     (tmp_path / "effective_config.json").write_text(
         json.dumps({"root_training_seed": 7})
     )
+    (tmp_path / "training_manifest.json").write_text("{}")
     return _args(model_path=str(model_path), **overrides)
+
+
+@pytest.fixture(autouse=True)
+def _stub_training_manifest_binding(monkeypatch):
+    """Keep structural integrity tests independent from model loading."""
+    monkeypatch.setattr(
+        "scripts.aggregate.validate_benchmark_training_binding",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "scripts.benchmark.validate_benchmark_training_binding",
+        lambda *args, **kwargs: {
+            "training_manifest_path": str(args[1]),
+            "training_manifest_sha256": "t" * 64,
+            "training_model_sha256": "m" * 64,
+            "training_seed": kwargs.get("expected_train_seed", 7),
+            "condition": "d4",
+            "d4_augment": True,
+            "policy_class": "policy",
+            "ppo_class": "ppo",
+            "value_head_lr_multiplier": 10.0,
+            "training_effective_config_sha256": "e" * 64,
+            "final_timestep": 100,
+            "training_git_commit": "c" * 40,
+            "training_native_extension_sha256": "n" * 64,
+            "training_uv_lock_sha256": "u" * 64,
+        },
+    )
 
 
 def _provenance(**overrides):
@@ -57,10 +86,23 @@ def _write_run(
     from scripts.benchmark_summary import compute_summary_from_rows
 
     rows = rows or [_episode(0, 100), _episode(1, 101)]
+    (tmp_path / "model.zip").write_bytes(b"model")
+    (tmp_path / "effective_config.json").write_text("{}")
+    (tmp_path / "training_manifest.json").write_text("{}")
     config = {
-        "benchmark_schema_version": "2.0.0",
+        "benchmark_schema_version": "2.1.0",
         "run_name": tmp_path.name,
+        "sweep_name": tmp_path.name,
         "run_id": "run",
+        "model_path": str(tmp_path / "model.zip"),
+        "effective_config_path": str(tmp_path / "effective_config.json"),
+        "training_manifest_path": str(tmp_path / "training_manifest.json"),
+        "model_sha256": "m" * 64,
+        "effective_config_sha256": "e" * 64,
+        "uv_lock_sha256": "u" * 64,
+        "native_extension_sha256": "n" * 64,
+        "training_manifest_sha256": "t" * 64,
+        "training_model_sha256": "m" * 64,
         "n_runs": 2,
         "status": "completed",
         "interrupted": False,
@@ -68,10 +110,21 @@ def _write_run(
         "paper_mode": True,
         "paper_grade": True,
         "git_dirty": False,
-        "git_commit": "commit",
+        "git_commit": "a" * 40,
         "base_eval_seed": 100,
         "eval_seed_strategy": "deterministic-offset",
         "train_seed": 7,
+        "training_seed": 7,
+        "condition": "d4",
+        "d4_augment": True,
+        "policy_class": "policy",
+        "ppo_class": "ppo",
+        "value_head_lr_multiplier": 10.0,
+        "training_effective_config_sha256": "e" * 64,
+        "final_timestep": 100,
+        "training_git_commit": "c" * 40,
+        "training_native_extension_sha256": "n" * 64,
+        "training_uv_lock_sha256": "u" * 64,
         "model_sha256": "model-hash",
         "effective_config_sha256": "config-hash",
         "uv_lock_sha256": "lock-hash",
@@ -90,6 +143,8 @@ def _write_run(
         "use_expectimax": True,
     }
     config.update(config_overrides or {})
+    from scripts.benchmark_io import outcome_fingerprint
+    config["outcome_fingerprint"] = outcome_fingerprint(rows)
     summary = compute_summary_from_rows(rows, config, 1.0)
     summary.update({
         "status": config["status"],
@@ -116,7 +171,7 @@ def _write_run(
 
 def _episode(index, eval_seed, **overrides):
     row = {
-        "schema_version": "2.0.0", "run_id": "run", "episode_idx": index,
+        "schema_version": "2.1.0", "run_id": "run", "episode_idx": index,
         "worker_id": 0, "train_seed": 7, "eval_seed": eval_seed,
         "requested_depth": 3, "effective_depth": 3, "use_expectimax": True,
         "score": 1000 + index, "max_tile": 128, "max_log_tile": 7,
@@ -156,6 +211,7 @@ def test_dirty_paper_override_is_explicitly_non_paper_grade(monkeypatch, tmp_pat
     (tmp_path / "effective_config.json").write_text(
         json.dumps({"root_training_seed": 7})
     )
+    (tmp_path / "training_manifest.json").write_text("{}")
     monkeypatch.setattr("scripts.benchmark._git_commit", lambda: "a" * 40)
     monkeypatch.setattr("scripts.benchmark.collect_runtime_provenance", lambda **_: _provenance())
 
@@ -307,6 +363,7 @@ def test_paper_mode_uses_model_adjacent_effective_config(monkeypatch, tmp_path):
     model_path.write_bytes(b"model")
     effective_config = tmp_path / "effective_config.json"
     effective_config.write_text(json.dumps({"root_training_seed": 7}))
+    (tmp_path / "training_manifest.json").write_text("{}")
     monkeypatch.setattr("scripts.benchmark._git_commit", lambda: "a" * 40)
     monkeypatch.setattr("scripts.benchmark._git_dirty", lambda: False)
     args = _args(model_path=str(model_path))
@@ -354,6 +411,7 @@ def test_paper_mode_accepts_existing_explicit_effective_config(monkeypatch, tmp_
     supplied.write_text(json.dumps({"root_training_seed": 7}))
     model_path = tmp_path / "model.zip"
     model_path.write_bytes(b"model")
+    (tmp_path / "training_manifest.json").write_text("{}")
     monkeypatch.setattr("scripts.benchmark._git_commit", lambda: "a" * 40)
     monkeypatch.setattr("scripts.benchmark._git_dirty", lambda: False)
     args = _args(
@@ -403,10 +461,21 @@ def test_strict_validation_accepts_complete_consistent_artifact(tmp_path):
     assert [row["eval_seed"] for row in result["episodes"]] == [100, 101]
 
 
+@pytest.mark.parametrize("n_runs", [0, -1, True])
+def test_strict_validation_rejects_nonpositive_n_runs(tmp_path, n_runs):
+    from scripts.aggregate import validate_paper_run
+
+    _write_run(tmp_path, config_overrides={"n_runs": n_runs})
+
+    with pytest.raises(ValueError, match="n_runs"):
+        validate_paper_run(tmp_path)
+
+
 @pytest.mark.parametrize(
     ("config_overrides", "summary_overrides", "episode_fieldnames", "rows", "error"),
     [
         ({"benchmark_schema_version": "1.0.0"}, None, None, None, "schema"),
+        ({"benchmark_schema_version": "2.0.0"}, None, None, None, "schema"),
         (None, {"benchmark_schema_version": "1.0.0"}, None, None, "summary schema"),
         (None, None, None, [_episode(0, 100, schema_version="1.0.0"), _episode(1, 101)], "episode schema"),
         (None, None, ["episode_idx", "eval_seed", "score"], None, "episode CSV columns"),
@@ -437,7 +506,7 @@ def test_strict_aggregate_checks_schema_for_direct_single_run(tmp_path):
 
     _write_run(tmp_path, config_overrides={"benchmark_schema_version": "1.0.0"})
 
-    assert main([str(tmp_path), "--sweep", "unused", "--paper-mode"]) == 2
+    assert main([str(tmp_path), "--sweep", tmp_path.name, "--paper-mode"]) == 2
 
 
 def test_training_persists_resolved_config_beside_models(tmp_path):
@@ -457,14 +526,25 @@ def test_paired_validation_rejects_provenance_or_seed_set_mismatch(tmp_path):
     left.mkdir()
     right.mkdir()
     _write_run(left)
-    _write_run(right, config_overrides={"native_extension_sha256": "other"})
+    _write_run(
+        right,
+        config_overrides={
+            "native_extension_sha256": "other",
+            "condition": "no_d4",
+            "d4_augment": False,
+        },
+    )
 
     with pytest.raises(ValueError, match="native_extension_sha256"):
         validate_paired_paper_runs([left, right])
 
     _write_run(
         right, rows=[_episode(0, 101), _episode(1, 102)],
-        config_overrides={"base_eval_seed": 101},
+        config_overrides={
+            "base_eval_seed": 101,
+            "condition": "no_d4",
+            "d4_augment": False,
+        },
     )
 
     with pytest.raises(ValueError, match="eval seed set"):

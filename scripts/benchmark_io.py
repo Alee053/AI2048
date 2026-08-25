@@ -7,6 +7,7 @@ lists from here.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import threading
 from dataclasses import dataclass, field
@@ -16,10 +17,10 @@ from typing import Any
 
 # --- Schema versioning (semver) ---------------------------------------------
 
-# v2 removes the non-implemented alpha-beta diagnostic from paper output.
-EPISODE_SCHEMA_VERSION = "2.0.0"
+# v2 removes the non-implemented alpha-beta diagnostic; v2.1 adds manifest binding.
+EPISODE_SCHEMA_VERSION = "2.1.0"
 
-# Any major version change requires an aggregate.py migration.
+# Informational major version; the current aggregate loader requires exact 2.1.0.
 SUPPORTED_SCHEMA_MAJOR = 2
 
 
@@ -102,6 +103,37 @@ MOVE_COLUMNS: list[str] = [
     "is_cap_hit",
     "best_move",
 ]
+
+OUTCOME_FINGERPRINT_COLUMNS: tuple[str, ...] = (
+    "episode_idx",
+    "eval_seed",
+    "score",
+    "max_tile",
+    "max_log_tile",
+    "steps",
+    "termination_reason",
+    "win_1024",
+    "win_2048",
+    "win_4096",
+    "win_8192",
+    "total_nodes",
+    "total_batches",
+    "total_tt_lookups",
+    "total_tt_hits",
+    "total_tt_collisions",
+    "total_tt_same_key_overwrites",
+    "total_moves_resolved",
+    "total_moves_unresolved",
+    "total_cap_hits",
+    "total_chance_nodes",
+    "total_max_nodes",
+    "mean_chance_value",
+    "mean_empty_cells",
+    "min_empty_cells",
+    "mean_merge_score",
+    "mean_tt_hit_rate",
+    "mean_nodes_per_batch_call",
+)
 
 
 # --- Action names ----------------------------------------------------------
@@ -240,6 +272,21 @@ def episode_to_row(result: EpisodeResult) -> dict[str, Any]:
 def move_to_row(move: MoveRecord) -> dict[str, Any]:
     """Convert a MoveRecord to a dict matching MOVE_COLUMNS exactly."""
     return {k: getattr(move, k) for k in MOVE_COLUMNS}
+
+
+def outcome_fingerprint(rows: list[dict[str, Any]]) -> str:
+    """Fingerprint deterministic episode outcomes, excluding run metadata/timing."""
+    canonical_rows = [
+        {column: row[column] for column in OUTCOME_FINGERPRINT_COLUMNS}
+        for row in sorted(rows, key=lambda row: row["episode_idx"])
+    ]
+    payload = json.dumps(
+        canonical_rows,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 class CSVWriter:

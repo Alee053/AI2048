@@ -175,7 +175,7 @@ def test_search_summary_has_no_alpha_beta_metric():
         [row], {"run_name": "test", "use_expectimax": True}, 1.0,
     )
 
-    assert summary["benchmark_schema_version"] == "2.0.0"
+    assert summary["benchmark_schema_version"] == "2.1.0"
     assert "avg_alpha_beta_cuts" not in summary["metrics"]
 
 

@@ -21,6 +21,7 @@ Examples:
 
 import os
 import time
+import math
 import json as _json
 import re
 import subprocess
@@ -42,9 +43,17 @@ from twenty_forty_eight_ai.agent.callbacks import WandbLoggingCallback
 from twenty_forty_eight_ai.agent.policy import ValueNormalizedMaskablePolicy
 from twenty_forty_eight_ai.agent.ppo import ValueHeadLRMaskablePPO
 try:
-    from scripts.benchmark_provenance import collect_runtime_provenance, sha256_file
+    from scripts.benchmark_provenance import (
+        collect_runtime_provenance,
+        sha256_file,
+        validate_artifact_sha256,
+    )
 except ModuleNotFoundError:  # Support `python scripts/train.py`.
-    from benchmark_provenance import collect_runtime_provenance, sha256_file
+    from benchmark_provenance import (
+        collect_runtime_provenance,
+        sha256_file,
+        validate_artifact_sha256,
+    )
 from twenty_forty_eight_ai.utils.effective_config import (
     D4_SEED_DERIVATION,
     V3_EXPERIMENT_DEFINITION,
@@ -364,6 +373,7 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
         or not model_sha256
         or not effective_config_sha256
         or not native_extension_sha256
+        or not runtime_provenance.get("uv_lock_sha256")
     ):
         missing = missing_runtime_fields + missing_package_versions
         if not model_sha256:
@@ -372,6 +382,8 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
             missing.append("effective_config_sha256")
         if not native_extension_sha256:
             missing.append("native_extension_sha256")
+        if not runtime_provenance.get("uv_lock_sha256"):
+            missing.append("uv_lock_sha256")
         raise RuntimeError("Missing training provenance: " + ", ".join(missing))
     if not isinstance(git_provenance.get("git_dirty"), bool):
         raise RuntimeError("git_dirty must be a boolean")
@@ -453,6 +465,7 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
             "path": str(extension_path),
             "sha256": native_extension_sha256,
         },
+        "uv_lock_path": str((REPO_ROOT / "uv.lock").resolve()),
         "root_training_seed": effective_config["root_training_seed"],
         "effective_config_sha256": effective_config_sha256,
         "uv_lock_sha256": runtime_provenance.get("uv_lock_sha256", ""),
@@ -477,6 +490,8 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
             manifest = _json.load(stream)
     except (OSError, _json.JSONDecodeError) as exc:
         raise ValueError(f"Unreadable training manifest: {path}") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError(f"Training manifest must be a JSON object: {path}")
 
     def require(condition: bool, message: str) -> None:
         if not condition:
@@ -497,6 +512,12 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
         "manifest native extension path is missing",
     )
     native_extension_path = Path(native_extension_path)
+    uv_lock_path_value = manifest.get("uv_lock_path")
+    require(
+        isinstance(uv_lock_path_value, str) and uv_lock_path_value,
+        "manifest uv.lock path is missing",
+    )
+    uv_lock_path = Path(uv_lock_path_value)
     require(
         model_path == model_path.parent / "final_model.zip",
         "manifest model_path must point to final_model.zip",
@@ -513,22 +534,39 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
     require(model_path.is_absolute(), "manifest model_path must be absolute")
     require(effective_config_path.is_absolute(), "manifest effective_config_path must be absolute")
     require(native_extension_path.is_absolute(), "manifest native extension path must be absolute")
-    require(model_path.is_file(), f"model artifact is missing: {model_path}")
-    require(effective_config_path.is_file(), f"effective config is missing: {effective_config_path}")
-    require(native_extension_path.is_file(), f"native extension is missing: {native_extension_path}")
-
+    require(uv_lock_path.is_absolute(), "manifest uv.lock path must be absolute")
+    require(model_path == model_path.resolve(), "manifest model_path must be canonical")
     require(
-        sha256_file(model_path) == manifest.get("model_sha256"),
-        "model_sha256 does not match model artifact",
+        effective_config_path == effective_config_path.resolve(),
+        "manifest effective_config_path must be canonical",
     )
     require(
-        sha256_file(effective_config_path) == manifest.get("effective_config_sha256"),
-        "effective_config_sha256 does not match effective config",
+        native_extension_path == native_extension_path.resolve(),
+        "manifest native extension path must be canonical",
     )
+    require(uv_lock_path == uv_lock_path.resolve(), "manifest uv.lock path must be canonical")
+    require(
+        uv_lock_path == (REPO_ROOT / "uv.lock").resolve(),
+        "manifest uv.lock path must point to repository uv.lock",
+    )
+    for artifact_path, expected_hash, label in (
+        (model_path, manifest.get("model_sha256"), "model_sha256"),
+        (effective_config_path, manifest.get("effective_config_sha256"), "effective_config_sha256"),
+        (native_extension_path, native_extension.get("sha256"), "native_extension_sha256"),
+        (uv_lock_path, manifest.get("uv_lock_sha256"), "uv_lock_sha256"),
+    ):
+        require(
+            isinstance(expected_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", expected_hash) is not None,
+            f"{label} is missing or invalid",
+        )
+        try:
+            validate_artifact_sha256(artifact_path, expected_hash, label=label)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
     native_sha256 = sha256_file(native_extension_path)
     require(
-        native_sha256 == native_extension.get("sha256")
-        and native_sha256 == manifest.get("native_extension_sha256"),
+        native_sha256 == manifest.get("native_extension_sha256"),
         "native_extension_sha256 does not match native extension",
     )
 
@@ -557,7 +595,10 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
         "manifest git_dirty does not match git_status_porcelain",
     )
     for field in ("python_version", "torch_version", "sb3_version"):
-        require(bool(manifest.get(field)), f"manifest {field} is missing")
+        require(
+            isinstance(manifest.get(field), str) and bool(manifest[field]),
+            f"manifest {field} is missing",
+        )
     versions = manifest.get("versions")
     require(isinstance(versions, dict), "manifest versions are missing")
     require(versions.get("python") == manifest["python_version"], "python version mismatch")
@@ -567,15 +608,16 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
         "sb3 version mismatch",
     )
     for dependency in ("gymnasium", "numpy", "numba", "sb3-contrib", "pybind11"):
-        require(bool(versions.get(dependency)), f"manifest {dependency} version is missing")
-    require(bool(manifest.get("uv_lock_sha256")), "manifest uv.lock hash is missing")
-    require(
-        sha256_file(REPO_ROOT / "uv.lock") == manifest["uv_lock_sha256"],
-        "manifest uv_lock_sha256 does not match uv.lock",
-    )
+        require(
+            isinstance(versions.get(dependency), str) and bool(versions[dependency]),
+            f"manifest {dependency} version is missing",
+        )
     runtime = manifest.get("runtime")
     require(isinstance(runtime, dict), "manifest runtime provenance is missing")
-    require(bool(runtime.get("compiler")), "manifest compiler provenance is missing")
+    require(
+        isinstance(runtime.get("compiler"), str) and bool(runtime["compiler"]),
+        "manifest compiler provenance is missing",
+    )
     final_timestep = manifest.get("final_timestep")
     require(
         isinstance(final_timestep, int)
@@ -586,6 +628,16 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
 
     definition = effective_config.get("experiment_definition", {})
     if definition.get("name") == "v3":
+        require(type(manifest.get("d4_augment")) is bool, "manifest d4_augment is invalid")
+        require(isinstance(manifest.get("condition"), str), "manifest condition is invalid")
+        require(isinstance(manifest.get("d4_condition"), str), "manifest d4_condition is invalid")
+        require(isinstance(manifest.get("policy_class"), str), "manifest policy class is invalid")
+        require(isinstance(manifest.get("ppo_class"), str), "manifest PPO class is invalid")
+        multiplier = manifest.get("value_head_lr_multiplier")
+        require(
+            type(multiplier) in (int, float) and math.isfinite(float(multiplier)),
+            "manifest value-head multiplier is invalid",
+        )
         require(
             manifest.get("condition") == manifest.get("d4_condition"),
             "manifest condition fields disagree",

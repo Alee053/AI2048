@@ -36,6 +36,7 @@ from scripts.benchmark_provenance import (
     collect_runtime_provenance,
 )
 from scripts.benchmark_io import EPISODE_SCHEMA_VERSION
+from scripts.paper_provenance import validate_benchmark_training_binding
 
 
 _PAPER_REQUIRED_PROVENANCE = (
@@ -89,6 +90,10 @@ def parse_args(argv=None):
                    help="Expectimax search depth; 0 = raw policy (default: 0)")
     p.add_argument("--output", type=str, default=None,
                    help="Run name (folder name under data/benchmarks). Default: run_<timestamp>")
+    p.add_argument(
+        "--sweep-name", type=str, default=None,
+        help="Manifest metadata used by aggregate.py to select this experiment.",
+    )
     p.add_argument("--device", type=str, default="auto",
                    choices=("cpu", "cuda", "auto"),
                    help="Device for model inference (default: auto)")
@@ -121,6 +126,10 @@ def parse_args(argv=None):
                    help="Allow --paper-mode on a dirty worktree, marking the run non-paper-grade.")
     p.add_argument("--effective-config", type=str, default=None,
                    help="Path to the resolved training configuration used for this model.")
+    p.add_argument(
+        "--training-manifest", type=str, default=None,
+        help="Path to the training_manifest.json bound to this model.",
+    )
     return p.parse_args(argv)
 
 
@@ -178,8 +187,19 @@ def validate_paper_mode(args) -> None:
         )
     _validate_paper_training_seed(effective_config, args.train_seed)
     args.effective_config = str(effective_config)
+    training_manifest = resolve_training_manifest_path(
+        args.model_path, getattr(args, "training_manifest", None),
+    )
+    if training_manifest is None:
+        raise ValueError(
+            "--paper-mode requires a model-adjacent training_manifest.json or "
+            "an existing --training-manifest artifact."
+        )
+    args.training_manifest = str(training_manifest)
     args._paper_provenance = _collect_paper_provenance(
-        args.model_path, args.effective_config,
+        args.model_path, args.effective_config, args.training_manifest,
+        expected_train_seed=args.train_seed,
+        require_paper_grade=not args.allow_dirty_paper_run,
     )
 
 
@@ -212,7 +232,14 @@ def _validate_paper_training_seed(effective_config: Path, train_seed: int) -> No
         )
 
 
-def _collect_paper_provenance(model_path: str, effective_config: str) -> dict:
+def _collect_paper_provenance(
+    model_path: str,
+    effective_config: str,
+    training_manifest: str,
+    *,
+    expected_train_seed: int | None = None,
+    require_paper_grade: bool = False,
+) -> dict:
     provenance = collect_runtime_provenance(
         model_path=model_path, effective_config=effective_config,
     )
@@ -222,7 +249,15 @@ def _collect_paper_provenance(model_path: str, effective_config: str) -> dict:
             "--paper-mode could not produce required provenance: "
             + ", ".join(missing)
         )
-    return provenance
+    binding = validate_benchmark_training_binding(
+        model_path,
+        training_manifest,
+        expected_train_seed=expected_train_seed,
+        expected_effective_config_path=effective_config,
+        recorded=provenance,
+        require_paper_grade=require_paper_grade,
+    )
+    return {**provenance, **binding}
 
 
 def _is_git_commit(value) -> bool:
@@ -236,13 +271,45 @@ def resolve_effective_config_path(
     candidate = Path(explicit_path) if explicit_path else (
         Path(model_path).parent / "effective_config.json" if model_path else None
     )
-    return candidate if candidate is not None and candidate.is_file() else None
+    return candidate.resolve() if candidate is not None and candidate.is_file() else None
+
+
+def resolve_training_manifest_path(
+    model_path: str | None, explicit_path: str | None,
+) -> Path | None:
+    """Prefer an explicit training manifest, otherwise use the model's sibling."""
+    candidate = Path(explicit_path) if explicit_path else (
+        Path(model_path).parent / "training_manifest.json" if model_path else None
+    )
+    return candidate.resolve() if candidate is not None and candidate.is_file() else None
+
+
+def _condition_from_effective_config(path: Path | None) -> tuple[str | None, bool | None]:
+    if path is None:
+        return None, None
+    try:
+        with path.open() as stream:
+            config = json.load(stream)
+    except (OSError, json.JSONDecodeError):
+        return None, None
+    if not isinstance(config, dict):
+        return None, None
+    env_kwargs = config.get("env_kwargs")
+    if not isinstance(env_kwargs, dict):
+        return None, None
+    d4_augment = env_kwargs.get("d4_augment")
+    if type(d4_augment) is not bool:
+        return None, None
+    return ("d4" if d4_augment else "no_d4"), d4_augment
 
 
 def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_iso):
     cuda_name, cuda_runtime = _cuda_info(args.device)
     effective_config = resolve_effective_config_path(
         args.model_path, args.effective_config,
+    )
+    training_manifest = resolve_training_manifest_path(
+        args.model_path, getattr(args, "training_manifest", None),
     )
     git_dirty = _git_dirty()
     git_commit = _git_commit()
@@ -257,24 +324,48 @@ def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_i
             raise ValueError("--paper-mode requires --train-seed")
         if args.base_eval_seed is None:
             raise ValueError("--paper-mode requires --base-eval-seed")
+        if training_manifest is None:
+            raise ValueError(
+                "--paper-mode requires a model-adjacent training_manifest.json or "
+                "an existing --training-manifest artifact."
+            )
         provenance = getattr(args, "_paper_provenance", None)
         if provenance is None:
             provenance = _collect_paper_provenance(
-                args.model_path, str(effective_config),
+                args.model_path,
+                str(effective_config),
+                str(training_manifest),
+                expected_train_seed=args.train_seed,
+                require_paper_grade=not args.allow_dirty_paper_run,
             )
     else:
         provenance = collect_runtime_provenance(
             model_path=args.model_path,
             effective_config=str(effective_config) if effective_config else None,
         )
+        if training_manifest is not None and effective_config is not None:
+            provenance = {
+                **provenance,
+                **_collect_paper_provenance(
+                    args.model_path,
+                    str(effective_config) if effective_config else "",
+                    str(training_manifest),
+                    expected_train_seed=args.train_seed,
+                ),
+            }
+    condition, d4_augment = _condition_from_effective_config(effective_config)
     worker_timeout = float(getattr(args, "worker_timeout", 300.0))
     config = {
         "benchmark_schema_version": EPISODE_SCHEMA_VERSION,
         "run_name": run_name,
-        "model_path": str(args.model_path),
+        "sweep_name": getattr(args, "sweep_name", None) or run_name,
+        "model_path": str(Path(args.model_path).resolve()),
         "model_md5": "",
         "model_version": args.model_version or "",
         "train_seed": args.train_seed,
+        "training_seed": args.train_seed,
+        "condition": condition,
+        "d4_augment": d4_augment,
         "env_seed_base": env_seed_base,
         "n_runs": args.n_runs,
         "n_workers": args.workers,
@@ -287,7 +378,7 @@ def build_config(args, run_name, env_seed_base, eval_seed_strategy, started_at_i
         "depth": args.depth,
         "use_expectimax": args.depth > 0,
         "log_moves": bool(args.log_moves),
-        "base_eval_seed": env_seed_base if args.base_eval_seed is not None else None,
+        "base_eval_seed": env_seed_base,
         "eval_seed_strategy": eval_seed_strategy,
         "git_commit": git_commit,
         "git_dirty": git_dirty,

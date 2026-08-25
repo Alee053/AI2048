@@ -14,7 +14,7 @@ from pathlib import Path
 from scripts.benchmark import _tqdm_iter, build_config
 from scripts.benchmark_io import (
     CSVWriter,
-    episode_to_row, move_to_row,
+    episode_to_row, move_to_row, outcome_fingerprint,
 )
 from scripts.benchmark_worker import run_worker
 
@@ -1001,6 +1001,9 @@ def run_benchmark(args):
     else:
         config["status"] = "completed"
         config["interrupted"] = False
+
+    if config["status"] == "completed":
+        config["outcome_fingerprint"] = outcome_fingerprint(rows)
 
     from scripts.benchmark_summary import compute_summary_from_rows
     summary = compute_summary_from_rows(rows, config, total_time_s)

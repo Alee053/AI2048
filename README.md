@@ -599,6 +599,7 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 | `--n-runs` | int | `100` | Number of episodes |
 | `--depth` | int | `0` | Expectimax search depth; `0` = raw policy |
 | `--output` | str | `run_<timestamp>` | Folder name under `data/benchmarks/` |
+| `--sweep-name` | str | output name | Manifest metadata used for aggregation selection |
 | `--device` | `{cpu,cuda,auto}` | `auto` | Inference device |
 | `--workers` | int | `1` | Number of subprocess workers |
 | `--log-moves` | flag | off | Write `moves.csv` with one row per player move |
@@ -611,6 +612,7 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 | `--paper-mode` | flag | off | Require clean, complete, provenance-bound paper-grade output |
 | `--allow-dirty-paper-run` | flag | off | Allow a dirty tree, marking output non-paper-grade |
 | `--effective-config` | path | model-adjacent file | Resolved training config used for paper provenance |
+| `--training-manifest` | path | model-adjacent file | `training_manifest.json` bound to the model |
 
 **Quick examples:**
 
@@ -628,6 +630,11 @@ uv run python -m scripts.benchmark \
   data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 200 --depth 3 --workers 8 --device cpu \
   --output v3_depth3_throughput --base-eval-seed 0
+
+Throughput runs may omit training metadata and still execute, but they are not
+eligible for manifest-driven aggregation without a resolved effective config,
+condition, and training seed. Use `--effective-config`, `--train-seed`, and
+`--sweep-name` when the run is intended for aggregation.
 
 # Raw-policy baseline (no search)
 uv run python -m scripts.benchmark \
@@ -668,13 +675,25 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
 
 ```json
 {
-  "benchmark_schema_version": "2.0.0",
+  "benchmark_schema_version": "2.1.0",
   "run_id": "uuid4...",
   "run_name": "v3_depth3_final",
-  "model_path": "data/models/release/Hybrid-PPO-Expectimax-v3.zip",
+  "sweep_name": "hybrid_ppo_v3",
+  "model_path": "/repo/data/models/release/Hybrid-PPO-Expectimax-v3.zip",
+  "training_manifest_path": ".../training_manifest.json",
+  "training_manifest_sha256": "...",
+  "training_model_sha256": "...",
+  "training_seed": 0,
+  "condition": "d4",
+  "d4_augment": true,
+  "policy_class": "...ValueNormalizedMaskablePolicy",
+  "ppo_class": "...ValueHeadLRMaskablePPO",
+  "value_head_lr_multiplier": 10.0,
+  "final_timestep": 200000000,
+  "training_git_commit": "...",
   "model_md5": "fab18d67...",
   "model_version": "v3",
-  "train_seed": null,
+  "train_seed": 0,
   "env_seed_base": 12345,
   "n_runs": 100,
   "n_workers": 4,
@@ -692,19 +711,23 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
   "finished_at_iso": "2026-06-27T12:41:48Z",
   "total_wall_time_s": 412.7,
   "interrupted": false,
-  "status": "completed"
+  "status": "completed",
+  "outcome_fingerprint": "..."
 }
 ```
 
 Field semantics:
 
-- `benchmark_schema_version`: semver. `aggregate.py` accepts same-major; rejects others.
+- `benchmark_schema_version`: semver. The manifest-driven loader accepts exactly `2.1.0`; older or future versions are not silently migrated.
 - `env_seed_base`: root used to derive each episode's `eval_seed`; the episode
   passes that seed to `Game2048Env.reset()`, which owns the private tile RNG.
 - `eval_seed_strategy`: `"deterministic-offset"` (master assigns `eval_seed = env_seed_base + episode_idx`) or `"random"` (when `base_eval_seed` is unset).
 - `total_wall_time_s`: full run wall-clock (includes worker spawn + summary write).
 - `status`: `"completed"` | `"interrupted"` | `"failed"`.
 - `interrupted`: `true` only when the master handles `SIGINT`/`SIGTERM`.
+- `training_manifest_path` is the immutable manifest produced beside the model. Paper-grade validation rehashes the manifest, model, effective config, native extension, and `uv.lock`, then checks the model class, training seed, D4 condition, multiplier, final timestep, and training commit against it.
+- `condition`, `training_seed`, and `depth` form the experimental identity. CLI `--train-seed` is checked against the manifest; it is not the source of truth.
+- `outcome_fingerprint` is a deterministic SHA-256 over stable per-episode outcomes. Timing, worker identity, run ID, and move logging are excluded so logged/unlogged twins can be detected without counting them as extra replicates.
 
 #### `episodes.csv` columns (42 fields)
 
@@ -761,7 +784,7 @@ Aggregate metrics for quick inspection. Mirrors the shape of the old `results.js
 
 ```json
 {
-  "benchmark_schema_version": "2.0.0",
+  "benchmark_schema_version": "2.1.0",
   "status": "completed",
   "n_completed": 100,
   "n_runs_requested": 100,
@@ -852,15 +875,17 @@ uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1 --win-thres
 uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --legacy
 ```
 
-**Discovery convention:** the folder under `data/benchmarks/` must match `{sweep_name}_depth{N}` for `aggregate.py` to find it. This is enforced by `--output` naming in `benchmark.py`.
+**Manifest-driven discovery:** `aggregate.py` recursively reads `config.json` metadata and selects `sweep_name`; folder names are irrelevant. Each accepted run is keyed by `(condition, training_seed, depth)`. Duplicate keys with different fingerprints are rejected; identical fingerprints are retained only as auxiliary twins. Unmanifested or incompatible historical folders remain legacy/non-paper-grade and are not ingested by the default path.
 
-**Schema-version safety:** by default, `aggregate.py` walks each run folder, reads `config.json`, and refuses to consume a run whose `benchmark_schema_version` major differs from `2`. Schema `2.0.0` removes the non-implemented alpha-beta diagnostic from paper-grade output. To reprocess historical JSON runs, pass `--legacy`.
+**Schema-version safety:** by default, `aggregate.py` reads manifest metadata and accepts exactly `2.1.0`. This schema adds training-manifest binding and outcome fingerprints on top of the `2.0.0` telemetry contract; older or future versions are not silently migrated. To reprocess historical JSON runs, pass `--legacy`.
+
+The default path strictly validates complete runtime artifacts and keys runs by `(condition, training_seed, depth)`. `--paper-mode` additionally requires a clean paper-grade benchmark and training manifest, and requires matching `d4`/`no_d4` pairs with identical evaluation seed sets and execution provenance. Relative artifact paths, malformed JSON, missing files, empty files, and hash mismatches are rejected rather than repaired.
 
 **Arguments:**
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `benchmark_dir` | str | (required) | Root folder containing `{sweep_name}_depth*` subfolders |
+| `benchmark_dir` | str | (required) | Root folder containing manifest-bound run folders |
 | `--sweep` | str | (required) | Sweep name to filter on |
 | `--win-threshold` | int | (all) | Report a single win threshold instead of 1024/2048/4096/8192 |
 | `--output` | str | `benchmark_dir` | Override output directory |
@@ -901,7 +926,7 @@ for seed in 0 1 2; do
 done
 ```
 
-Each run is a separate benchmark result. The current CSV aggregator discovers one flat `episodes.csv` per `{sweep_name}_depth{N}` directory and does not combine these new multi-seed output directories automatically; combine them with an external analysis workflow or use the tracked aggregate artifacts.
+Each run is a separate benchmark result. Give each invocation the same `--sweep-name`; the CSV aggregator discovers and combines the runs from their metadata, regardless of folder names.
 
 ---
 

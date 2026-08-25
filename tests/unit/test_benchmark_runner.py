@@ -843,17 +843,25 @@ def _run_with_fake_worker(
     def fake_episode_to_row(result):
         if mode == "serialize_keyboard_interrupt":
             raise KeyboardInterrupt
-        return {
+        row = {
             "episode_idx": result.episode_idx,
             "eval_seed": result.eval_seed,
             "score": result.score,
             "max_tile": result.max_tile,
+            "max_log_tile": 1,
             "steps": result.steps,
+            "termination_reason": "board_full",
+            "use_expectimax": False,
             "total_moves_unresolved": (
                 1 if mode == "invalid_moves_unresolved" else 0
             ),
             "total_cap_hits": 1 if mode == "invalid_cap_hits" else 0,
         }
+        from scripts.benchmark_io import OUTCOME_FINGERPRINT_COLUMNS
+        for field in OUTCOME_FINGERPRINT_COLUMNS:
+            if field not in row:
+                row[field] = False if field.startswith("win_") else 0
+        return row
 
     def fake_worker(
         worker_id, model_path, device, depth, eval_seeds, log_moves, run_id,

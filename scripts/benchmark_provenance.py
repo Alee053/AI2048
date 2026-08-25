@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SEARCH_CANONICALIZATION = "d4-min-packed"
 SEARCH_BATCH_SIZE = 32768
 SEARCH_TRANSPOSITION_TABLE = True
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 
 def sha256_file(path: str | Path | None) -> str:
@@ -32,8 +33,43 @@ def sha256_file(path: str | Path | None) -> str:
         return ""
 
 
+def validate_artifact_sha256(
+    path: str | Path | None,
+    expected: str | None = None,
+    *,
+    label: str = "artifact",
+) -> str:
+    """Require a non-empty file and optionally verify its SHA-256 digest."""
+    if path is None:
+        raise ValueError(f"{label} path is missing")
+    artifact = Path(path)
+    if not artifact.is_file():
+        raise ValueError(f"{label} artifact is missing: {artifact}")
+    try:
+        if artifact.stat().st_size == 0:
+            raise ValueError(f"{label} artifact is empty: {artifact}")
+    except OSError as exc:
+        raise ValueError(f"{label} artifact is unreadable: {artifact}") from exc
+
+    digest = sha256_file(artifact)
+    if not SHA256_PATTERN.fullmatch(digest):
+        raise ValueError(f"{label} artifact could not be hashed: {artifact}")
+    if expected is not None:
+        if not isinstance(expected, str) or not SHA256_PATTERN.fullmatch(expected):
+            raise ValueError(f"{label} hash is invalid")
+        if digest != expected:
+            raise ValueError(
+                f"{label} SHA-256 mismatch: expected {expected}, got {digest}"
+            )
+    return digest
+
+
 def collect_runtime_provenance(*, model_path: str, effective_config: str | None) -> dict:
     """Return file digests and execution-environment identifiers for one run."""
+    model_artifact = Path(model_path).resolve()
+    effective_config_path = (
+        Path(effective_config).resolve() if effective_config else None
+    )
     extension_path = _native_extension_path()
     gpu_name = ""
     if torch.cuda.is_available():
@@ -42,9 +78,9 @@ def collect_runtime_provenance(*, model_path: str, effective_config: str | None)
         except Exception:
             pass
     return {
-        "model_sha256": sha256_file(model_path),
-        "effective_config_path": str(effective_config or ""),
-        "effective_config_sha256": sha256_file(effective_config),
+        "model_sha256": sha256_file(model_artifact),
+        "effective_config_path": str(effective_config_path or ""),
+        "effective_config_sha256": sha256_file(effective_config_path),
         "uv_lock_sha256": sha256_file(REPO_ROOT / "uv.lock"),
         "native_extension_sha256": sha256_file(extension_path),
         "python_version": sys.version.split()[0],
