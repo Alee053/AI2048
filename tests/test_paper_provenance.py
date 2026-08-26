@@ -57,6 +57,7 @@ def valid_artifacts(tmp_path, monkeypatch):
         "seed": 0,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 0,
+        "total_timesteps": 100_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": True},
@@ -74,7 +75,7 @@ def valid_artifacts(tmp_path, monkeypatch):
     )
     model = _make_model()
     try:
-        model.num_timesteps = 123
+        model.num_timesteps = 100_000_000
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
             model_dir, str(model_path), model, effective_config,
@@ -100,7 +101,7 @@ def test_valid_training_binding_recomputes_all_artifact_hashes(valid_artifacts):
 
     assert binding["condition"] == "d4"
     assert binding["training_seed"] == 0
-    assert binding["final_timestep"] == 123
+    assert binding["final_timestep"] == 100_000_000
     assert len(binding["training_manifest_sha256"]) == 64
     assert binding["training_model_sha256"]
     assert binding["training_native_extension_sha256"]
@@ -209,7 +210,7 @@ def _write_valid_paper_run(run_dir, valid_artifacts):
         "ppo_class": manifest["ppo_class"],
         "value_head_lr_multiplier": 10.0,
         "training_effective_config_sha256": binding["training_effective_config_sha256"],
-        "final_timestep": 123,
+        "final_timestep": 100_000_000,
         "training_git_commit": manifest["git_commit"],
         "training_native_extension_sha256": binding["training_native_extension_sha256"],
         "training_uv_lock_sha256": binding["training_uv_lock_sha256"],

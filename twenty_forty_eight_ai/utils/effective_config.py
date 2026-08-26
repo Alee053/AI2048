@@ -17,6 +17,7 @@ V3_EXPERIMENT_DEFINITION = {
     "ppo_class": "twenty_forty_eight_ai.agent.ppo.ValueHeadLRMaskablePPO",
     "value_head_lr_multiplier": 10.0,
 }
+V3_TOTAL_TIMESTEPS = 100_000_000
 V3_TRAINING_SEEDS = [0, 1, 2, 3]
 _IDENTIFIER_ONLY_KEYS = {"run_name"}
 _V3_RUN_NAME_PREFIXES = ("hybrid_ppo_v3", "hybrid_ppo_v3_no_d4")
@@ -58,6 +59,14 @@ def validate_v3_experiment_config(config: Mapping[str, Any]) -> None:
 
     if dict(definition) != V3_EXPERIMENT_DEFINITION:
         raise ValueError("v3 experiment_definition must match the frozen v3 definition")
+    if (
+        type(config.get("total_timesteps")) is not int
+        or config["total_timesteps"] != V3_TOTAL_TIMESTEPS
+    ):
+        raise ValueError(
+            "v3 total_timesteps must equal "
+            f"{V3_TOTAL_TIMESTEPS}"
+        )
 
     env_kwargs = config.get("env_kwargs")
     if not isinstance(env_kwargs, Mapping) or "d4_augment" not in env_kwargs:

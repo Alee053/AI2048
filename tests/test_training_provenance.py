@@ -79,6 +79,7 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
         "seed": 2,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 2,
+        "total_timesteps": 100_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": True},
@@ -137,7 +138,7 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
 
     model = _make_v3_model()
     try:
-        model.num_timesteps = 123
+        model.num_timesteps = 100_000_000
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
             model_dir,
@@ -172,7 +173,7 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
         "path": str(native_path.resolve()),
         "sha256": train_module.sha256_file(native_path),
     }
-    assert manifest["final_timestep"] == 123
+    assert manifest["final_timestep"] == 100_000_000
 
     train_module.validate_training_manifest(manifest_path)
     invalid_timestep = dict(manifest)
@@ -217,6 +218,7 @@ def test_training_manifest_validator_rejects_changed_artifact(
         "seed": 0,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 0,
+        "total_timesteps": 100_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": False},
@@ -302,12 +304,14 @@ def test_training_manifests_record_each_seed(tmp_path, monkeypatch):
                 "seed": seed,
                 "training_seeds": [0, 1, 2, 3],
                 "root_training_seed": seed,
+                "total_timesteps": 100_000_000,
                 "load_model": False,
                 "checkpoint_path": None,
                 "env_kwargs": {"d4_augment": True},
                 "experiment_definition": _v3_definition(),
             }
             train_module.persist_effective_config(model_dir, effective_config)
+            model.num_timesteps = 100_000_000
             model.save(model_path)
             monkeypatch.setattr(
                 train_module,
@@ -380,6 +384,7 @@ def test_dirty_training_manifest_is_marked_non_paper_grade(tmp_path, monkeypatch
         "seed": 1,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 1,
+        "total_timesteps": 100_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": True},
@@ -432,6 +437,7 @@ def test_dirty_training_manifest_is_marked_non_paper_grade(tmp_path, monkeypatch
     )
     model = _make_v3_model()
     try:
+        model.num_timesteps = 100_000_000
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
             model_dir, str(model_path), model, effective_config

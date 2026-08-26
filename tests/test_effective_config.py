@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -85,8 +86,82 @@ def test_v3_configs_explicitly_define_fresh_four_seed_experiments():
         assert config["training_seeds"] == [0, 1, 2, 3]
         assert config["load_model"] is False
         assert config["checkpoint_path"] is None
+        assert config["total_timesteps"] == 100_000_000
         assert type(config["env_kwargs"]["d4_augment"]) is bool
         assert config["env_kwargs"]["d4_augment"] is expected_d4
+
+
+@pytest.mark.parametrize("config_path", (D4_CONFIG, NO_D4_CONFIG))
+def test_v3_accepts_exact_100m_budget(config_path):
+    config = load_effective_config(config_path)
+
+    validate_v3_experiment_config(config)
+
+
+@pytest.mark.parametrize("config_path", (D4_CONFIG, NO_D4_CONFIG))
+@pytest.mark.parametrize(
+    "total_timesteps", [1, 5_000_000, 99_999_999, 100_000_001],
+)
+def test_v3_rejects_any_non_100m_budget(config_path, total_timesteps):
+    config = load_effective_config(config_path)
+    config["total_timesteps"] = total_timesteps
+
+    with pytest.raises(ValueError, match="total_timesteps"):
+        validate_v3_experiment_config(config)
+
+
+def test_non_v3_diagnostic_config_can_use_short_budget():
+    validate_v3_experiment_config({
+        "run_name": "diagnostic-smoke",
+        "total_timesteps": 5_000_000,
+    })
+
+
+def test_invalid_v3_budget_fails_before_wandb_or_model_setup(monkeypatch):
+    from scripts import train as train_module
+
+    config = load_effective_config(D4_CONFIG)
+    config["total_timesteps"] = 5_000_000
+    monkeypatch.setattr(
+        train_module.wandb,
+        "init",
+        lambda **_kwargs: pytest.fail("W&B must not initialize for invalid v3 config"),
+    )
+
+    with pytest.raises(ValueError, match="total_timesteps"):
+        train_module.train(config)
+
+
+@pytest.mark.parametrize(
+    ("run_name", "expected_name"),
+    (
+        ("hybrid_ppo_v3", "hybrid_ppo_v3-seed2"),
+        ("hybrid_ppo_v3-seed2", "hybrid_ppo_v3-seed2"),
+    ),
+)
+def test_train_wandb_name_has_one_seed_suffix(monkeypatch, run_name, expected_name):
+    from scripts import train as train_module
+
+    config = load_effective_config(D4_CONFIG)
+    config["run_name"] = run_name
+    config["seed"] = 2
+    captured = {}
+
+    monkeypatch.setattr(
+        train_module.wandb,
+        "init",
+        lambda **kwargs: captured.update(kwargs) or object(),
+    )
+
+    def stop_before_model_setup(_seed):
+        raise RuntimeError("stop after W&B preflight")
+
+    monkeypatch.setattr(train_module, "set_global_seed", stop_before_model_setup)
+
+    with pytest.raises(RuntimeError, match="stop after W&B preflight"):
+        train_module.train(config)
+
+    assert captured["name"] == expected_name
 
 
 @pytest.mark.parametrize(
@@ -164,6 +239,95 @@ def test_v3_dry_run_validates_definition_before_printing():
 
     with pytest.raises(ValueError, match="experiment_definition"):
         main_with_sweep(config)
+
+
+@pytest.mark.parametrize(
+    ("config_path", "expected_d4"),
+    ((D4_CONFIG, True), (NO_D4_CONFIG, False)),
+)
+def test_v3_dry_run_matches_real_fresh_sweep_paths_and_command(
+    config_path, expected_d4, capsys,
+):
+    from scripts.train import main_with_sweep
+
+    config = load_effective_config(config_path)
+    config["_config_path"] = str(config_path)
+    config["__sweep"] = {
+        "enabled": True,
+        "n_seeds": 4,
+        "parallel": False,
+        "dry_run": True,
+        "resume": False,
+    }
+
+    main_with_sweep(config)
+    output = capsys.readouterr().out
+
+    assert (
+        f"python scripts/train.py --config {config_path} --seed-sweep 4"
+        in output
+    )
+    assert "--resume-sweep" not in output
+    assert "--output-dir" not in output
+    assert "--run-name" not in output
+    assert "Fresh sweep status path (reinitialized):" in output
+    assert f"d4_augment={expected_d4}" in output
+    assert "total_timesteps=100000000" in output
+    for seed in range(4):
+        model_dir = f"models/{config['run_name']}-seed{seed}"
+        assert model_dir in output
+        assert f"{model_dir}/final_model.zip" in output
+
+
+def test_fresh_seed_sweep_reinitializes_legacy_status_and_materializes_four_seeds(
+    tmp_path, monkeypatch,
+):
+    from scripts import train as train_module
+
+    config = load_effective_config(D4_CONFIG)
+    config["output_dir"] = str(tmp_path)
+    config["__sweep"] = {
+        "enabled": True,
+        "n_seeds": 4,
+        "parallel": False,
+        "dry_run": False,
+        "resume": False,
+    }
+    status_dir = tmp_path / "models" / config["run_name"]
+    status_dir.mkdir(parents=True)
+    (status_dir / "sweep_status.json").write_text(
+        '{"sweep_name":"legacy","total_seeds":3,"seeds":{"0":{"status":"completed"}}}'
+    )
+    materialized = []
+
+    def fake_train(seed_config):
+        effective_config, _ = train_module.resolve_training_config(seed_config)
+        materialized.append({
+            "seed": effective_config["root_training_seed"],
+            "run_name": effective_config["run_name"],
+            "training_seeds": effective_config["training_seeds"],
+            "load_model": effective_config["load_model"],
+            "checkpoint_path": effective_config["checkpoint_path"],
+        })
+
+    monkeypatch.setattr(train_module, "train", fake_train)
+    monkeypatch.setattr(train_module.wandb, "finish", lambda: None)
+
+    train_module.main_with_sweep(config)
+
+    assert [item["seed"] for item in materialized] == [0, 1, 2, 3]
+    assert [item["run_name"] for item in materialized] == [
+        f"{config['run_name']}-seed{seed}" for seed in range(4)
+    ]
+    assert all(item["training_seeds"] == [0, 1, 2, 3] for item in materialized)
+    assert all(item["load_model"] is False for item in materialized)
+    assert all(item["checkpoint_path"] is None for item in materialized)
+
+    status = json.loads((status_dir / "sweep_status.json").read_text())
+    assert status["sweep_name"] == config["run_name"]
+    assert status["total_seeds"] == 4
+    assert set(status["seeds"]) == {"0", "1", "2", "3"}
+    assert all(item["status"] == "completed" for item in status["seeds"].values())
 
 
 def test_resolved_training_config_records_d4_seed_provenance():

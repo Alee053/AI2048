@@ -24,6 +24,7 @@ import time
 import math
 import json as _json
 import re
+import shlex
 import subprocess
 import yaml
 import argparse
@@ -721,7 +722,10 @@ def train(config: dict):
     """Run training loop."""
     seed = seed_from_config(config)
     effective_config, d4_rank_seed_sequences = resolve_training_config(config)
-    run_name = f"{config['run_name']}-seed{seed}"
+    seed_suffix = f"-seed{seed}"
+    run_name = config["run_name"]
+    if not run_name.endswith(seed_suffix):
+        run_name = f"{run_name}{seed_suffix}"
     run = wandb.init(
         project=config['project_name'],
         config=effective_config,
@@ -885,16 +889,44 @@ def main_with_sweep(config: dict):
 
 
 def _print_dry_run(config: dict, sweep_name: str, n_seeds: int):
-    print(f"Sweep: {sweep_name} ({n_seeds} seeds, sequential)")
+    effective_config = materialize_training_config(config)
+    sweep_cfg = config.get("__sweep", {})
+    resume = bool(sweep_cfg.get("resume"))
+    parallel = bool(sweep_cfg.get("parallel"))
+    mode = "Resume" if resume else "Fresh"
+    execution = "sequential (parallel requested)" if parallel else "sequential"
+    print(f"Sweep: {sweep_name} ({n_seeds} seeds, {execution})")
     print(f"W&B group: {sweep_name}")
-    print(f"Config: {config.get('_config_path', 'unknown')}")
+    config_path = config.get("_config_path", "<config>")
+    print(f"Config: {config_path}")
+    command = (
+        f"python scripts/train.py --config {shlex.quote(str(config_path))} "
+        f"--seed-sweep {n_seeds}"
+    )
+    if resume:
+        command += " --resume-sweep"
+    if parallel:
+        command += " --parallel"
+    print(f"{mode} launch command: {command}")
+    status_path = os.path.join(
+        config["output_dir"], "models", sweep_name, SweepStatusPath,
+    )
+    status_action = "loaded" if resume else "reinitialized"
+    print(f"{mode} sweep status path ({status_action}): {status_path}")
     print()
 
     for i in range(n_seeds):
-        seed_output = os.path.join(config["output_dir"], "models", sweep_name, f"seed_{i}")
-        cmd = (f"python scripts/train.py --config <config> --seed {i} "
-               f"--output-dir {seed_output} --run-name {sweep_name}-seed{i}")
-        print(f"Seed {i} │ run: {sweep_name}-seed{i} │ output: {seed_output} │ cmd: {cmd}")
+        seed_run_name = f"{sweep_name}-seed{i}"
+        model_dir = os.path.join(config["output_dir"], "models", seed_run_name)
+        wandb_run_name = seed_run_name
+        print(
+            f"Seed {i} │ seed={i} │ run={seed_run_name} │ "
+            f"W&B name={wandb_run_name} │ "
+            f"d4_augment={effective_config['env_kwargs']['d4_augment']} │ "
+            f"total_timesteps={effective_config['total_timesteps']} │ "
+            f"fresh={not resume} │ model_dir={model_dir} │ "
+            f"final_model={os.path.join(model_dir, 'final_model.zip')}"
+        )
 
     print("\nDry run complete. No jobs launched.")
 
