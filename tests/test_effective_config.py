@@ -86,13 +86,14 @@ def test_v3_configs_explicitly_define_fresh_four_seed_experiments():
         assert config["training_seeds"] == [0, 1, 2, 3]
         assert config["load_model"] is False
         assert config["checkpoint_path"] is None
-        assert config["total_timesteps"] == 100_000_000
+        assert config["output_dir"] == "data/official_200m"
+        assert config["total_timesteps"] == 200_000_000
         assert type(config["env_kwargs"]["d4_augment"]) is bool
         assert config["env_kwargs"]["d4_augment"] is expected_d4
 
 
 @pytest.mark.parametrize("config_path", (D4_CONFIG, NO_D4_CONFIG))
-def test_v3_accepts_exact_100m_budget(config_path):
+def test_v3_accepts_exact_200m_budget(config_path):
     config = load_effective_config(config_path)
 
     validate_v3_experiment_config(config)
@@ -100,9 +101,9 @@ def test_v3_accepts_exact_100m_budget(config_path):
 
 @pytest.mark.parametrize("config_path", (D4_CONFIG, NO_D4_CONFIG))
 @pytest.mark.parametrize(
-    "total_timesteps", [1, 5_000_000, 99_999_999, 100_000_001],
+    "total_timesteps", [1, 5_000_000, 199_999_999, 200_000_001],
 )
-def test_v3_rejects_any_non_100m_budget(config_path, total_timesteps):
+def test_v3_rejects_any_non_200m_budget(config_path, total_timesteps):
     config = load_effective_config(config_path)
     config["total_timesteps"] = total_timesteps
 
@@ -223,6 +224,15 @@ def test_v3_seed_sweep_requires_all_four_configured_seeds():
     with pytest.raises(ValueError, match="training_seeds"):
         validate_v3_seed_sweep(config, requested_seed_count=3)
 
+    with pytest.raises(ValueError, match="resume"):
+        validate_v3_seed_sweep(config, requested_seed_count=4, resume=True)
+
+    config["__sweep"] = {"enabled": False, "resume": True}
+    from scripts import train as train_module
+
+    with pytest.raises(ValueError, match="resume"):
+        train_module.main_with_sweep(config)
+
 
 def test_v3_dry_run_validates_definition_before_printing():
     from scripts.train import main_with_sweep
@@ -272,16 +282,14 @@ def test_v3_dry_run_matches_real_fresh_sweep_paths_and_command(
     assert "--run-name" not in output
     assert "Fresh sweep status path (reinitialized):" in output
     assert f"d4_augment={expected_d4}" in output
-    assert "total_timesteps=100000000" in output
+    assert "total_timesteps=200000000" in output
     for seed in range(4):
         model_dir = f"models/{config['run_name']}-seed{seed}"
         assert model_dir in output
         assert f"{model_dir}/final_model.zip" in output
 
 
-def test_fresh_seed_sweep_reinitializes_legacy_status_and_materializes_four_seeds(
-    tmp_path, monkeypatch,
-):
+def test_fresh_v3_seed_sweep_rejects_existing_output(tmp_path):
     from scripts import train as train_module
 
     config = load_effective_config(D4_CONFIG)
@@ -298,36 +306,89 @@ def test_fresh_seed_sweep_reinitializes_legacy_status_and_materializes_four_seed
     (status_dir / "sweep_status.json").write_text(
         '{"sweep_name":"legacy","total_seeds":3,"seeds":{"0":{"status":"completed"}}}'
     )
-    materialized = []
+    with pytest.raises(ValueError, match="absent or empty"):
+        train_module.main_with_sweep(config)
 
-    def fake_train(seed_config):
-        effective_config, _ = train_module.resolve_training_config(seed_config)
-        materialized.append({
-            "seed": effective_config["root_training_seed"],
-            "run_name": effective_config["run_name"],
-            "training_seeds": effective_config["training_seeds"],
-            "load_model": effective_config["load_model"],
-            "checkpoint_path": effective_config["checkpoint_path"],
-        })
+    assert json.loads((status_dir / "sweep_status.json").read_text()) == {
+        "sweep_name": "legacy",
+        "total_seeds": 3,
+        "seeds": {"0": {"status": "completed"}},
+    }
 
+
+def test_fresh_v3_seed_sweep_rejects_existing_seed_before_status(tmp_path):
+    from scripts import train as train_module
+
+    config = load_effective_config(D4_CONFIG)
+    config["output_dir"] = str(tmp_path)
+    config["__sweep"] = {
+        "enabled": True,
+        "n_seeds": 4,
+        "parallel": False,
+        "dry_run": False,
+        "resume": False,
+    }
+    stale_seed_dir = tmp_path / "models" / "hybrid_ppo_v3-seed2"
+    stale_seed_dir.mkdir(parents=True)
+    marker = stale_seed_dir / "legacy-model.zip"
+    marker.write_bytes(b"legacy")
+
+    with pytest.raises(ValueError, match="absent or empty"):
+        train_module.main_with_sweep(config)
+
+    assert marker.read_bytes() == b"legacy"
+    assert not (tmp_path / "models" / "hybrid_ppo_v3" / "sweep_status.json").exists()
+
+
+def test_v3_sweep_snapshots_git_before_writing_status(tmp_path, monkeypatch):
+    from scripts import train as train_module
+
+    config = load_effective_config(D4_CONFIG)
+    config["output_dir"] = str(tmp_path)
+    config["__sweep"] = {
+        "enabled": True,
+        "n_seeds": 4,
+        "parallel": False,
+        "dry_run": False,
+        "resume": False,
+    }
+    snapshot = {"git_commit": "a" * 40, "git_dirty": False}
+    collected = []
+    received = []
+
+    def fake_collect():
+        collected.append(True)
+        return snapshot
+
+    def fake_train(seed_config, *, git_provenance_at_start):
+        received.append((seed_config["seed"], git_provenance_at_start))
+
+    monkeypatch.setattr(train_module, "collect_git_provenance", fake_collect)
     monkeypatch.setattr(train_module, "train", fake_train)
     monkeypatch.setattr(train_module.wandb, "finish", lambda: None)
 
     train_module.main_with_sweep(config)
 
-    assert [item["seed"] for item in materialized] == [0, 1, 2, 3]
-    assert [item["run_name"] for item in materialized] == [
-        f"{config['run_name']}-seed{seed}" for seed in range(4)
-    ]
-    assert all(item["training_seeds"] == [0, 1, 2, 3] for item in materialized)
-    assert all(item["load_model"] is False for item in materialized)
-    assert all(item["checkpoint_path"] is None for item in materialized)
+    assert len(collected) == 1
+    assert received == [(seed, snapshot) for seed in range(4)]
 
-    status = json.loads((status_dir / "sweep_status.json").read_text())
-    assert status["sweep_name"] == config["run_name"]
-    assert status["total_seeds"] == 4
-    assert set(status["seeds"]) == {"0", "1", "2", "3"}
-    assert all(item["status"] == "completed" for item in status["seeds"].values())
+
+def test_v3_training_rejects_nonempty_output_before_wandb(tmp_path, monkeypatch):
+    from scripts import train as train_module
+
+    config = load_effective_config(D4_CONFIG)
+    config["output_dir"] = str(tmp_path)
+    model_dir = tmp_path / "models" / config["run_name"]
+    model_dir.mkdir(parents=True)
+    (model_dir / "legacy-checkpoint.zip").write_bytes(b"legacy")
+    monkeypatch.setattr(
+        train_module.wandb,
+        "init",
+        lambda **_: pytest.fail("W&B must not initialize for a reused v3 output"),
+    )
+
+    with pytest.raises(ValueError, match="absent or empty"):
+        train_module.train(config)
 
 
 def test_resolved_training_config_records_d4_seed_provenance():

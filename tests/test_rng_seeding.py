@@ -178,6 +178,14 @@ def test_training_passes_training_seed_to_maskable_ppo(tmp_path, monkeypatch):
     import scripts.train as train_module
 
     captured = {}
+    start_git_snapshot = {
+        "git_commit": "a" * 40,
+        "git_commit_at_start": "a" * 40,
+        "git_status_porcelain": "",
+        "git_status_at_start": "",
+        "git_dirty": False,
+        "git_dirty_at_start": False,
+    }
 
     class FakeModel:
         num_timesteps = 0
@@ -196,9 +204,18 @@ def test_training_passes_training_seed_to_maskable_ppo(tmp_path, monkeypatch):
     monkeypatch.setattr(train_module, "WandbLoggingCallback", lambda: object())
     monkeypatch.setattr(train_module, "CheckpointCallback", lambda **kwargs: object())
     monkeypatch.setattr(train_module, "set_global_seed", lambda seed: None)
-    monkeypatch.setattr(train_module, "persist_training_manifest", lambda *args: None)
+    monkeypatch.setattr(
+        train_module,
+        "persist_training_manifest",
+        lambda *args, **kwargs: captured.update(
+            manifest_git_provenance=kwargs["git_provenance"]
+        ),
+    )
     monkeypatch.setattr(train_module, "validate_training_manifest", lambda *args: None)
     monkeypatch.setattr(train_module.wandb, "init", lambda **kwargs: object())
+    monkeypatch.setattr(
+        train_module, "collect_git_provenance", lambda: start_git_snapshot
+    )
 
     train_module.train(
         {
@@ -222,3 +239,4 @@ def test_training_passes_training_seed_to_maskable_ppo(tmp_path, monkeypatch):
     )
 
     assert captured["seed"] == 37
+    assert captured["manifest_git_provenance"] is start_git_snapshot

@@ -17,7 +17,7 @@ This project implements a **hybrid AI agent** for the game 2048 that combines:
 
 The core insight: **learned value functions can replace hand-crafted heuristics** in classical search algorithms, reducing search depth requirements while maintaining strong performance.
 
-**Key Result (v3, D4-augmented):** at depth 3 the release model scores **38,430.76 ± 15,893.73** (n=100, 95% CI 35,316–41,546; median **35,508**), with win rates **100% / 87% / 24%** at 1024 / 2048 / 4096. Across **4 training seeds** (n=100 each), the mean of model means is **36,268** (sample SD **2,665**; 95% CI [32,027, 40,509]) — every seed reaches 2048+ in 72–87% of games. On the depth ablation (same release model, shared per-episode tile-spawn seeds, n=100/depth) mean score rises **monotonically**: **6,080 (d=0) → 7,930 (d=1) → 20,696 (d=2) → 38,431 (d=3)**, with the 2048+ win rate stepping 35%→87% between depth 2 and 3 — a **~1.45× gain** over the pre-D4 v1 depth-3 baseline (~26,523, 58% at 2048+).
+**Historical diagnostic result (v3, D4-augmented, 100M-step dress rehearsal):** at depth 3 the diagnostic model scores **38,430.76 ± 15,893.73** (n=100, 95% CI 35,316–41,546; median **35,508**), with win rates **100% / 87% / 24%** at 1024 / 2048 / 4096. Across **4 training seeds** (n=100 each), the mean of model means is **36,268** (sample SD **2,665**; 95% CI [32,027, 40,509]) — every seed reaches 2048+ in 72–87% of games. On the depth ablation (same diagnostic model, shared per-episode tile-spawn seeds, n=100/depth) mean score rises **monotonically**: **6,080 (d=0) → 7,930 (d=1) → 20,696 (d=2) → 38,431 (d=3)**, with the 2048+ win rate stepping 35%→87% between depth 2 and 3 — a **~1.45× gain** over the pre-D4 v1 depth-3 baseline (~26,523, 58% at 2048+). These results are not the official 200M four-seed paper matrix.
 
 ---
 
@@ -45,7 +45,7 @@ uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.z
 
 ### **Ablation Study: Search Depth Impact**
 
-All rows are the **same v3 (D4-augmented) release model** (md5 `fab18d67…`), run with identical per-episode tile-spawn seeds (`--base-eval-seed 20482048`), `--device cuda --workers 1`, **n=100 episodes per depth**. Because the seed sequence is shared across depths, score deltas are attributable to search depth alone. (Run folders: `data/benchmarks/paper_d{0,1,2,3}_n100/`.)
+All rows are the **same historical v3 (D4-augmented) diagnostic model** (md5 `fab18d67…`), run with identical per-episode tile-spawn seeds (`--base-eval-seed 20482048`), `--device cuda --workers 1`, **n=100 episodes per depth**. Because the seed sequence is shared across depths, score deltas are attributable to search depth alone. These results are not the official 200M four-seed paper matrix. (Run folders: `data/benchmarks/paper_d{0,1,2,3}_n100/`.)
 
 | Configuration | Avg Score | 95% CI | Median | 1024+ | 2048+ | 4096+ | Max Tile (top 3) |
 |---|---:|---|---:|---:|---:|---:|---|
@@ -98,7 +98,7 @@ Going to depth 3 aggregates value estimates over **~141M leaf nodes per game** (
 
 ### **Multi-Seed Robustness (depth 3)**
 
-The release model is one of four trained from the same config with different seeds (`hybrid_ppo_v3` + seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`):
+The historical diagnostic set contains four models trained from the same config with different seeds (`hybrid_ppo_v3` + seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`). It is a dress rehearsal, not the official 200M four-seed paper matrix. Official v3 outputs use the separate `data/official_200m/` namespace so these artifacts remain unchanged.
 
 | Model | Mean Score | 95% CI | Median | 2048+ | 4096+ |
 |---|---:|---|---:|---:|---:|
@@ -116,13 +116,13 @@ The release model is one of four trained from the same config with different see
 
 ### **Versioned Models and Benchmark Artifacts**
 
-The repository versions the **four final models** and every benchmark artifact used by the figures and tables above. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the definitive 100-game release evaluation.
+The repository retains the **four historical diagnostic models** and every benchmark artifact used by the figures and tables above. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the definitive 100-game diagnostic evaluation.
 
-**Final models**
+**Historical diagnostic models**
 
 | Path | Contents |
 |---|---|
-| `data/models/release/Hybrid-PPO-Expectimax-v3.zip` | D4-augmented release model used for the depth-0 through depth-3 ablation. |
+| `data/models/release/Hybrid-PPO-Expectimax-v3.zip` | Historical D4-augmented diagnostic model used for the depth-0 through depth-3 ablation. |
 | `data/models/hybrid_ppo_v3/sweep_status.json` | Completion manifest for the three-seed sweep. |
 | `data/models/hybrid_ppo_v3-seed0/final_model.zip` | Final model for training seed 0. |
 | `data/models/hybrid_ppo_v3-seed1/final_model.zip` | Final model for training seed 1. |
@@ -371,7 +371,7 @@ def objective(trial, config):
     return np.mean([ep_info['r'] for ep_info in model.ep_info_buffer])
 ```
 
-**Final Hyperparameters (v3 release, [`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
+**Official v3 Training Hyperparameters ([`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
 - Learning Rate: `2.507e-4` (linear decay to 0)
 - Discount Factor ($\gamma$): `0.9500`
 - GAE Lambda ($\lambda$): `0.95` (Stable-Baselines3 default; not overridden in config)
@@ -380,7 +380,7 @@ def objective(trial, config):
 - Rollout steps per env (`n_steps`): `512`
 - Batch Size: `4096`
 - Epochs per update: `4`
-- Total timesteps: `100,000,000`
+- Total timesteps: `200,000,000`
 - Parallel envs: `128`
 
 ---
@@ -617,13 +617,19 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 **Quick examples:**
 
 ```bash
-# Paper-grade single-worker, depth-3, 100 episodes.
-# The model directory must contain its matching effective_config.json.
+# Historical diagnostic benchmark; this 100M model is not paper-grade.
 uv run python -m scripts.benchmark \
   data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 3 --workers 1 --device cuda \
-  --output v3_depth3_final --base-eval-seed 0 --train-seed <training-seed> \
-  --paper-mode
+  --output v3_depth3_diagnostic --base-eval-seed 0
+
+# Official paper-grade example after the 200M seed-0 run completes.
+# The model directory must contain its matching effective_config.json and manifest.
+uv run python -m scripts.benchmark \
+  data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
+  --n-runs 100 --depth 3 --workers 1 --device cuda \
+  --output v3_200m_seed0_depth3 --base-eval-seed 20482048 \
+  --train-seed 0 --sweep-name hybrid_ppo_v3_official_200m --paper-mode
 
 # Throughput-mode: 8 CPU workers, depth-3
 uv run python -m scripts.benchmark \
@@ -677,9 +683,9 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
 {
   "benchmark_schema_version": "2.1.0",
   "run_id": "uuid4...",
-  "run_name": "v3_depth3_final",
-  "sweep_name": "hybrid_ppo_v3",
-  "model_path": "/repo/data/models/release/Hybrid-PPO-Expectimax-v3.zip",
+  "run_name": "v3_200m_seed0_depth3",
+  "sweep_name": "hybrid_ppo_v3_official_200m",
+  "model_path": "/repo/data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip",
   "training_manifest_path": ".../training_manifest.json",
   "training_manifest_sha256": "...",
   "training_model_sha256": "...",
@@ -938,14 +944,14 @@ Effect tables contain `n_models`, `df`, `mean_delta`, `sd_delta`, `ci95_low`,
 
 ### **Multi-Seed Benchmarking (status: placeholder)**
 
-The `--model-dir` flag is wired through the CLI but `scripts/benchmark_multi_seed.py` is currently a stub that returns exit code 1 with a clear error. Multi-seed evaluation is therefore limited to repeated single-model invocations:
+The `--model-dir` flag is wired through the CLI but `scripts/benchmark_multi_seed.py` is currently a stub that returns exit code 1 with a clear error. The commands below reproduce the historical diagnostic artifacts; the official 200M training matrix must be completed first:
 
 ```bash
 for seed in 0 1 2; do
   uv run python -m scripts.benchmark "data/models/hybrid_ppo_v3-seed${seed}/final_model.zip" \
     --n-runs 100 --depth 3 --workers 1 \
     --output "hybrid_ppo_v3-seed${seed}_depth3" \
-    --base-eval-seed 0
+    --base-eval-seed 0 --sweep-name hybrid_ppo_v3_diagnostic
 done
 ```
 
@@ -987,7 +993,8 @@ Example config is provided in `configs/train/`:
 configs/train/
 ├─ hybrid_ppo_v1.yaml     # Original training (200M steps, v1 model)
 ├─ hybrid_ppo_v2_sweep.yaml # Hyperparameter sweep
-├─ hybrid_ppo_v3.yaml     # D4-augmented training (100M steps, v3 model — current release)
+├─ hybrid_ppo_v3.yaml     # D4-augmented training (200M steps, official v3 condition)
+├─ hybrid_ppo_v3_no_d4.yaml # No-D4 training (200M steps, official comparison condition)
 └─ resume_training.yaml   # Resume from a checkpoint
 configs/tune/
 └─ bayesian_opt_search.yaml # Optuna search space
@@ -1044,9 +1051,15 @@ uv run python scripts/train.py --config configs/train/my_experiment.yaml
 
 ### **Quick Start**
 
-Train a new agent (v1 config: 200M steps; the v3 release uses 100M — see `configs/train/`):
+Train a new agent (the v1 and official v3 configs use 200M steps; the earlier 100M v3 run was diagnostic only):
 ```bash
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+```
+
+Start the official v3 D4 or No-D4 four-seed sweep from scratch. The sweep begins with seed 0 and must not use `--resume-sweep`:
+```bash
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml --seed-sweep 4
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3_no_d4.yaml --seed-sweep 4
 ```
 
 Evaluate with visualization:
@@ -1054,16 +1067,17 @@ Evaluate with visualization:
 uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
-Run full benchmark suite (paper-grade; the model directory must contain its matching `effective_config.json`):
+Run the official benchmark suite after training (paper-grade; the model directory must contain its matching `effective_config.json` and manifest):
 ```bash
-uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+uv run python -m scripts.benchmark data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
   --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test \
-  --base-eval-seed 0 --train-seed <training-seed> --paper-mode
+  --base-eval-seed 20482048 --train-seed 0 \
+  --sweep-name hybrid_ppo_v3_official_200m --paper-mode
 ```
 
 Throughput-mode benchmark (CPU, 8 workers):
 ```bash
-uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+uv run python -m scripts.benchmark data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
   --n-runs 200 --depth 3 --workers 8 --device cpu --output depth3_throughput
 ```
 
@@ -1107,17 +1121,17 @@ ACTION_TO_CANONICAL = np.array([
 invariance without per-script configuration. Benchmark, evaluate, and
 visualizer paths are untouched (the env defaults to `d4_augment=False`).
 
-**Verify on the released v3 model:**
+**Verify on the historical 100M diagnostic v3 model:**
 
 ```bash
 uv run python scripts/check_d4_invariance.py
 ```
 
-On 100 random mid-game boards the released v3 model has mean abs diff
+On 100 random mid-game boards the historical diagnostic v3 model has mean abs diff
 ~0.35 and max diff ~1.65 across the 7 non-identity D4 elements. The OLD
 v1 release (pre-augmentation) had mean ~1.0, max ~6.0 on the same boards
 — a 3-4× improvement in D4 invariance. The 0.01 tolerance is aspirational; the CustomCNN is not rotation-equivariant
-by design, so 100M steps gets the model close but not perfect. The
+by design, so the 100M diagnostic run gets the model close but not perfect. The
 residual error is small enough that the C++ search still picks strong
 moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 
@@ -1184,15 +1198,17 @@ moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 │   └── stress_depth4_real.py      # Real-model depth-4 stress test
 ├── data/
 │   ├── models/
-│   │   ├── release/Hybrid-PPO-Expectimax-v3.zip  # D4-augmented release
+│   │   ├── release/Hybrid-PPO-Expectimax-v3.zip  # Historical D4 diagnostic model
 │   │   ├── hybrid_ppo_v3/sweep_status.json       # Seed-sweep completion manifest
 │   │   └── hybrid_ppo_v3-seed{0,1,2}/final_model.zip
+│   ├── official_200m/             # Ignored official v3 training outputs
 │   └── benchmarks/                # 8 final runs force-added; future runs stay ignored
 ├── configs/
 │   ├── train/
 │   │   ├── hybrid_ppo_v1.yaml     # v1 (no D4 aug)
 │   │   ├── hybrid_ppo_v2_sweep.yaml
-│   │   ├── hybrid_ppo_v3.yaml     # v3 (D4-augmented, current release)
+│   │   ├── hybrid_ppo_v3.yaml     # v3 (D4-augmented, official 200M condition)
+│   │   ├── hybrid_ppo_v3_no_d4.yaml # v3 comparison (No-D4, official 200M condition)
 │   │   └── resume_training.yaml
 │   └── tune/
 │       └── bayesian_opt_search.yaml

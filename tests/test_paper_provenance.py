@@ -57,28 +57,30 @@ def valid_artifacts(tmp_path, monkeypatch):
         "seed": 0,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 0,
-        "total_timesteps": 100_000_000,
+        "total_timesteps": 200_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": True},
         "experiment_definition": _v3_definition(),
     }
     train_module.persist_effective_config(model_dir, effective_config)
-    monkeypatch.setattr(
-        train_module,
-        "collect_git_provenance",
-        lambda: {
-            "git_commit": "a" * 40,
-            "git_status_porcelain": "",
-            "git_dirty": False,
-        },
-    )
     model = _make_model()
     try:
-        model.num_timesteps = 100_000_000
+        model.num_timesteps = 200_000_000
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
-            model_dir, str(model_path), model, effective_config,
+            model_dir,
+            str(model_path),
+            model,
+            effective_config,
+            git_provenance={
+                "git_commit": "a" * 40,
+                "git_commit_at_start": "a" * 40,
+                "git_status_porcelain": "",
+                "git_status_at_start": "",
+                "git_dirty": False,
+                "git_dirty_at_start": False,
+            },
         )
     finally:
         model.get_env().close()
@@ -101,7 +103,7 @@ def test_valid_training_binding_recomputes_all_artifact_hashes(valid_artifacts):
 
     assert binding["condition"] == "d4"
     assert binding["training_seed"] == 0
-    assert binding["final_timestep"] == 100_000_000
+    assert binding["final_timestep"] == 200_000_000
     assert len(binding["training_manifest_sha256"]) == 64
     assert binding["training_model_sha256"]
     assert binding["training_native_extension_sha256"]
@@ -210,7 +212,7 @@ def _write_valid_paper_run(run_dir, valid_artifacts):
         "ppo_class": manifest["ppo_class"],
         "value_head_lr_multiplier": 10.0,
         "training_effective_config_sha256": binding["training_effective_config_sha256"],
-        "final_timestep": 100_000_000,
+        "final_timestep": 200_000_000,
         "training_git_commit": manifest["git_commit"],
         "training_native_extension_sha256": binding["training_native_extension_sha256"],
         "training_uv_lock_sha256": binding["training_uv_lock_sha256"],
@@ -461,7 +463,9 @@ def test_paper_validation_rejects_dirty_training_manifest(tmp_path, valid_artifa
     _write_valid_paper_run(run_dir, valid_artifacts)
     manifest = json.loads(valid_artifacts["manifest_path"].read_text())
     manifest["git_dirty"] = True
+    manifest["git_dirty_at_start"] = True
     manifest["git_status_porcelain"] = " M generated"
+    manifest["git_status_at_start"] = " M generated"
     manifest["paper_grade"] = False
     valid_artifacts["manifest_path"].write_text(json.dumps(manifest))
 

@@ -123,7 +123,7 @@ def set_global_seed(seed: int) -> None:
 
 
 def collect_git_provenance() -> dict[str, str | bool]:
-    """Collect the commit and real porcelain worktree state for a run."""
+    """Capture the source Git state before a run creates its artifacts."""
     try:
         git_commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -141,10 +141,45 @@ def collect_git_provenance() -> dict[str, str | bool]:
         raise RuntimeError("Unable to collect git provenance") from exc
     if not git_commit:
         raise RuntimeError("Unable to collect git commit SHA")
+    git_dirty_at_start = bool(git_status_porcelain)
     return {
         "git_commit": git_commit,
+        "git_commit_at_start": git_commit,
         "git_status_porcelain": git_status_porcelain,
-        "git_dirty": bool(git_status_porcelain),
+        "git_status_at_start": git_status_porcelain,
+        "git_dirty": git_dirty_at_start,
+        "git_dirty_at_start": git_dirty_at_start,
+    }
+
+
+def _normalize_git_start_provenance(
+    git_provenance: Mapping[str, object],
+) -> dict[str, str | bool]:
+    """Normalize the initial Git snapshot and preserve legacy manifest aliases."""
+    git_commit_at_start = git_provenance.get(
+        "git_commit_at_start", git_provenance.get("git_commit")
+    )
+    git_status_at_start = git_provenance.get(
+        "git_status_at_start", git_provenance.get("git_status_porcelain")
+    )
+    git_dirty_at_start = git_provenance.get(
+        "git_dirty_at_start", git_provenance.get("git_dirty")
+    )
+    if not isinstance(git_commit_at_start, str) or not git_commit_at_start:
+        raise RuntimeError("git_commit_at_start must be a non-empty string")
+    if not isinstance(git_status_at_start, str):
+        raise RuntimeError("git_status_at_start must be a string")
+    if not isinstance(git_dirty_at_start, bool):
+        raise RuntimeError("git_dirty_at_start must be a boolean")
+    if git_dirty_at_start != bool(git_status_at_start):
+        raise RuntimeError("git_dirty_at_start does not match git_status_at_start")
+    return {
+        "git_commit": git_commit_at_start,
+        "git_commit_at_start": git_commit_at_start,
+        "git_status_porcelain": git_status_at_start,
+        "git_status_at_start": git_status_at_start,
+        "git_dirty": git_dirty_at_start,
+        "git_dirty_at_start": git_dirty_at_start,
     }
 
 
@@ -296,12 +331,15 @@ def build_fresh_model(
     )
 
 
-def validate_v3_seed_sweep(config: dict, requested_seed_count: int) -> None:
+def validate_v3_seed_sweep(
+    config: dict, requested_seed_count: int, *, resume: bool = False
+) -> None:
     """Require the configured four-seed sweep for either v3 condition."""
     validate_v3_experiment_config(config)
-    definition = config.get("experiment_definition")
-    if not isinstance(definition, Mapping) or definition.get("name") != "v3":
+    if not _is_v3_experiment(config):
         return
+    if resume:
+        raise ValueError("official v3 seed sweeps cannot use --resume-sweep")
     if requested_seed_count != len(V3_TRAINING_SEEDS):
         raise ValueError(
             "v3 training requires requested seed count to match training_seeds "
@@ -317,7 +355,27 @@ def persist_effective_config(model_dir: str | Path, effective_config: dict) -> P
     return path
 
 
-def persist_training_manifest(model_dir: str | Path, model_path: str, model, effective_config: dict) -> Path:
+def _is_v3_experiment(config: Mapping[str, object]) -> bool:
+    definition = config.get("experiment_definition")
+    return isinstance(definition, Mapping) and definition.get("name") == "v3"
+
+
+def _require_empty_output_dir(path: str | Path, description: str) -> None:
+    path = Path(path)
+    if not path.exists():
+        return
+    if not path.is_dir() or any(path.iterdir()):
+        raise ValueError(f"{description} must be absent or empty: {path}")
+
+
+def persist_training_manifest(
+    model_dir: str | Path,
+    model_path: str,
+    model,
+    effective_config: dict,
+    *,
+    git_provenance: Mapping[str, object],
+) -> Path:
     """Persist immutable provenance bound to the final saved model."""
     effective_config_path = Path(model_dir) / EFFECTIVE_CONFIG_FILENAME
     if not effective_config_path.is_file():
@@ -330,6 +388,7 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
     if persisted_config != effective_config:
         raise RuntimeError("Effective config on disk differs from in-memory config")
     validate_v3_experiment_config(effective_config)
+    git_provenance = _normalize_git_start_provenance(git_provenance)
     env_kwargs = effective_config.get("env_kwargs")
     d4_augment = env_kwargs.get("d4_augment") if isinstance(env_kwargs, dict) else None
     if type(d4_augment) is not bool:
@@ -345,7 +404,6 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
         raise RuntimeError(
             "Training manifest must bind model_dir/effective_config.json"
         )
-    git_provenance = collect_git_provenance()
     runtime_provenance = collect_runtime_provenance(
         model_path=str(resolved_model_path),
         effective_config=str(resolved_effective_config_path),
@@ -386,14 +444,22 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
         if not runtime_provenance.get("uv_lock_sha256"):
             missing.append("uv_lock_sha256")
         raise RuntimeError("Missing training provenance: " + ", ".join(missing))
-    if not isinstance(git_provenance.get("git_dirty"), bool):
-        raise RuntimeError("git_dirty must be a boolean")
-    if not isinstance(git_provenance.get("git_status_porcelain"), str):
-        raise RuntimeError("git_status_porcelain must be a string")
+    if not isinstance(git_provenance.get("git_dirty_at_start"), bool):
+        raise RuntimeError("git_dirty_at_start must be a boolean")
+    if not isinstance(git_provenance.get("git_status_at_start"), str):
+        raise RuntimeError("git_status_at_start must be a string")
     if not re.fullmatch(r"[0-9a-f]{40}", git_provenance.get("git_commit", "")):
         raise RuntimeError("git_commit must be a 40-character hexadecimal SHA")
-    if git_provenance["git_dirty"] != bool(git_provenance.get("git_status_porcelain")):
-        raise RuntimeError("git_dirty does not match git_status_porcelain")
+    if git_provenance["git_commit"] != git_provenance["git_commit_at_start"]:
+        raise RuntimeError("git_commit does not match git_commit_at_start")
+    if git_provenance["git_status_porcelain"] != git_provenance["git_status_at_start"]:
+        raise RuntimeError("git_status_porcelain does not match git_status_at_start")
+    if git_provenance["git_dirty"] != git_provenance["git_dirty_at_start"]:
+        raise RuntimeError("git_dirty does not match git_dirty_at_start")
+    if git_provenance["git_dirty_at_start"] != bool(
+        git_provenance.get("git_status_at_start")
+    ):
+        raise RuntimeError("git_dirty_at_start does not match git_status_at_start")
     for field, actual in (
         ("model_sha256", model_sha256),
         ("effective_config_sha256", effective_config_sha256),
@@ -432,7 +498,7 @@ def persist_training_manifest(model_dir: str | Path, model_path: str, model, eff
     )
     if is_v3 and not fresh_training:
         raise RuntimeError("v3 training manifest requires a fresh training run")
-    git_dirty = git_provenance["git_dirty"]
+    git_dirty = git_provenance["git_dirty_at_start"]
 
     manifest = {
         **git_provenance,
@@ -581,19 +647,49 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
         "manifest effective_config does not match effective config file",
     )
     validate_v3_experiment_config(effective_config)
+    is_v3 = _is_v3_experiment(effective_config)
+    if is_v3:
+        git_commit_at_start = manifest.get("git_commit_at_start")
+        git_status_at_start = manifest.get("git_status_at_start")
+        git_dirty_at_start = manifest.get("git_dirty_at_start")
+    else:
+        git_commit_at_start = manifest.get(
+            "git_commit_at_start", manifest.get("git_commit")
+        )
+        git_status_at_start = manifest.get(
+            "git_status_at_start", manifest.get("git_status_porcelain")
+        )
+        git_dirty_at_start = manifest.get(
+            "git_dirty_at_start", manifest.get("git_dirty")
+        )
     require(
-        isinstance(manifest.get("git_commit"), str)
-        and re.fullmatch(r"[0-9a-f]{40}", manifest["git_commit"]) is not None,
-        "manifest git_commit is missing",
+        isinstance(git_commit_at_start, str)
+        and re.fullmatch(r"[0-9a-f]{40}", git_commit_at_start) is not None,
+        "manifest git_commit_at_start is missing",
     )
-    require(isinstance(manifest.get("git_dirty"), bool), "manifest git_dirty is invalid")
     require(
-        isinstance(manifest.get("git_status_porcelain"), str),
-        "manifest git_status_porcelain is invalid",
+        isinstance(git_status_at_start, str),
+        "manifest git_status_at_start is invalid",
     )
     require(
-        manifest["git_dirty"] == bool(manifest.get("git_status_porcelain")),
-        "manifest git_dirty does not match git_status_porcelain",
+        isinstance(git_dirty_at_start, bool),
+        "manifest git_dirty_at_start is invalid",
+    )
+    require(
+        manifest.get("git_commit") == git_commit_at_start,
+        "manifest git_commit does not match git_commit_at_start",
+    )
+    require(
+        manifest.get("git_status_porcelain") == git_status_at_start,
+        "manifest git_status_porcelain does not match git_status_at_start",
+    )
+    require(
+        manifest.get("git_dirty") == git_dirty_at_start,
+        "manifest git_dirty does not match git_dirty_at_start",
+    )
+    require(
+        git_dirty_at_start == bool(git_status_at_start),
+        "manifest git_dirty_at_start does not match git_status_at_start",
     )
     for field in ("python_version", "torch_version", "sb3_version"):
         require(
@@ -710,15 +806,18 @@ def validate_training_manifest(manifest_path: str | Path) -> dict:
                 "saved model did not reach configured total_timesteps",
             )
 
-    git_dirty = manifest.get("git_dirty")
     require(
-        manifest.get("paper_grade") is (git_dirty is False),
-        "manifest paper_grade does not match git_dirty",
+        manifest.get("paper_grade") is (git_dirty_at_start is False),
+        "manifest paper_grade does not match git_dirty_at_start",
     )
     return manifest
 
 
-def train(config: dict):
+def train(
+    config: dict,
+    *,
+    git_provenance_at_start: Mapping[str, object] | None = None,
+):
     """Run training loop."""
     seed = seed_from_config(config)
     effective_config, d4_rank_seed_sequences = resolve_training_config(config)
@@ -726,6 +825,11 @@ def train(config: dict):
     run_name = config["run_name"]
     if not run_name.endswith(seed_suffix):
         run_name = f"{run_name}{seed_suffix}"
+    model_dir = os.path.join(config['output_dir'], "models", config['run_name'])
+    if _is_v3_experiment(effective_config):
+        _require_empty_output_dir(model_dir, "v3 fresh training output directory")
+    if git_provenance_at_start is None:
+        git_provenance_at_start = collect_git_provenance()
     run = wandb.init(
         project=config['project_name'],
         config=effective_config,
@@ -734,7 +838,6 @@ def train(config: dict):
     )
     set_global_seed(seed)
 
-    model_dir = os.path.join(config['output_dir'], "models", config['run_name'])
     os.makedirs(model_dir, exist_ok=True)
     persist_effective_config(model_dir, effective_config)
 
@@ -822,7 +925,11 @@ def train(config: dict):
     final_model_path = os.path.join(model_dir, "final_model.zip")
     model.save(final_model_path)
     manifest_path = persist_training_manifest(
-        model_dir, final_model_path, model, effective_config
+        model_dir,
+        final_model_path,
+        model,
+        effective_config,
+        git_provenance=git_provenance_at_start,
     )
     validate_training_manifest(manifest_path)
     print(f"Final model saved to: {final_model_path}")
@@ -832,11 +939,14 @@ def train(config: dict):
 def main_with_sweep(config: dict):
     sweep_cfg = config.get("__sweep", {})
     if not sweep_cfg.get("enabled"):
+        if _is_v3_experiment(config) and sweep_cfg.get("resume"):
+            raise ValueError("official v3 training cannot use --resume-sweep")
         train(config)
         return
 
     n_seeds = sweep_cfg["n_seeds"]
-    validate_v3_seed_sweep(config, n_seeds)
+    is_v3 = _is_v3_experiment(config)
+    validate_v3_seed_sweep(config, n_seeds, resume=bool(sweep_cfg["resume"]))
     sweep_name = config.get("run_name", f"sweep_{int(time.time())}")
     output_dir = os.path.join(config["output_dir"], "models", sweep_name)
 
@@ -848,6 +958,18 @@ def main_with_sweep(config: dict):
         _print_dry_run(config, sweep_name, n_seeds)
         return
 
+    if is_v3:
+        _require_empty_output_dir(output_dir, "v3 fresh sweep output directory")
+        for seed_i in range(n_seeds):
+            _require_empty_output_dir(
+                os.path.join(
+                    config["output_dir"], "models", f"{sweep_name}-seed{seed_i}"
+                ),
+                "v3 fresh seed output directory",
+            )
+        git_provenance_at_start = collect_git_provenance()
+    else:
+        git_provenance_at_start = None
     os.makedirs(output_dir, exist_ok=True)
 
     if sweep_cfg["resume"]:
@@ -874,7 +996,13 @@ def main_with_sweep(config: dict):
         seed_config["run_name"] = f"{sweep_name}-seed{seed_i}"
 
         try:
-            train(seed_config)
+            if is_v3:
+                train(
+                    seed_config,
+                    git_provenance_at_start=git_provenance_at_start,
+                )
+            else:
+                train(seed_config)
             _update_sweep_status(output_dir, seed_i, "completed")
             print(f"Seed {seed_i}: completed.")
         except Exception as e:

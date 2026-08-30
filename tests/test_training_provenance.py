@@ -20,6 +20,18 @@ def _v3_definition():
     }
 
 
+def _git_snapshot(commit: str, status: str) -> dict[str, str | bool]:
+    dirty = bool(status)
+    return {
+        "git_commit": commit,
+        "git_commit_at_start": commit,
+        "git_status_porcelain": status,
+        "git_status_at_start": status,
+        "git_dirty": dirty,
+        "git_dirty_at_start": dirty,
+    }
+
+
 def _make_v3_model():
     from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -59,12 +71,27 @@ def test_git_provenance_uses_porcelain_status(monkeypatch):
 
     monkeypatch.setattr(train_module.subprocess, "check_output", fake_check_output)
 
-    assert train_module.collect_git_provenance() == {
-        "git_commit": "a" * 40,
-        "git_status_porcelain": " M changed.py\n",
-        "git_dirty": True,
-    }
+    assert train_module.collect_git_provenance() == _git_snapshot(
+        "a" * 40, " M changed.py\n",
+    )
     assert ["git", "status", "--porcelain"] in calls
+
+
+def test_untracked_unrelated_file_is_dirty_at_run_start(monkeypatch):
+    from scripts import train as train_module
+
+    def fake_check_output(command, **kwargs):
+        if command[1] == "rev-parse":
+            return "a" * 40
+        return "?? unrelated.txt\n"
+
+    monkeypatch.setattr(train_module.subprocess, "check_output", fake_check_output)
+
+    snapshot = train_module.collect_git_provenance()
+
+    assert snapshot["git_commit_at_start"] == "a" * 40
+    assert snapshot["git_status_at_start"] == "?? unrelated.txt\n"
+    assert snapshot["git_dirty_at_start"] is True
 
 
 def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch):
@@ -79,7 +106,7 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
         "seed": 2,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 2,
-        "total_timesteps": 100_000_000,
+        "total_timesteps": 200_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": True},
@@ -87,14 +114,11 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
     }
     train_module.persist_effective_config(model_dir, effective_config)
 
+    start_git_snapshot = _git_snapshot("b" * 40, "")
     monkeypatch.setattr(
         train_module,
         "collect_git_provenance",
-        lambda: {
-            "git_commit": "b" * 40,
-            "git_status_porcelain": "",
-            "git_dirty": False,
-        },
+        lambda: pytest.fail("manifest must use the pre-output Git snapshot"),
     )
     monkeypatch.setattr(
         train_module,
@@ -138,21 +162,25 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
 
     model = _make_v3_model()
     try:
-        model.num_timesteps = 100_000_000
+        model.num_timesteps = 200_000_000
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
             model_dir,
             str(model_path),
             model,
             effective_config,
+            git_provenance=start_git_snapshot,
         )
     finally:
         model.get_env().close()
 
     manifest = json.loads(manifest_path.read_text())
     assert manifest["git_commit"] == "b" * 40
+    assert manifest["git_commit_at_start"] == "b" * 40
     assert manifest["git_dirty"] is False
+    assert manifest["git_dirty_at_start"] is False
     assert manifest["git_status_porcelain"] == ""
+    assert manifest["git_status_at_start"] == ""
     assert manifest["effective_config"] == effective_config
     assert manifest["training_seed"] == 2
     assert manifest["d4_condition"] == "d4"
@@ -173,9 +201,23 @@ def test_training_manifest_records_complete_v3_provenance(tmp_path, monkeypatch)
         "path": str(native_path.resolve()),
         "sha256": train_module.sha256_file(native_path),
     }
-    assert manifest["final_timestep"] == 100_000_000
+    assert manifest["final_timestep"] == 200_000_000
 
     train_module.validate_training_manifest(manifest_path)
+    missing_start_snapshot = dict(manifest)
+    missing_start_snapshot.pop("git_commit_at_start")
+    missing_start_snapshot.pop("git_status_at_start")
+    missing_start_snapshot.pop("git_dirty_at_start")
+    manifest_path.write_text(json.dumps(missing_start_snapshot))
+    with pytest.raises(ValueError, match="git_commit_at_start"):
+        train_module.validate_training_manifest(manifest_path)
+
+    inconsistent_commit = dict(manifest)
+    inconsistent_commit["git_commit_at_start"] = "c" * 40
+    manifest_path.write_text(json.dumps(inconsistent_commit))
+    with pytest.raises(ValueError, match="commit"):
+        train_module.validate_training_manifest(manifest_path)
+
     invalid_timestep = dict(manifest)
     invalid_timestep["final_timestep"] = 0
     manifest_path.write_text(json.dumps(invalid_timestep))
@@ -218,18 +260,13 @@ def test_training_manifest_validator_rejects_changed_artifact(
         "seed": 0,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 0,
-        "total_timesteps": 100_000_000,
+        "total_timesteps": 200_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": False},
         "experiment_definition": _v3_definition(),
     }
     train_module.persist_effective_config(model_dir, effective_config)
-    monkeypatch.setattr(
-        train_module,
-        "collect_git_provenance",
-        lambda: {"git_commit": "a" * 40, "git_status_porcelain": "", "git_dirty": False},
-    )
     monkeypatch.setattr(
         train_module,
         "collect_runtime_provenance",
@@ -273,7 +310,11 @@ def test_training_manifest_validator_rejects_changed_artifact(
     try:
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
-            model_dir, str(model_path), model, effective_config
+            model_dir,
+            str(model_path),
+            model,
+            effective_config,
+            git_provenance=_git_snapshot("a" * 40, ""),
         )
     finally:
         model.get_env().close()
@@ -304,24 +345,15 @@ def test_training_manifests_record_each_seed(tmp_path, monkeypatch):
                 "seed": seed,
                 "training_seeds": [0, 1, 2, 3],
                 "root_training_seed": seed,
-                "total_timesteps": 100_000_000,
+                "total_timesteps": 200_000_000,
                 "load_model": False,
                 "checkpoint_path": None,
                 "env_kwargs": {"d4_augment": True},
                 "experiment_definition": _v3_definition(),
             }
             train_module.persist_effective_config(model_dir, effective_config)
-            model.num_timesteps = 100_000_000
+            model.num_timesteps = 200_000_000
             model.save(model_path)
-            monkeypatch.setattr(
-                train_module,
-                "collect_git_provenance",
-                lambda: {
-                    "git_commit": "c" * 40,
-                    "git_status_porcelain": "",
-                    "git_dirty": False,
-                },
-            )
             monkeypatch.setattr(
                 train_module,
                 "collect_runtime_provenance",
@@ -363,7 +395,11 @@ def test_training_manifests_record_each_seed(tmp_path, monkeypatch):
             )
 
             manifest_path = train_module.persist_training_manifest(
-                model_dir, str(model_path), model, effective_config
+                model_dir,
+                str(model_path),
+                model,
+                effective_config,
+                git_provenance=_git_snapshot("c" * 40, ""),
             )
             manifest = json.loads(manifest_path.read_text())
             assert manifest["training_seed"] == seed
@@ -384,17 +420,18 @@ def test_dirty_training_manifest_is_marked_non_paper_grade(tmp_path, monkeypatch
         "seed": 1,
         "training_seeds": [0, 1, 2, 3],
         "root_training_seed": 1,
-        "total_timesteps": 100_000_000,
+        "total_timesteps": 200_000_000,
         "load_model": False,
         "checkpoint_path": None,
         "env_kwargs": {"d4_augment": True},
         "experiment_definition": _v3_definition(),
     }
     train_module.persist_effective_config(model_dir, effective_config)
+    start_git_snapshot = _git_snapshot("b" * 40, " M source.py\n")
     monkeypatch.setattr(
         train_module,
         "collect_git_provenance",
-        lambda: {"git_commit": "b" * 40, "git_status_porcelain": " M file", "git_dirty": True},
+        lambda: pytest.fail("manifest must use the pre-output Git snapshot"),
     )
     monkeypatch.setattr(
         train_module,
@@ -437,24 +474,32 @@ def test_dirty_training_manifest_is_marked_non_paper_grade(tmp_path, monkeypatch
     )
     model = _make_v3_model()
     try:
-        model.num_timesteps = 100_000_000
+        model.num_timesteps = 200_000_000
         model.save(model_path)
         manifest_path = train_module.persist_training_manifest(
-            model_dir, str(model_path), model, effective_config
+            model_dir,
+            str(model_path),
+            model,
+            effective_config,
+            git_provenance=start_git_snapshot,
         )
     finally:
         model.get_env().close()
 
     manifest = train_module.validate_training_manifest(manifest_path)
     assert manifest["git_dirty"] is True
+    assert manifest["git_dirty_at_start"] is True
+    assert manifest["git_status_at_start"] == " M source.py\n"
     assert manifest["paper_grade"] is False
 
     manifest["git_status_porcelain"] = ""
+    manifest["git_status_at_start"] = ""
     manifest_path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="git_dirty"):
         train_module.validate_training_manifest(manifest_path)
 
-    manifest["git_status_porcelain"] = " M file"
+    manifest["git_status_porcelain"] = " M source.py\n"
+    manifest["git_status_at_start"] = " M source.py\n"
     manifest.pop("final_timestep")
     manifest_path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="final_timestep"):

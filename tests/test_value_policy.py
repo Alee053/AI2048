@@ -310,7 +310,7 @@ def test_real_seed_sweep_path_constructs_v3_components_for_all_seeds(
         "dry_run": False,
     }
 
-    def fake_train(seed_config):
+    def fake_train(seed_config, **_kwargs):
         effective_config, _ = train_module.resolve_training_config(seed_config)
         train_module.build_fresh_model(
             effective_config,
