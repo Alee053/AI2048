@@ -1,4 +1,4 @@
-#include "ExpectimaxSearcher.h"
+#include "../ExpectimaxSearcher.h"
 #include <iostream>
 #include <vector>
 

@@ -1,8 +1,8 @@
 #include <iostream>
 #include <chrono>
 #include <set>
-#include "ExpectimaxSearcher.h"
-#include "BoardEncoder.h"
+#include "../ExpectimaxSearcher.h"
+#include "../BoardEncoder.h"
 
 std::vector<float> fake_eval(const std::vector<Board>& boards) {
     std::vector<float> result;

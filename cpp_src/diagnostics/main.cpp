@@ -3,7 +3,7 @@
 #include <string>
 #include <cmath>
 
-#include "Fast2048.h"
+#include "../Fast2048.h"
 
 void print_board(const std::array<std::array<int, 4>, 4>& board) {
     std::cout << "-----------------------------" << std::endl;
