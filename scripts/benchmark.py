@@ -4,9 +4,9 @@ Usage:
     python scripts/benchmark.py <model_path> [OPTIONS]
 
 Examples:
-    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \\
+    python scripts/benchmark.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \\
         --n-runs 100 --depth 3 --workers 4
-    python scripts/benchmark.py data/models/release/Hybrid-PPO-Expectimax-v3.zip \\
+    python scripts/benchmark.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \\
         --n-runs 50 --depth 3 --log-moves --yes-large-move-log
 """
 from __future__ import annotations

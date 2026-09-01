@@ -29,7 +29,7 @@ from twenty_forty_eight_ai.env.d4_transforms import (
 from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
 
-MODEL_PATH = "data/models/release/Hybrid-PPO-Expectimax-v3.zip"
+MODEL_PATH = "data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip"
 N_BOARDS = 100
 TOLERANCE = 0.01
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -87,7 +87,7 @@ def main() -> int:
     # The OLD release has been replaced by the retrained model on the
     # fix-regression branch; if a backup exists at a known path, load
     # it for comparison. Otherwise the baseline is unavailable.
-    candidate_old = Path("data/models/release/Hybrid-PPO-Expectimax-v3.zip.bak")
+    candidate_old = Path("data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip.bak")
     if candidate_old.exists() and candidate_old.resolve() != Path(MODEL_PATH).resolve():
         old_path = str(candidate_old)
     elif Path(MODEL_PATH).name == "Hybrid-PPO-Expectimax-v3.zip":

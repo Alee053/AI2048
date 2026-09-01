@@ -5,7 +5,7 @@ output_dir: "data" # Base directory for models and studies
 
 # --- Resume Settings ---
 load_model: true
-checkpoint_path: data/models/release/Hybrid-PPO-Expectimax-v3.zip # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model_100000000_steps.zip"
+checkpoint_path: data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip # e.g., "data/models/NewArch_SnakeReward_300M_Run/rl_model_100000000_steps.zip"
 
 # --- Training Parameters ---
 total_timesteps: 400_000_000

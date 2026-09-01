@@ -196,7 +196,7 @@ def run_cumulative(model, args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="data/models/release/Hybrid-PPO-Expectimax-v3.zip")
+    parser.add_argument("--model", default="data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip")
     parser.add_argument("--depth", type=int, default=4)
     parser.add_argument("--play-to-midgame", type=int, default=0, metavar="N")
     parser.add_argument("--cumulative", type=int, default=0, metavar="N",

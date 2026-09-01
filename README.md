@@ -28,7 +28,8 @@ the retained diagnostic model scored **38,430.76 ± 15,893.73** at depth 3
 / 24%** at 1024 / 2048 / 4096. The retained depth ablation used shared
 per-episode tile-spawn seeds and is documented for reproducibility, not as
 paper-grade evidence. None of these historical artifacts is part of the final
-200M four-seed paper matrix.
+200M four-seed paper matrix. The files are archived under
+`data/archive/v3-100m/` and are outside the default paper-grade discovery path.
 
 ### Current v3 protocol (PRE-FREEZE)
 
@@ -68,7 +69,7 @@ paper-grade evidence. None of these historical artifacts is part of the final
 
 **Try it yourself:**
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
+uv run python scripts/evaluate.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
 ---
@@ -90,7 +91,7 @@ All rows are the **same historical v3 (D4-augmented) diagnostic model** (md5 `fa
 
 **To reproduce this historical diagnostic** (≈8.1 h on an RTX 3070 Ti Laptop GPU per depth):
 ```bash
-uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+uv run python -m scripts.benchmark data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 3 --device cuda --workers 1 \
   --output paper_d3_n100 --base-eval-seed 20482048
 ```
@@ -130,7 +131,7 @@ Going to depth 3 aggregates value estimates over **~141M leaf nodes per game** (
 
 ### **Historical Multi-Seed Diagnostic (depth 3; not a paper result)**
 
-The historical diagnostic set contains four retained model artifacts (the release model plus training seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`). It is a dress rehearsal, not the 200M four-seed paper matrix. The artifact names and contents remain unchanged for provenance.
+The historical diagnostic set contains four retained model artifacts (the release model plus training seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (archived run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`). It is a dress rehearsal, not the 200M four-seed paper matrix. The artifact contents remain unchanged for provenance.
 
 | Model | Mean Score | 95% CI | Median | 2048+ | 4096+ |
 |---|---:|---|---:|---:|---:|
@@ -148,30 +149,30 @@ The historical diagnostic set contains four retained model artifacts (the releas
 
 ### **Historical Diagnostic Models and Benchmark Artifacts**
 
-The repository retains the **four historical diagnostic models** and every benchmark artifact used by the figures and tables above. They are retained for reproducibility and provenance, not as paper evidence. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the complete recorded 100-game diagnostic evaluation.
+The repository retains the **four historical diagnostic models** and every benchmark artifact used by the figures and tables above. They are retained for reproducibility and provenance, not as paper evidence. They live under `data/archive/v3-100m/` so the current `data/benchmarks/` discovery path contains no legacy runs. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the complete recorded 100-game diagnostic evaluation.
 
 **Historical diagnostic models**
 
 | Path | Contents |
 |---|---|
-| `data/models/release/Hybrid-PPO-Expectimax-v3.zip` | Historical D4-augmented diagnostic model used for the depth-0 through depth-3 ablation. |
-| `data/models/hybrid_ppo_v3/sweep_status.json` | Completion manifest for the three-seed sweep. |
-| `data/models/hybrid_ppo_v3-seed0/final_model.zip` | Final model for training seed 0. |
-| `data/models/hybrid_ppo_v3-seed1/final_model.zip` | Final model for training seed 1. |
-| `data/models/hybrid_ppo_v3-seed2/final_model.zip` | Final model for training seed 2. |
+| `data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip` | Historical D4-augmented diagnostic model used for the depth-0 through depth-3 ablation. |
+| `data/archive/v3-100m/models/hybrid_ppo_v3/sweep_status.json` | Historical completion manifest for the three-seed sweep. |
+| `data/archive/v3-100m/models/hybrid_ppo_v3-seed0/final_model.zip` | Final model for training seed 0. |
+| `data/archive/v3-100m/models/hybrid_ppo_v3-seed1/final_model.zip` | Final model for training seed 1. |
+| `data/archive/v3-100m/models/hybrid_ppo_v3-seed2/final_model.zip` | Final model for training seed 2. |
 
 **Benchmark artifacts** — every folder contains `config.json`, `summary.json`, and `episodes.csv`; the logged run also contains `moves.csv`.
 
 | Folder | Evaluation |
 |---|---|
-| `data/benchmarks/paper_d0_n100/` | Release model, raw policy (depth 0), n=100. |
-| `data/benchmarks/paper_d1_n100/` | Release model, depth 1, n=100. |
-| `data/benchmarks/paper_d2_n100/` | Release model, depth 2, n=100. |
-| `data/benchmarks/paper_d3_n100/` | Release model, depth 3, n=100. |
-| `data/benchmarks/paper_d3_n100_logged/` | Deterministic depth-3 twin with per-move logs; behavioral outcomes match `paper_d3_n100`. |
-| `data/benchmarks/seed0_d3_n100/` | Seed-0 model, depth 3, n=100. |
-| `data/benchmarks/seed1_d3_n100/` | Seed-1 model, depth 3, n=100. |
-| `data/benchmarks/seed2_d3_n100/` | Seed-2 model, depth 3, n=100. |
+| `data/archive/v3-100m/benchmarks/paper_d0_n100/` | Historical release model, raw policy (depth 0), n=100. |
+| `data/archive/v3-100m/benchmarks/paper_d1_n100/` | Historical release model, depth 1, n=100. |
+| `data/archive/v3-100m/benchmarks/paper_d2_n100/` | Historical release model, depth 2, n=100. |
+| `data/archive/v3-100m/benchmarks/paper_d3_n100/` | Historical release model, depth 3, n=100. |
+| `data/archive/v3-100m/benchmarks/paper_d3_n100_logged/` | Historical/corrupt depth-3 per-move log; compound keys are non-unique and it is not row-level evidence. |
+| `data/archive/v3-100m/benchmarks/seed0_d3_n100/` | Historical seed-0 model, depth 3, n=100. |
+| `data/archive/v3-100m/benchmarks/seed1_d3_n100/` | Historical seed-1 model, depth 3, n=100. |
+| `data/archive/v3-100m/benchmarks/seed2_d3_n100/` | Historical seed-2 model, depth 3, n=100. |
 
 ---
 
@@ -597,17 +598,17 @@ uv run python scripts/evaluate.py <model_path> [OPTIONS]
 
 Depth-3 Expectimax (recommended)
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
+uv run python scripts/evaluate.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
 Raw policy (no search)
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --no-search
+uv run python scripts/evaluate.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip --no-search
 ```
 
 Shallow search (faster, worse performance)
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 1
+uv run python scripts/evaluate.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 1
 ```
 
 ---
@@ -655,7 +656,7 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 ```bash
 # Historical diagnostic benchmark; this 100M model is not paper-grade.
 uv run python -m scripts.benchmark \
-  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 3 --workers 1 --device cuda \
   --output v3_depth3_diagnostic --base-eval-seed 0
 
@@ -670,7 +671,7 @@ uv run python -m scripts.benchmark \
 
 # Throughput-mode: 8 CPU workers, depth-3
 uv run python -m scripts.benchmark \
-  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 200 --depth 3 --workers 8 --device cpu \
   --output v3_depth3_throughput --base-eval-seed 0
 
@@ -681,13 +682,13 @@ condition, and training seed. Use `--effective-config`, `--train-seed`, and
 
 # Raw-policy baseline (no search)
 uv run python -m scripts.benchmark \
-  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 0 --workers 1 \
   --output v3_raw --base-eval-seed 0
 
 # Per-move log for downstream analysis
 uv run python -m scripts.benchmark \
-  data/models/release/Hybrid-PPO-Expectimax-v3.zip \
+  data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 50 --depth 3 --workers 1 \
   --log-moves --output v3_depth3_moves
 ```
@@ -1132,7 +1133,7 @@ uv run python scripts/train.py --config configs/train/hybrid_ppo_v3_no_d4.yaml -
 
 Evaluate with visualization:
 ```bash
-uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
+uv run python scripts/evaluate.py data/archive/v3-100m/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
 Run the target benchmark suite only after the complete matrix is trained. The
@@ -1264,12 +1265,14 @@ the current evaluation path is the exact eight-way mean above.
 │   ├── test_visualizer_config.py
 │   └── stress_depth4_real.py      # Manual real-model depth-4 stress diagnostic
 ├── data/
-│   ├── models/
-│   │   ├── release/Hybrid-PPO-Expectimax-v3.zip  # Historical D4 diagnostic model
-│   │   ├── hybrid_ppo_v3/sweep_status.json       # Seed-sweep completion manifest
-│   │   └── hybrid_ppo_v3-seed{0,1,2}/final_model.zip
-│   ├── official_200m/             # Ignored v3 outputs; D4 seed0 200M is diagnostic pilot
-│   └── benchmarks/                # Retained historical runs; future runs stay ignored
+│   ├── archive/v3-100m/            # Historical/non-paper-grade artifacts; not auto-discovered
+│   │   ├── models/
+│   │   │   ├── release/Hybrid-PPO-Expectimax-v3.zip
+│   │   │   ├── hybrid_ppo_v3/sweep_status.json
+│   │   │   └── hybrid_ppo_v3-seed{0,1,2}/final_model.zip
+│   │   └── benchmarks/             # Archived historical benchmark runs
+│   ├── official_200m/              # Ignored v3 outputs; D4 seed0 200M is diagnostic pilot
+│   └── benchmarks/                 # Current output root; future runs stay ignored
 ├── configs/
 │   ├── train/
 │   │   ├── hybrid_ppo_v3.yaml     # v3 D4 condition (target 200M matrix)
