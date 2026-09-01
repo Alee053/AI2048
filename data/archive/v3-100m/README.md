@@ -9,4 +9,5 @@ The D4 seed0 200M pilot is not stored here; it remains under
 
 `benchmarks/paper_d3_n100_logged/` is additionally marked historical/corrupt:
 its `moves.csv` has non-unique `(run_id, episode_idx, move_idx)` keys. The
-artifact is preserved byte-for-byte and was not repaired.
+original `moves.csv` is preserved byte-for-byte and was not repaired; only
+metadata paths were updated to reflect this archive location.
