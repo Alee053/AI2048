@@ -1,11 +1,11 @@
 # s--- Run & Path Settings ---
 project_name: "2048-ppo-training"
 run_name: "hybrid_ppo_v3"
-output_dir: "data/official_200m" # Isolated official outputs; preserves diagnostics
+output_dir: "data/pre_freeze_200m" # Target outputs; preserves the diagnostic pilot
 
 # --- Resume Settings ---
 load_model: false
-checkpoint_path: null # Official v3 runs must not reuse legacy checkpoints
+checkpoint_path: null # Target v3 runs must not reuse archived checkpoints
 
 # --- Training Parameters ---
 total_timesteps: 200_000_000

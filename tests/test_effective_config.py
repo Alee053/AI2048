@@ -86,7 +86,7 @@ def test_v3_configs_explicitly_define_fresh_four_seed_experiments():
         assert config["training_seeds"] == [0, 1, 2, 3]
         assert config["load_model"] is False
         assert config["checkpoint_path"] is None
-        assert config["output_dir"] == "data/official_200m"
+        assert config["output_dir"] == "data/pre_freeze_200m"
         assert config["total_timesteps"] == 200_000_000
         assert type(config["env_kwargs"]["d4_augment"]) is bool
         assert config["env_kwargs"]["d4_augment"] is expected_d4
@@ -140,12 +140,15 @@ def test_invalid_v3_budget_fails_before_wandb_or_model_setup(monkeypatch):
         ("hybrid_ppo_v3-seed2", "hybrid_ppo_v3-seed2"),
     ),
 )
-def test_train_wandb_name_has_one_seed_suffix(monkeypatch, run_name, expected_name):
+def test_train_wandb_name_has_one_seed_suffix(
+    monkeypatch, tmp_path, run_name, expected_name
+):
     from scripts import train as train_module
 
     config = load_effective_config(D4_CONFIG)
     config["run_name"] = run_name
     config["seed"] = 2
+    config["output_dir"] = str(tmp_path)
     captured = {}
 
     monkeypatch.setattr(

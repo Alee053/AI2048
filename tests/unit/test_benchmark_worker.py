@@ -14,6 +14,8 @@ _PRODUCTION_MODEL = os.path.join(
 )
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_run_worker_posts_episode_result_to_queue():
     if not os.path.exists(_PRODUCTION_MODEL):
         pytest.skip("Production model not found")

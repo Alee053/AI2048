@@ -584,6 +584,8 @@ def test_benchmarker_uses_episode_seed_without_global_numpy_seed(monkeypatch):
     assert env.reset_seeds == [314]
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_raw_policy_returns_episode_result(production_model_path):
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
     from scripts.benchmark_io import EpisodeResult
@@ -605,6 +607,8 @@ def test_benchmarker_raw_policy_returns_episode_result(production_model_path):
     assert result.episode_time_s > 0
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_win_booleans_match_max_tile(production_model_path):
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
 
@@ -618,6 +622,8 @@ def test_benchmarker_win_booleans_match_max_tile(production_model_path):
     assert result.win_8192 == (result.max_tile >= 8192)
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_search_mode_returns_episode_result(production_model_path):
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
 
@@ -635,6 +641,8 @@ def test_benchmarker_search_mode_returns_episode_result(production_model_path):
     assert result.total_nodes >= 0
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_d4_augmentation_disabled_by_default(production_model_path):
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
 
@@ -643,6 +651,8 @@ def test_benchmarker_d4_augmentation_disabled_by_default(production_model_path):
     assert bencher.env.d4_augment is False
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_log_moves_populates_move_records(production_model_path):
     import math
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
@@ -667,6 +677,8 @@ def test_benchmarker_log_moves_populates_move_records(production_model_path):
     assert not math.isnan(first.score_up)
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_log_moves_raw_policy_has_nan_scores(production_model_path):
     import math
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
@@ -684,6 +696,8 @@ def test_benchmarker_log_moves_raw_policy_has_nan_scores(production_model_path):
         assert math.isnan(m.score_left)
 
 
+@pytest.mark.integration
+@pytest.mark.slow
 def test_benchmarker_result_roundtrips_through_episode_to_row(production_model_path):
     from twenty_forty_eight_ai.evaluation.benchmarker import Benchmarker
     from scripts.benchmark_io import episode_to_row, EPISODE_COLUMNS

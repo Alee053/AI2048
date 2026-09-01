@@ -1,7 +1,8 @@
 """End-to-end integration tests for benchmark.py CLI.
 
-Skipped if production model is missing. Gated by BENCHMARK_INTEGRATION=1.
-Uses depth=2 search-mode (not depth=3) to keep tests fast.
+Real-model benchmark cases are marked slow/integration and skipped if the
+production model is missing. The schema-rejection case stays in the default
+fast suite because it does not launch a model or benchmark.
 """
 from __future__ import annotations
 
@@ -19,12 +20,6 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PRODUCTION_MODEL = _REPO_ROOT / "data" / "models" / "release" / "Hybrid-PPO-Expectimax-v3.zip"
-
-
-pytestmark = pytest.mark.skipif(
-    not _PRODUCTION_MODEL.exists(),
-    reason="Production model not found",
-)
 
 
 @pytest.fixture
@@ -46,6 +41,12 @@ def _run_benchmark(
 
 # --- Task 18 ---
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_single_worker_benchmark_writes_all_files(benchmark_output_dir):
     result = _run_benchmark([
         str(_PRODUCTION_MODEL),
@@ -86,6 +87,12 @@ def test_single_worker_benchmark_writes_all_files(benchmark_output_dir):
         assert int(r["score"]) >= 0
 
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_two_worker_benchmark_all_episodes_present(benchmark_output_dir):
     result = _run_benchmark([
         str(_PRODUCTION_MODEL),
@@ -113,6 +120,12 @@ def test_two_worker_benchmark_all_episodes_present(benchmark_output_dir):
 
 # --- Task 19 ---
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_reproducibility_same_seed_same_score(tmp_path):
     out1 = tmp_path / "out1"
     out2 = tmp_path / "out2"
@@ -145,6 +158,12 @@ def test_reproducibility_same_seed_same_score(tmp_path):
 
 # --- Task 20 ---
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
     """--workers 1 vs --workers 2 must produce identical episode outcomes.
 
@@ -186,6 +205,12 @@ def test_worker_count_invariance_same_eval_seeds_per_episode(tmp_path):
 
 # --- Task 21 ---
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_interrupt_writes_partial_output(tmp_path):
     out = tmp_path / "intr"
     out.mkdir()
@@ -247,6 +272,12 @@ def test_aggregate_rejects_unsupported_schema_major(tmp_path):
 
 # --- Task 24 ---
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_log_moves_off_vs_on_produces_identical_episodes_csv(tmp_path):
     out_off = tmp_path / "off"
     out_on = tmp_path / "on"
@@ -285,6 +316,12 @@ def test_log_moves_off_vs_on_produces_identical_episodes_csv(tmp_path):
 
 # --- Task 25 ---
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_worker_crash_detection_marks_status_failed(tmp_path):
     """A worker that raises sets config.json status='failed' and exits non-zero.
 
@@ -319,6 +356,12 @@ def test_worker_crash_detection_marks_status_failed(tmp_path):
     )
 
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_sigkill_worker_detection_marks_status_failed(tmp_path):
     out = tmp_path / "sigkill"
     out.mkdir()
@@ -336,6 +379,12 @@ def test_sigkill_worker_detection_marks_status_failed(tmp_path):
     assert config["status"] == "failed"
 
 
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason="Production model not found",
+)
 def test_hung_worker_times_out_and_marks_status_failed(tmp_path):
     out = tmp_path / "hang"
     out.mkdir()
