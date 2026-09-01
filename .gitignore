@@ -5,6 +5,7 @@ __pycache__/
 
 
 build
+/cpp_src/_searcher_cpp*.so
 
 twenty_forty_eight_ai.egg-info
 .envrc
