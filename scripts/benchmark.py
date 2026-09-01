@@ -83,7 +83,7 @@ def parse_args(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("model_path", type=str, nargs="?", default=None,
-                   help="Path to trained model .zip file (not required when --model-dir is set)")
+                   help="Path to trained model .zip file")
     p.add_argument("--n-runs", type=_positive_int, default=100,
                    help="Number of episodes to simulate (default: 100)")
     p.add_argument("--depth", type=int, default=0,
@@ -116,10 +116,6 @@ def parse_args(argv=None):
                    help="Train seed (recorded in config.json for sweep runs).")
     p.add_argument("--model-version", type=str, default=None,
                    help="Free-form version label, recorded in config.json.")
-    p.add_argument("--model-dir", type=str, default=None,
-                   help="Placeholder for multi-seed benchmarking (currently not implemented).")
-    p.add_argument("--parallel", action="store_true",
-                   help="Run seed benchmarks in parallel (multi-seed mode only).")
     p.add_argument("--paper-mode", action="store_true",
                    help="Require a clean git worktree and emit paper-grade provenance.")
     p.add_argument("--allow-dirty-paper-run", action="store_true",
@@ -410,16 +406,8 @@ def main(argv=None):
         print(f"Error: {exc}")
         return 1
 
-    if args.model_dir:
-        from scripts.benchmark_multi_seed import benchmark_multi_seed
-        return benchmark_multi_seed(
-            args.model_dir, args.n_runs, args.depth, args.device,
-            args.output or f"run_{int(time.time())}",
-            args.parallel,
-        )
-
     if not args.model_path:
-        print("Error: model_path is required (or use --model-dir for multi-seed)")
+        print("Error: model_path is required")
         return 1
     if not os.path.exists(args.model_path):
         print(f"Error: model file not found: {args.model_path}")

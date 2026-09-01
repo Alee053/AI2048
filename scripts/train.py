@@ -12,11 +12,8 @@ Required Config Keys:
     - ppo_params: Dict of PPO hyperparameters
 
 Examples:
-    # Fresh training
-    python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
-    
-    # Resume from checkpoint
-    python scripts/train.py --config configs/train/resume_training.yaml
+    # Fresh v3 training
+    python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml
 """
 
 import os

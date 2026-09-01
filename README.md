@@ -449,12 +449,12 @@ checkpoint_path: null # Required when load_model is true
 
 Fresh training
 ```bash
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml
 ```
 
 Resume from checkpoint
 ```bash
-uv run python scripts/train.py --config configs/train/resume_training.yaml
+uv run python scripts/train.py --config configs/archive/resume_training.yaml
 ```
 
 **Seed Sweep Training:**
@@ -462,15 +462,15 @@ uv run python scripts/train.py --config configs/train/resume_training.yaml
 Run multiple seeds sequentially for statistical robustness:
 ```bash
 # Dry run to preview what would be launched
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
   --seed-sweep 3 --dry-run
 
 # Launch 5-seed sweep (sequential)
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
   --seed-sweep 5
 
 # Resume a failed sweep (skips completed seeds, re-runs failed/pending)
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml \
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
   --seed-sweep 5 --resume-sweep
 ```
 
@@ -595,7 +595,7 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `model_path` | str | (required unless `--model-dir`) | Path to trained model `.zip` |
+| `model_path` | str | required | Path to trained model `.zip` |
 | `--n-runs` | int | `100` | Number of episodes |
 | `--depth` | int | `0` | Expectimax search depth; `0` = raw policy |
 | `--output` | str | `run_<timestamp>` | Folder name under `data/benchmarks/` |
@@ -607,8 +607,6 @@ uv run python scripts/benchmark.py <model_path> [OPTIONS]
 | `--base-eval-seed` | int | random | Root seed for deterministic per-episode eval seeds |
 | `--train-seed` | int | none | Recorded in `config.json` for sweep runs |
 | `--model-version` | str | none | Free-form version label, recorded in `config.json` |
-| `--model-dir` | str | none | Multi-seed mode placeholder; currently returns an error |
-| `--parallel` | flag | off | Parallel across seeds (multi-seed mode only) |
 | `--paper-mode` | flag | off | Require clean, complete, provenance-bound paper-grade output |
 | `--allow-dirty-paper-run` | flag | off | Allow a dirty tree, marking output non-paper-grade |
 | `--effective-config` | path | model-adjacent file | Resolved training config used for paper provenance |
@@ -942,9 +940,9 @@ Effect tables contain `n_models`, `df`, `mean_delta`, `sd_delta`, `ci95_low`,
 
 ---
 
-### **Multi-Seed Benchmarking (status: placeholder)**
+### **Multi-Seed Benchmarking**
 
-The `--model-dir` flag is wired through the CLI but `scripts/benchmark_multi_seed.py` is currently a stub that returns exit code 1 with a clear error. The commands below reproduce the historical diagnostic artifacts; the official 200M training matrix must be completed first:
+Multi-seed evaluation uses one explicit model path per invocation. The commands below reproduce the historical diagnostic artifacts; the official 200M training matrix must be completed first:
 
 ```bash
 for seed in 0 1 2; do
@@ -965,7 +963,7 @@ Use built-in W&B logging to track training metrics in real-time:
 
 Training automatically logs to W&B
 ```bash
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml
 ```
 
 View dashboard
@@ -991,11 +989,12 @@ Example config is provided in `configs/train/`:
 
 ```text
 configs/train/
-├─ hybrid_ppo_v1.yaml     # Original training (200M steps, v1 model)
-├─ hybrid_ppo_v2_sweep.yaml # Hyperparameter sweep
-├─ hybrid_ppo_v3.yaml     # D4-augmented training (200M steps, official v3 condition)
-├─ hybrid_ppo_v3_no_d4.yaml # No-D4 training (200M steps, official comparison condition)
-└─ resume_training.yaml   # Resume from a checkpoint
+├─ hybrid_ppo_v3.yaml       # D4-augmented training (200M steps, v3 condition)
+└─ hybrid_ppo_v3_no_d4.yaml # No-D4 comparison (200M steps, v3 condition)
+configs/archive/
+├─ hybrid_ppo_v1.yaml        # Archived v1 training config
+├─ hybrid_ppo_v2_sweep.yaml  # Archived v2 sweep config
+└─ resume_training.yaml      # Archived checkpoint-resume config
 configs/tune/
 └─ bayesian_opt_search.yaml # Optuna search space
 ```
@@ -1003,7 +1002,7 @@ configs/tune/
 To create a custom config:
 
 ```bash
-cp configs/train/hybrid_ppo_v1.yaml configs/train/my_experiment.yaml
+cp configs/train/hybrid_ppo_v3.yaml configs/train/my_experiment.yaml
 # Edit my_experiment.yaml with your hyperparameters
 uv run python scripts/train.py --config configs/train/my_experiment.yaml
 ```
@@ -1051,9 +1050,9 @@ uv run python scripts/train.py --config configs/train/my_experiment.yaml
 
 ### **Quick Start**
 
-Train a new agent (the v1 and official v3 configs use 200M steps; the earlier 100M v3 run was diagnostic only):
+Train a new v3 agent (the earlier 100M v3 run was diagnostic only):
 ```bash
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v1.yaml
+uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml
 ```
 
 Start the official v3 D4 or No-D4 four-seed sweep from scratch. The sweep begins with seed 0 and must not use `--resume-sweep`:
@@ -1173,7 +1172,6 @@ moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 │   ├── benchmark_runner.py        # Master process: spawn workers, drain queues, write outputs
 │   ├── benchmark_worker.py        # run_worker subprocess function
 │   ├── benchmark_summary.py       # compute_summary_from_rows
-│   ├── benchmark_multi_seed.py    # Multi-seed stub (placeholder)
 │   ├── aggregate.py               # Post-processing aggregator for sweeps
 │   ├── evaluate.py                # Visual dashboard (launches Visualizer)
 │   ├── profile_train.py           # Training profile run
