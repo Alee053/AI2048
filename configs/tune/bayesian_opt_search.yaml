@@ -1,27 +1,105 @@
-# Configuration for an Optuna hyperparameter tuning study
+# Official v3 Stage 1 tuner. This is an independent PRE-FREEZE protocol:
+# its 20M trial budget must never be used to relax validation of the official
+# 200M configs under configs/train/.
+protocol_status: "PRE-FREEZE"
+protocol_version: "v3-stage1-paired-1"
 
-# --- Study Settings ---
-project_name: "2048-ppo-tuning"
-study_name: "bayesian_opt_search"
-db_path: "data/studies.db" # A single database file for all studies
-timeout_hours: 12
+study_name: "v3_stage1_bayesian_opt"
+storage_root: "data/tuning/v3"
+n_trials: 12
+timeout_hours: 72
+training_seed: 0
 
-# --- Pruner Settings ---
+base_configs:
+  d4: "configs/train/hybrid_ppo_v3.yaml"
+  no_d4: "configs/train/hybrid_ppo_v3_no_d4.yaml"
+
+trial:
+  # Independent from the official PRE-FREEZE 200M training budget.
+  total_timesteps: 20_000_000
+  checkpoint_timesteps: [5_000_000, 10_000_000, 20_000_000]
+
+# These values are validated against the current official v3 configs. They are
+# intentionally not part of the Optuna search space.
+fixed:
+  n_steps: 512
+  batch_size: 4096
+  n_epochs: 4
+  n_envs: 128
+  features_dim: 256
+  policy_class: "twenty_forty_eight_ai.agent.policy.ValueNormalizedMaskablePolicy"
+  ppo_class: "twenty_forty_eight_ai.agent.ppo.ValueHeadLRMaskablePPO"
+  value_head_lr_multiplier: 10.0
+  representation: "integer_tile_exponents_0..15"
+  reward: "twenty_forty_eight_ai.env.reward.calculate_reward"
+  evaluator: "twenty_forty_eight_ai.evaluation.value_evaluator.D4ValueEvaluator"
+  benchmark_pipeline: "twenty_forty_eight_ai.evaluation.benchmarker.Benchmarker"
+
+# Bounds are deliberately local to the current v3 baseline. The baseline is
+# recorded in each definition so a study artifact remains self-describing.
+# gae_lambda and vf_coef are SB3's current v3 defaults (0.95 and 0.5).
+search_space:
+  learning_rate:
+    type: "float"
+    low: 0.0001
+    high: 0.0005
+    log: true
+    baseline: 0.0002506795165161916
+  gamma:
+    type: "float"
+    low: 0.94
+    high: 0.98
+    log: false
+    baseline: 0.9500241783796721
+  gae_lambda:
+    type: "float"
+    low: 0.90
+    high: 0.99
+    log: false
+    baseline: 0.95
+  ent_coef:
+    type: "float"
+    low: 0.000001
+    high: 0.00005
+    log: true
+    baseline: 0.000006683561172757891
+  vf_coef:
+    type: "float"
+    low: 0.25
+    high: 1.0
+    log: false
+    baseline: 0.5
+  clip_range:
+    type: "categorical"
+    choices: [0.1, 0.2, 0.3]
+    baseline: 0.2
+
+evaluation:
+  # Fixed and separate from training_seed; shared by D4/No-D4 and all
+  # checkpoints. This is a small deterministic screening sample, not paper
+  # evaluation.
+  seeds: [20482048, 20482049, 20482050, 20482051,
+          20482052, 20482053, 20482054, 20482055]
+  depths: [0, 1]
+  device: "auto"
+
+# Non-finite or explosively large critic probes invalidate a trial. This is a
+# numerical safety bound, not a tuned scientific metric.
+critic:
+  max_abs_value: 1000000000.0
+
+sampler:
+  type: "TPESampler"
+  seed: 20482048
+
 pruner:
   type: "MedianPruner"
   n_startup_trials: 5
-  n_warmup_steps: 500_000
+  n_warmup_steps: 5000000
+  interval_steps: 5000000
+  n_min_trials: 1
 
-# --- Trial Settings ---
-trial:
-  total_timesteps: 5_000_000
-  n_envs: 16
-  report_freq: 250_000
-
-# --- PPO Hyperparameter Search Space ---
-ppo_search_space:
-  n_steps: { type: "categorical", choices: [512, 1024, 2048] }
-  gamma: { type: "float", low: 0.95, high: 0.999, log: true }
-  ent_coef: {  type: "float", low: 0.000001, high: 0.0001, log: true  }
-  learning_rate: { type: "float", low: 0.00001, high: 0.001, log: true }
-  clip_range: { type: "categorical", choices: [0.1, 0.2, 0.3] }
+wandb:
+  enabled: true
+  project: "2048-ppo-tuning"
+  mode: "online"

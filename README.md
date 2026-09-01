@@ -388,33 +388,47 @@ Input: board (int64 log2 tile indices, 0=empty … 15=32768)   shape (1, 4, 4)
 
 ---
 
-### **3. Systematic Hyperparameter Optimization (exploratory)**
+### **3. PRE-FREEZE v3 Hyperparameter Screening**
 
-Hyperparameters can be tuned with **Optuna** and logged to Weights & Biases. Tuning and profiling are exploratory tooling, not part of the current PRE-FREEZE paper protocol. The checked-in tuning config runs a resumable SQLite study for up to 12 hours, with five startup trials and 5,000,000 training timesteps per trial:
+The official Stage 1 tuner is a paired **Optuna** study logged to Weights &
+Biases. Each trial samples one PPO configuration and evaluates it from scratch
+under both D4 and No-D4. The shared training seed, budget, evaluation seeds,
+architecture, corrected reward, and evaluator are identical; only
+`env_kwargs.d4_augment` changes. The objective uses the symmetric mean of
+`log1p(depth1_mean_score)` for the two conditions, never training reward.
 
-```python
-# tune.py - Optuna hyperparameter search
+The checked-in config defines 12 trials, 20M timesteps per condition, and
+reproducible evaluations at 5M, 10M, and 20M. The six search parameters are
+`learning_rate`, `gamma`, `gae_lambda`, `ent_coef`, `vf_coef`, and
+`clip_range`; `n_steps=512`, batch size `4096`, four epochs, 128 environments,
+the normalized v3 critic, and the value-head LR multiplier `10.0` remain fixed.
 
-def objective(trial, config):
-    # Search-space values are passed to MaskablePPO.
-    model = MaskablePPO(...)
-    model.learn(total_timesteps=config['trial']['total_timesteps'])
-    if not model.ep_info_buffer:
-        return -1e9
-    return np.mean([ep_info['r'] for ep_info in model.ep_info_buffer])
+```bash
+uv run python scripts/tune.py \
+  --config configs/tune/bayesian_opt_search.yaml --dry-run
+uv run python scripts/tune.py \
+  --config configs/tune/bayesian_opt_search.yaml
 ```
+
+Tuning artifacts are stored under `data/tuning/v3/<study>/`, are ignored by
+Git, and are explicitly `PRE-FREEZE`/`paper_grade: false`. They must not be
+treated as the official 200M matrix or paper results. The dry-run validates the
+official v3 base configs and creates no study, W&B run, model, or training
+artifact.
 
 **Target v3 Training Hyperparameters (PRE-FREEZE; [`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
 - Learning Rate: `2.507e-4` (linear decay to 0)
 - Discount Factor ($\gamma$): `0.9500`
 - GAE Lambda ($\lambda$): `0.95` (Stable-Baselines3 default; not overridden in config)
 - Entropy Coefficient: `6.684e-6`
+- Value Function Coefficient: `0.5` (Stable-Baselines3 default)
 - Clip Range ($\epsilon$): `0.2`
 - Rollout steps per env (`n_steps`): `512`
 - Batch Size: `4096`
 - Epochs per update: `4`
 - Total timesteps: `200,000,000`
 - Parallel envs: `128`
+- Value-head LR multiplier: `10.0` (fixed v3 critic optimization)
 
 ---
 
@@ -423,10 +437,15 @@ def objective(trial, config):
 ### Relation to Bayesian Optimization (GP-UCB, Srinivas et al. 2009)
 
 Tuning the PPO hyperparameters for this agent is an instance of **black-box optimization**:
-- Input: hyperparameter vector \(x\)
-- Output: noisy objective \(f(x)\) = final mean reward from the PPO episode buffer
+- Input: one shared hyperparameter vector \(x\), evaluated in D4 and No-D4
+- Output: noisy symmetric objective from fixed-seed depth-1 evaluation
 
-I used **Optuna’s optimization and pruning workflow** to choose hyperparameters, which is conceptually close to the **GP-UCB** framework: a study records noisy trial outcomes and an acquisition rule balances exploration (trying uncertain regions) and exploitation (refining promising ones). The current implementation does not run a separate fixed 50-game evaluation.
+I use **Optuna’s optimization and pruning workflow** to choose hyperparameters,
+which is conceptually close to the **GP-UCB** framework: a study records noisy
+trial outcomes and an acquisition rule balances exploration (trying uncertain
+regions) and exploitation (refining promising ones). The v3 runner reports
+only after reproducible checkpoint evaluations and keeps invalid runs separate
+from ordinary pruning.
 ### Conceptual Parallel: Planning Under Uncertainty
 
 Although Expectimax in this project does **not** implement Gaussian-process UCB, it faces a related trade-off: 
@@ -520,11 +539,11 @@ uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
 
 **Output Structure:**
 ```
-data/models/<run_name>/sweep_status.json        # Tracks seed completion status
-data/models/<run_name>-seed0/final_model.zip
-data/models/<run_name>-seed1/final_model.zip
-data/models/<run_name>-seed2/final_model.zip
-data/models/<run_name>-seed3/final_model.zip
+data/pre_freeze_200m/models/<run_name>/sweep_status.json        # Tracks seed status
+data/pre_freeze_200m/models/<run_name>-seed0/final_model.zip
+data/pre_freeze_200m/models/<run_name>-seed1/final_model.zip
+data/pre_freeze_200m/models/<run_name>-seed2/final_model.zip
+data/pre_freeze_200m/models/<run_name>-seed3/final_model.zip
 ```
 
 Each seed run's W&B run name is `<run_name>-seed<N>` for easy filtering.
@@ -533,50 +552,29 @@ Each seed run's W&B run name is `<run_name>-seed<N>` for easy filtering.
 
 ### **Hyperparameter Tuning**
 
-Run Bayesian optimization over hyperparameter search space:
+Run the official paired v3 Stage 1 screening study (PRE-FREEZE):
 
 ```bash
-uv run python scripts/tune.py --config <path_to_tune_config>
+uv run python scripts/tune.py \
+  --config configs/tune/bayesian_opt_search.yaml --dry-run
+uv run python scripts/tune.py \
+  --config configs/tune/bayesian_opt_search.yaml
 ```
 
-**Required Config Keys (YAML):**
+The checked-in YAML is the source of truth for the study contract: 12 trials,
+training seed `0`, 20M timesteps per condition, checkpoints at 5M/10M/20M,
+eight fixed evaluation seeds, `TPESampler(seed=20482048)`, and
+`MedianPruner` with five startup trials. It searches only the six documented
+PPO values and keeps the v3 policy, normalized critic, reward, evaluator,
+architecture, and value-head multiplier `10.0` fixed.
 
-```yaml
-project_name: "2048-optuna-study"
-study_name: "bayesian_opt_search"
-db_path: "data/studies.db" # SQLite storage; ignored generated state
-timeout_hours: 48 # Max study duration
-
-# Search space definitions
-ppo_search_space:
-  learning_rate:
-    type: "float"
-    low: 0.00001
-    high: 0.001
-    log: true
-  gamma:
-    type: "float"
-    low: 0.95
-    high: 0.999
-  ent_coef:
-    type: "float"
-    low: 0.0
-    high: 0.01
-
-# Trial configuration
-trial:
-  n_envs: 16
-  total_timesteps: 5_000_000
-  report_freq: 100_000
-
-# Pruner settings
-pruner:
-  n_startup_trials: 5
-  n_warmup_steps: 500_000
-```
-
-**Resumable Studies:**
-Optuna automatically resumes from the SQLite database if `load_if_exists=True` (default).
+Each trial creates one shared parameter set and two condition namespaces under
+`data/tuning/v3/<study>/trial_<N>/{d4,no_d4}/`. The SQLite study and immutable
+configuration hash are stored under `data/tuning/v3/<study>/`; all of these
+generated artifacts are ignored by Git. Resume with a changed search space,
+seed, budget, pruner, base-config hash, commit, or native-extension hash is
+rejected. A W&B run is created per condition and linked from the trial
+manifest.
 
 ---
 
@@ -1053,7 +1051,8 @@ wandb login
 
 The two current v3 training configs are provided in `configs/train/`. Smoke
 configs are test-only; v1/v2 and resume configs are archived history; the
-Optuna config is exploratory and does not define the v3 paper matrix:
+Optuna config defines the separate PRE-FREEZE v3 Stage 1 screening protocol;
+it does not define or relax the v3 paper matrix:
 
 ```text
 configs/train/
@@ -1187,10 +1186,11 @@ ACTION_TO_CANONICAL = np.array([
 ], dtype=np.int64)
 ```
 
-`scripts/train.py`, `scripts/diagnostics/profile_train.py`, and `scripts/tune.py` set
-`d4_augment=True` by default via `env_kwargs`, so the model learns
-invariance without per-script configuration. Benchmark, evaluate, and
-visualizer paths are untouched (the env defaults to `d4_augment=False`).
+`scripts/train.py` and `scripts/diagnostics/profile_train.py` set
+`d4_augment=True` by default via `env_kwargs`. The paired v3 tuner
+materializes explicit D4 and No-D4 configs from the same base definition.
+Benchmark, evaluate, and visualizer paths are untouched (the env defaults to
+`d4_augment=False`).
 
 **Diagnostic only — verify a model's raw critic symmetry:**
 
@@ -1235,7 +1235,7 @@ the current evaluation path is the exact eight-way mean above.
 │       └── visualizer_theme.json  # pygame_gui theme for the dashboard
 ├── scripts/
 │   ├── train.py                   # v3 PPO training entry point
-│   ├── tune.py                    # Exploratory Optuna hyperparameter search
+│   ├── tune.py                    # Official PRE-FREEZE v3 paired Optuna screening
 │   ├── benchmark.py               # Benchmark CLI (one explicit model per run)
 │   ├── benchmark_io.py            # Schema, dataclasses, CSVWriter (single source of truth)
 │   ├── benchmark_runner.py        # Master process: spawn workers, drain queues, write outputs
@@ -1263,6 +1263,7 @@ the current evaluation path is the exact eight-way mean above.
 │   ├── test_board_encoder.py
 │   ├── test_searcher_wrapper.py
 │   ├── test_seed_utils.py
+│   ├── test_tune.py
 │   ├── test_sparkline.py
 │   └── test_visualizer_config.py
 ├── data/

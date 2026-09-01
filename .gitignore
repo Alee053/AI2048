@@ -24,6 +24,7 @@ data/models/hybrid_ppo_v2_sweep-seed2
 logs
 # Local tuning and profiling outputs
 data/studies.db
+/data/tuning/
 data/profiling/
 *.prof
 *.pstats
