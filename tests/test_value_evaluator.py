@@ -169,7 +169,7 @@ def test_empty_callback_does_not_run_neural_evaluation():
 
 
 def test_diagnostic_harness_c_matches_official_evaluator(monkeypatch):
-    from scripts import diagnose_canonicalization_sensitivity as diagnostic
+    from scripts.diagnostics import diagnose_canonicalization_sensitivity as diagnostic
 
     policy = _FakePolicy()
     policy_model = SimpleNamespace(policy=policy, device=torch.device("cpu"))

@@ -3,7 +3,7 @@
 Training pipeline profiler — identifies the slowest component.
 
 Usage:
-    uv run python scripts/profile_train.py
+    uv run python scripts/diagnostics/profile_train.py
 
 Runs a short training burst then prints top time-consuming functions.
 """

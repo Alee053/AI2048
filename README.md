@@ -99,7 +99,7 @@ The ablation uses the same command with `--depth 0/1/2` and `--output paper_d{0,
 
 **To verify D4 invariance of the released model** (≤30s on GPU):
 ```bash
-uv run python scripts/check_d4_invariance.py
+uv run python scripts/diagnostics/check_d4_invariance.py
 ```
 
 <p align="center">
@@ -1023,7 +1023,7 @@ retained only for provenance.
 
 ### **Performance Profiling (exploratory)**
 
-Use `scripts/profile_train.py` for a short cProfile run, or built-in W&B
+Use `scripts/diagnostics/profile_train.py` for a short cProfile run, or built-in W&B
 logging to inspect exploratory training metrics in real time. Profiling,
 tuning, and W&B outputs are not part of the PRE-FREEZE paper protocol:
 
@@ -1187,7 +1187,7 @@ ACTION_TO_CANONICAL = np.array([
 ], dtype=np.int64)
 ```
 
-`scripts/train.py`, `scripts/profile_train.py`, and `scripts/tune.py` set
+`scripts/train.py`, `scripts/diagnostics/profile_train.py`, and `scripts/tune.py` set
 `d4_augment=True` by default via `env_kwargs`, so the model learns
 invariance without per-script configuration. Benchmark, evaluate, and
 visualizer paths are untouched (the env defaults to `d4_augment=False`).
@@ -1195,7 +1195,7 @@ visualizer paths are untouched (the env defaults to `d4_augment=False`).
 **Diagnostic only — verify a model's raw critic symmetry:**
 
 ```bash
-uv run python scripts/check_d4_invariance.py
+uv run python scripts/diagnostics/check_d4_invariance.py
 ```
 
 The command reports raw-critic symmetry error and is useful for root-cause
@@ -1243,9 +1243,11 @@ the current evaluation path is the exact eight-way mean above.
 │   ├── benchmark_summary.py       # compute_summary_from_rows
 │   ├── aggregate.py               # Post-processing aggregator for sweeps
 │   ├── evaluate.py                # Visual dashboard (launches Visualizer)
-│   ├── profile_train.py           # Exploratory training profile run
-│   ├── check_d4_invariance.py     # D4 raw-critic diagnostic
-│   └── diagnose_canonicalization_sensitivity.py # Value/critic diagnostic
+│   ├── diagnostics/
+│   │   ├── profile_train.py       # Exploratory training profile run
+│   │   ├── check_d4_invariance.py # D4 raw-critic diagnostic
+│   │   ├── diagnose_canonicalization_sensitivity.py # Value/critic diagnostic
+│   │   └── stress_depth4_real.py  # Manual real-model depth-4 stress diagnostic
 ├── tests/
 │   ├── unit/                      # Focused tests; real-model cases are slow
 │   │   ├── test_benchmark_io.py   # Schema, dataclasses, CSVWriter
@@ -1262,8 +1264,7 @@ the current evaluation path is the exact eight-way mean above.
 │   ├── test_searcher_wrapper.py
 │   ├── test_seed_utils.py
 │   ├── test_sparkline.py
-│   ├── test_visualizer_config.py
-│   └── stress_depth4_real.py      # Manual real-model depth-4 stress diagnostic
+│   └── test_visualizer_config.py
 ├── data/
 │   ├── archive/v3-100m/            # Historical/non-paper-grade artifacts; not auto-discovered
 │   │   ├── models/

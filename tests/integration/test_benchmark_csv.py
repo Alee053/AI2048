@@ -19,7 +19,7 @@ import pytest
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_PRODUCTION_MODEL = _REPO_ROOT / "data" / "models" / "release" / "Hybrid-PPO-Expectimax-v3.zip"
+_PRODUCTION_MODEL = _REPO_ROOT / "data" / "archive" / "v3-100m" / "models" / "release" / "Hybrid-PPO-Expectimax-v3.zip"
 
 
 @pytest.fixture

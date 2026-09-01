@@ -12,7 +12,7 @@ from twenty_forty_eight_ai.constants import MAX_EXPONENT
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _PRODUCTION_MODEL = os.path.join(
-    _REPO_ROOT, "data", "models", "release",
+    _REPO_ROOT, "data", "archive", "v3-100m", "models", "release",
     "Hybrid-PPO-Expectimax-v3.zip",
 )
 

@@ -16,7 +16,7 @@ highly-cacheable value surface; real neural net values don't have the
 same dedup properties, so the TT thrashes on real boards.
 
 Usage:
-    python tests/stress_depth4_real.py [OPTIONS]
+    python scripts/diagnostics/stress_depth4_real.py [OPTIONS]
 
 Options:
     --depth N             Search depth (default: 4)
@@ -47,8 +47,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-# Allow running directly: python tests/stress_depth4_real.py
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Allow running directly: python scripts/diagnostics/stress_depth4_real.py
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from sb3_contrib import MaskablePPO
 from twenty_forty_eight_ai.env.environment import Game2048Env

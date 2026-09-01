@@ -1,7 +1,7 @@
 """Tests for the cross-search aging behavior of the TranspositionTable.
 
 The cross-search eviction regression is verified end-to-end by
-tests/stress_depth4_real.py --cumulative 30, which uses a real CNN and
+scripts/diagnostics/stress_depth4_real.py --cumulative 30, which uses a real CNN and
 actually stresses the TT. A unit-test version with fake_batch_eval cannot
 reliably fire the eviction path: with 10 random boards the bucket fill
 rate is ~0.05/bucket, so the store() collision path is never reached
@@ -40,7 +40,7 @@ class TestCrossSearchTTBounding:
         """clear_tt() must reset the working set so the next search behaves
         like one on a fresh searcher. This is a baseline check; the
         cross-search eviction regression is caught by the cumulative
-        stress test (see tests/stress_depth4_real.py)."""
+        stress test (see scripts/diagnostics/stress_depth4_real.py)."""
         searcher = ExpectimaxSearcher(target_batch_size=32768)
         board = make_diverse_boards(n=1)[0]
         searcher.find_best_move(board, 4, fake_batch_eval)

@@ -19,9 +19,9 @@ from typing import Callable, Iterable
 import numpy as np
 import torch
 
-# Keep direct ``python scripts/<file>.py`` execution compatible with models
+# Keep direct ``python scripts/diagnostics/<file>.py`` execution compatible with models
 # whose cloudpickle metadata references the repository's ``scripts`` package.
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -38,15 +38,6 @@ from twenty_forty_eight_ai.utils.tensor_utils import board_to_tensor
 
 
 ACTION_COUNT = 4
-DEFAULT_FIXED_CORPUS = Path(
-    "data/diagnostics/value_mlp_ablation_no_d4_5m/fixed_corpus.npz"
-)
-DEFAULT_D4_MODEL = Path(
-    "data/diagnostics/v3_head_lr_d4_5m/models/hybrid_ppo_v3/final_model.zip"
-)
-DEFAULT_NO_D4_MODEL = Path(
-    "data/diagnostics/value_head_lr_ablation_no_d4_5m/benchmark_models/head_lr_x10.zip"
-)
 DEFAULT_OUTPUT = Path("data/diagnostics/canonicalization_sensitivity.json")
 DEFAULT_ROOT_SEED = 7000
 DEFAULT_EPISODES = 8
@@ -717,9 +708,18 @@ def run_condition(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--d4-model", type=Path, default=DEFAULT_D4_MODEL)
-    parser.add_argument("--no-d4-model", type=Path, default=DEFAULT_NO_D4_MODEL)
-    parser.add_argument("--fixed-corpus", type=Path, default=DEFAULT_FIXED_CORPUS)
+    parser.add_argument(
+        "--d4-model", type=Path, required=True,
+        help="Path to the D4-trained model artifact.",
+    )
+    parser.add_argument(
+        "--no-d4-model", type=Path, required=True,
+        help="Path to the comparison model artifact.",
+    )
+    parser.add_argument(
+        "--fixed-corpus", type=Path, required=True,
+        help="Path to the fixed board corpus (.npz).",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"), default="cuda")
     parser.add_argument("--root-episodes", type=int, default=DEFAULT_EPISODES)
