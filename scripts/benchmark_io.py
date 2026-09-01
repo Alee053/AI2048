@@ -17,7 +17,7 @@ from typing import Any
 
 # --- Schema versioning (semver) ---------------------------------------------
 
-# v2 removes the non-implemented alpha-beta diagnostic; v2.1 adds manifest binding.
+# v2 removes an obsolete search diagnostic; v2.1 adds manifest binding.
 EPISODE_SCHEMA_VERSION = "2.1.0"
 
 # Informational major version; the current aggregate loader requires exact 2.1.0.

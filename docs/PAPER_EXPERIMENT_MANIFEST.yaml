@@ -1,4 +1,7 @@
-# Frozen paper experiment matrix. Smoke tests may reduce only timesteps and episodes.
+# Intended paper experiment matrix. The current protocol is PRE-FREEZE; this
+# manifest defines the target matrix and does not certify that it is complete.
+# The existing D4 seed0 200M run is a diagnostic pilot and is excluded.
+protocol_status: PRE-FREEZE
 training_conditions:
   - name: d4
     config: configs/train/hybrid_ppo_v3.yaml
@@ -13,4 +16,4 @@ evaluation_episodes_per_configuration: 100
 base_evaluation_seed: 20482048
 workers: 1
 device: cuda
-paper_mode: true
+paper_mode: false  # PRE-FREEZE; enable only after the complete target matrix exists.

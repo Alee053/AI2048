@@ -1,6 +1,6 @@
 # **AI 2048: Hybrid RL + Expectimax Search**
 
-**A Production-Grade System Bridging Deep Reinforcement Learning and Classical Search**
+**A Reproducible Research System Bridging Deep Reinforcement Learning and Classical Search**
 
 [![Python 3.12.x](https://img.shields.io/badge/python-3.12.x-blue.svg)](https://www.python.org/downloads/) [![C++17](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -17,7 +17,39 @@ This project implements a **hybrid AI agent** for the game 2048 that combines:
 
 The core insight: **learned value functions can replace hand-crafted heuristics** in classical search algorithms, reducing search depth requirements while maintaining strong performance.
 
-**Historical diagnostic result (v3, D4-augmented, 100M-step dress rehearsal):** at depth 3 the diagnostic model scores **38,430.76 ± 15,893.73** (n=100, 95% CI 35,316–41,546; median **35,508**), with win rates **100% / 87% / 24%** at 1024 / 2048 / 4096. Across **4 training seeds** (n=100 each), the mean of model means is **36,268** (sample SD **2,665**; 95% CI [32,027, 40,509]) — every seed reaches 2048+ in 72–87% of games. On the depth ablation (same diagnostic model, shared per-episode tile-spawn seeds, n=100/depth) mean score rises **monotonically**: **6,080 (d=0) → 7,930 (d=1) → 20,696 (d=2) → 38,431 (d=3)**, with the 2048+ win rate stepping 35%→87% between depth 2 and 3 — a **~1.45× gain** over the pre-D4 v1 depth-3 baseline (~26,523, 58% at 2048+). These results are not the official 200M four-seed paper matrix.
+**Protocol status: PRE-FREEZE.** The v3 paper matrix is not complete. The
+D4 seed0 200M run under `data/official_200m/` is a diagnostic pilot only and is
+excluded from the final paper matrix; it must not be reported as an official
+paper result.
+
+**Historical diagnostic only (v3, D4-augmented, 100M-step dress rehearsal):**
+the retained diagnostic model scored **38,430.76 ± 15,893.73** at depth 3
+(n=100; 95% CI 35,316–41,546; median **35,508**), with win rates **100% / 87%
+/ 24%** at 1024 / 2048 / 4096. The retained depth ablation used shared
+per-episode tile-spawn seeds and is documented for reproducibility, not as
+paper-grade evidence. None of these historical artifacts is part of the final
+200M four-seed paper matrix.
+
+### Current v3 protocol (PRE-FREEZE)
+
+- **Representation:** boards use integer tile exponents `0..15`; `0` is empty,
+  `1..15` represent powers of two through 32768, and exponents above `15` are
+  rejected by the current native representation.
+- **Reward:** invalid moves receive `-1.0`; valid moves combine `log2` merge
+  reward, a `0.1` empty-cell bonus, and a `1e-4` maximum-over-D4 snake-gradient
+  bonus. Expectimax chance values use the corrected divisor `N`, the number of
+  empty cells, rather than `2N`.
+- **RNG:** each environment owns a private NumPy generator; training derives
+  reproducible D4 streams from the root seed; benchmark episodes receive
+  deterministic per-episode evaluation seeds; and C++ chance nodes enumerate
+  tile outcomes instead of sampling them.
+- **Critic:** the value pathway uses non-affine normalization, and
+  `ValueHeadLRMaskablePPO` applies the configured value-head learning-rate
+  multiplier `10.0` while following the base schedule.
+- **D4 evaluation:** `D4ValueEvaluator` expands each board across all eight D4
+  orientations and returns their arithmetic mean. C++ canonicalization is a
+  transposition-table/batch-deduplication optimization, not a single-value
+  canonicalized critic protocol.
 
 ---
 
@@ -43,9 +75,9 @@ uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.z
 
 ## **Performance Results**
 
-### **Ablation Study: Search Depth Impact**
+### **Historical Diagnostic: Search-Depth Ablation (not a paper result)**
 
-All rows are the **same historical v3 (D4-augmented) diagnostic model** (md5 `fab18d67…`), run with identical per-episode tile-spawn seeds (`--base-eval-seed 20482048`), `--device cuda --workers 1`, **n=100 episodes per depth**. Because the seed sequence is shared across depths, score deltas are attributable to search depth alone. These results are not the official 200M four-seed paper matrix. (Run folders: `data/benchmarks/paper_d{0,1,2,3}_n100/`.)
+All rows are the **same historical v3 (D4-augmented) diagnostic model** (md5 `fab18d67…`), run with identical per-episode tile-spawn seeds (`--base-eval-seed 20482048`), `--device cuda --workers 1`, **n=100 episodes per depth**. Because the seed sequence is shared across depths, score deltas are attributable to search depth alone. These retained artifacts are not paper-grade evidence and are excluded from the target 200M four-seed matrix. The `paper_d*` folder names are historical artifact names only.
 
 | Configuration | Avg Score | 95% CI | Median | 1024+ | 2048+ | 4096+ | Max Tile (top 3) |
 |---|---:|---|---:|---:|---:|---:|---|
@@ -54,9 +86,9 @@ All rows are the **same historical v3 (D4-augmented) diagnostic model** (md5 `fa
 | + Expectimax (d=2) | 20,696 ± 9,824 | 18,770–22,621 | 16,574 | 90% | 35% | 2% | 1024 (55%), 2048 (33%), 512 (9%) |
 | **+ Expectimax (d=3)** | **38,431 ± 15,894** | **35,316–41,546** | **35,508** | **100%** | **87%** | **24%** | **2048 (63%), 4096 (24%), 1024 (13%)** |
 
-**Why depth 3 is the v1→v3 fix point.** The pre-D4 v1 model scored ~26,523 (58% at 2048+) at depth 3 — its value network was **not** invariant to the 8 D4 symmetries of the board, so the C++ searcher's *canonicalize → key → unpack* path evaluated a different board orientation than the one actually being searched, biasing every leaf. Retraining with random D4 augmentation makes `model(canonicalize(b)) ≈ model(b)`, which restores accurate leaf evaluations under the C++ canonicalization (see [D4 Augmentation](#d4-augmentation)).
+**Historical v1→v3 context.** The pre-D4 v1 comparison is retained as a diagnostic explanation for why D4 augmentation was investigated. It is not a current acceptance criterion or paper result. In the current v3 pipeline, canonicalization is used for transposition-table keys and batch deduplication, while leaf evaluation uses the eight-way `D4ValueEvaluator` mean described below.
 
-**To reproduce** (≈8.1 h on an RTX 3070 Ti Laptop GPU per depth):
+**To reproduce this historical diagnostic** (≈8.1 h on an RTX 3070 Ti Laptop GPU per depth):
 ```bash
 uv run python -m scripts.benchmark data/models/release/Hybrid-PPO-Expectimax-v3.zip \
   --n-runs 100 --depth 3 --device cuda --workers 1 \
@@ -82,7 +114,7 @@ uv run python scripts/check_d4_invariance.py
 
 ---
 
-### **Analysis: The Value Function as Heuristic**
+### **Historical Analysis: The Value Function as Heuristic**
 
 The ablation study reveals how the learned value function behaves as a search heuristic. On the D4-augmented v3 model, score improves **monotonically with depth** — there is no shallow-search regression. Two regimes stand out:
 
@@ -96,9 +128,9 @@ Going to depth 3 aggregates value estimates over **~141M leaf nodes per game** (
 
 ---
 
-### **Multi-Seed Robustness (depth 3)**
+### **Historical Multi-Seed Diagnostic (depth 3; not a paper result)**
 
-The historical diagnostic set contains four models trained from the same config with different seeds (`hybrid_ppo_v3` + seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`). It is a dress rehearsal, not the official 200M four-seed paper matrix. Official v3 outputs use the separate `data/official_200m/` namespace so these artifacts remain unchanged.
+The historical diagnostic set contains four retained model artifacts (the release model plus training seeds 0/1/2). All four were benchmarked at depth 3, n=100 episodes each, with identical `--base-eval-seed 20482048` (run folders `seed{0,1,2}_d3_n100` + `paper_d3_n100`). It is a dress rehearsal, not the 200M four-seed paper matrix. The artifact names and contents remain unchanged for provenance.
 
 | Model | Mean Score | 95% CI | Median | 2048+ | 4096+ |
 |---|---:|---|---:|---:|---:|
@@ -114,9 +146,9 @@ The historical diagnostic set contains four models trained from the same config 
   <br/><em>Depth-3 score distribution per training seed (n=100 each). Diamonds = per-model mean; dashed line = model-level mean (36,268); shaded band = model-level 95% CI [32,027, 40,509].</em>
 </p>
 
-### **Versioned Models and Benchmark Artifacts**
+### **Historical Diagnostic Models and Benchmark Artifacts**
 
-The repository retains the **four historical diagnostic models** and every benchmark artifact used by the figures and tables above. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the definitive 100-game diagnostic evaluation.
+The repository retains the **four historical diagnostic models** and every benchmark artifact used by the figures and tables above. They are retained for reproducibility and provenance, not as paper evidence. Intermediate training checkpoints are intentionally omitted; the legacy 30-game `v3_depth3_final` preview is omitted because `paper_d3_n100` is the complete recorded 100-game diagnostic evaluation.
 
 **Historical diagnostic models**
 
@@ -260,7 +292,7 @@ On top of TT memoization, the current searcher adds:
 
 #### **Batched Leaf Evaluation (Deferred Batching)**
 
-The multi-pass scheme above means Python is called **once per pass** with the full deduplicated batch of unresolved canonical leaves (`target_batch_size` default **32,768**), instead of once per leaf. The C++ canonicalizes each board to a single D4 element before keying the batch, then `BoardEncoder::unpack`s it back to a raw 4×4 board for the model. This is sound **only if the value network is D4-invariant** — see [D4 Augmentation](#d4-augmentation).
+The multi-pass scheme above means Python is called **once per pass** with the full deduplicated batch of unresolved canonical leaves (`target_batch_size` default **32,768**), instead of once per leaf. The C++ canonicalizes each board to one D4 element before keying the batch, then `BoardEncoder::unpack`s it back to a raw 4×4 board for the model. In the current v3 pipeline, the Python callback is `D4ValueEvaluator`: it expands each board to all eight D4 orientations and averages the resulting values. Canonical keys therefore optimize TT and batch reuse; they do not define a single-orientation critic evaluation.
 
 Per-game batch counts and throughput scale steeply with depth (all n=100, same seeds):
 
@@ -298,7 +330,7 @@ below.
 
 #### **Reward Shaping: Merge + Free Cells + Snake Gradient**
 
-The reward function in [`reward.py`](twenty_forty_eight_ai/env/reward.py) (Numba `@njit`) combines three terms. The board is stored as tile exponents (`0..15`), and the gradient term is invariant to all eight D4 symmetries:
+The reward function in [`reward.py`](twenty_forty_eight_ai/env/reward.py) (Numba `@njit`) combines three terms. The board is stored as tile exponents (`0..15`), and the gradient term is invariant to all eight D4 symmetries. This is the corrected reward used by the current v3 environment; the C++ chance-node expectation separately uses the corrected `N` empty-cell divisor.
 
 ```python
 # reward.py — reward = log-merge + free-cells bonus + snake-gradient bonus
@@ -355,9 +387,9 @@ Input: board (int64 log2 tile indices, 0=empty … 15=32768)   shape (1, 4, 4)
 
 ---
 
-### **3. Systematic Hyperparameter Optimization**
+### **3. Systematic Hyperparameter Optimization (exploratory)**
 
-Hyperparameters are tuned with **Optuna** and logged to Weights & Biases. The current configuration runs a resumable SQLite study for up to 12 hours, with five startup trials and 5,000,000 training timesteps per trial:
+Hyperparameters can be tuned with **Optuna** and logged to Weights & Biases. Tuning and profiling are exploratory tooling, not part of the current PRE-FREEZE paper protocol. The checked-in tuning config runs a resumable SQLite study for up to 12 hours, with five startup trials and 5,000,000 training timesteps per trial:
 
 ```python
 # tune.py - Optuna hyperparameter search
@@ -371,7 +403,7 @@ def objective(trial, config):
     return np.mean([ep_info['r'] for ep_info in model.ep_info_buffer])
 ```
 
-**Official v3 Training Hyperparameters ([`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
+**Target v3 Training Hyperparameters (PRE-FREEZE; [`configs/train/hybrid_ppo_v3.yaml`](configs/train/hybrid_ppo_v3.yaml)):**
 - Learning Rate: `2.507e-4` (linear decay to 0)
 - Discount Factor ($\gamma$): `0.9500`
 - GAE Lambda ($\lambda$): `0.95` (Stable-Baselines3 default; not overridden in config)
@@ -419,11 +451,11 @@ uv run python scripts/train.py --config <path_to_yaml>
 **Required Config Keys (YAML):**
 
 ```yaml
-project_name: "2048-hybrid-ai" # W&B project name
-run_name: "ppo-expectimax-v1" # Unique run identifier
-output_dir: "data/" # Base directory for outputs
+project_name: "2048-ppo-training" # W&B project name
+run_name: "hybrid_ppo_v3" # Unique run identifier
+output_dir: "data/pre_freeze_200m" # Target output directory; pilot is separate
 total_timesteps: 200_000_000 # Total training steps
-n_envs: 32 # Parallel environments
+n_envs: 128 # Parallel environments
 save_interval: 5_000_000 # Checkpoint frequency (steps)
 seed: 0 # Root seed for PPO, gameplay streams, and D4 rank derivation
 features_dim: 256 # CNN feature extractor output size
@@ -432,11 +464,14 @@ features_dim: 256 # CNN feature extractor output size
 ppo_params:
   learning_rate:
     type: "linear_decay"
-    initial_value: 0.0003
-  gamma: 0.998 # Discount factor
+    initial_value: 0.0002506795165161916
+  gamma: 0.9500241783796721 # Discount factor
   gae_lambda: 0.95 # GAE parameter
   clip_range: 0.2 # PPO clip range
-  ent_coef: 0.005 # Entropy coefficient
+  ent_coef: 0.000006683561172757891 # Entropy coefficient
+  n_steps: 512
+  batch_size: 4096
+  n_epochs: 4
 
 # Resume Training (optional; omit both keys for fresh training)
 load_model: false # Set to true to resume
@@ -444,6 +479,10 @@ checkpoint_path: null # Required when load_model is true
 ```
 
 `load_model` defaults to `false` and `checkpoint_path` defaults to `null` when omitted. Setting `load_model: true` without a non-empty checkpoint path raises a configuration error before loading.
+
+The current v3 configs write new training outputs under
+`data/pre_freeze_200m/`. The existing D4 seed0 200M diagnostic pilot remains
+under `data/official_200m/` and is not reused by the target workflow.
 
 **Example:**
 
@@ -461,23 +500,21 @@ uv run python scripts/train.py --config configs/archive/resume_training.yaml
 
 Run multiple seeds sequentially for statistical robustness:
 ```bash
-# Dry run to preview what would be launched
+# Dry run to preview the intended four-seed v3 sweep
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
-  --seed-sweep 3 --dry-run
+  --seed-sweep 4 --dry-run
 
-# Launch 5-seed sweep (sequential)
+# Launch the intended four-seed v3 sweep (sequential)
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
-  --seed-sweep 5
+  --seed-sweep 4
 
-# Resume a failed sweep (skips completed seeds, re-runs failed/pending)
-uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml \
-  --seed-sweep 5 --resume-sweep
+# v3 target sweeps must start from scratch; --resume-sweep is rejected for v3.
 ```
 
 **Arguments:**
 - `--seed <int>`: Set a single fixed seed
 - `--seed-sweep <N>`: Launch N sequential runs with seeds 0..N-1
-- `--resume-sweep`: Resume interrupted sweep (skip completed, re-run failed/pending)
+- `--resume-sweep`: Resume non-v3 diagnostic/legacy sweeps; rejected for v3
 - `--dry-run`: Print sweep plan without launching any jobs
 
 **Output Structure:**
@@ -486,6 +523,7 @@ data/models/<run_name>/sweep_status.json        # Tracks seed completion status
 data/models/<run_name>-seed0/final_model.zip
 data/models/<run_name>-seed1/final_model.zip
 data/models/<run_name>-seed2/final_model.zip
+data/models/<run_name>-seed3/final_model.zip
 ```
 
 Each seed run's W&B run name is `<run_name>-seed<N>` for easy filtering.
@@ -504,8 +542,8 @@ uv run python scripts/tune.py --config <path_to_tune_config>
 
 ```yaml
 project_name: "2048-optuna-study"
-study_name: "ppo-hp-search-v1"
-db_path: "data/optuna/study.db" # SQLite storage
+study_name: "bayesian_opt_search"
+db_path: "data/studies.db" # SQLite storage; ignored generated state
 timeout_hours: 48 # Max study duration
 
 # Search space definitions
@@ -576,7 +614,7 @@ uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.z
 
 ### **Benchmark Harness**
 
-Run large-scale, paper-grade evaluation without visualization. The harness emits structured CSV + JSON suitable for downstream analysis (`aggregate.py`, pandas, paper figures).
+Run reproducible benchmark evaluations without visualization. The harness emits structured CSV + JSON suitable for downstream analysis (`aggregate.py`, pandas, and figures). `--paper-mode` is reserved for a complete, provenance-bound target matrix; the current protocol remains PRE-FREEZE.
 
 **Invocation:**
 
@@ -621,13 +659,14 @@ uv run python -m scripts.benchmark \
   --n-runs 100 --depth 3 --workers 1 --device cuda \
   --output v3_depth3_diagnostic --base-eval-seed 0
 
-# Official paper-grade example after the 200M seed-0 run completes.
+# Intended paper-grade example after the complete 200M matrix is available.
 # The model directory must contain its matching effective_config.json and manifest.
+# Do not use --paper-mode with the existing data/official_200m/ pilot: it is diagnostic only.
 uv run python -m scripts.benchmark \
-  data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
+  data/pre_freeze_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
   --n-runs 100 --depth 3 --workers 1 --device cuda \
-  --output v3_200m_seed0_depth3 --base-eval-seed 20482048 \
-  --train-seed 0 --sweep-name hybrid_ppo_v3_official_200m --paper-mode
+  --output v3_pre_freeze_seed0_depth3 --base-eval-seed 20482048 \
+  --train-seed 0 --sweep-name hybrid_ppo_v3_pre_freeze --paper-mode
 
 # Throughput-mode: 8 CPU workers, depth-3
 uv run python -m scripts.benchmark \
@@ -657,7 +696,7 @@ uv run python -m scripts.benchmark \
 
 | Goal | Recommended |
 |---|---|
-| Paper-grade single-GPU latency, reproducible | `--device cuda --workers 1` |
+| Target-matrix single-GPU latency, reproducible | `--device cuda --workers 1` |
 | Experimental: parallel GPU inference | `--device cuda --workers 2` (only if GPU memory fits two model copies) |
 | Maximum throughput on a CPU box | `--device cpu --workers 4-8` |
 
@@ -681,9 +720,9 @@ The harness writes `episodes.csv` and `moves.csv` incrementally with `flush()` a
 {
   "benchmark_schema_version": "2.1.0",
   "run_id": "uuid4...",
-  "run_name": "v3_200m_seed0_depth3",
-  "sweep_name": "hybrid_ppo_v3_official_200m",
-  "model_path": "/repo/data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip",
+  "run_name": "v3_pre_freeze_seed0_depth3",
+  "sweep_name": "hybrid_ppo_v3_pre_freeze",
+  "model_path": "/repo/data/pre_freeze_200m/models/hybrid_ppo_v3-seed0/final_model.zip",
   "training_manifest_path": ".../training_manifest.json",
   "training_manifest_sha256": "...",
   "training_model_sha256": "...",
@@ -871,14 +910,14 @@ summary statistics and paired treatment/depth effects. A training seed/model is
 the experimental unit; episodes only estimate that model's outcome.
 
 ```bash
+# These examples apply only after all target conditions, seeds, and depths exist.
+# The current D4 seed0 pilot is diagnostic and is not aggregated as paper data.
 # Aggregate all depth results for a sweep
-uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1
+uv run python -m scripts.aggregate data/benchmarks/ --sweep hybrid_ppo_v3_pre_freeze
 
 # Single win-threshold focus
-uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
+uv run python -m scripts.aggregate data/benchmarks/ --sweep hybrid_ppo_v3_pre_freeze --win-threshold 4096
 
-# Re-process historical JSON runs
-uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --legacy
 ```
 
 **Manifest-driven discovery:** `aggregate.py` recursively reads `config.json` metadata and selects `sweep_name`; folder names are irrelevant. Each accepted run is keyed by `(condition, training_seed, depth)`. Duplicate keys with different fingerprints are rejected; identical fingerprints are retained only as auxiliary twins. Unmanifested or incompatible historical folders remain legacy/non-paper-grade and are not ingested by the default path.
@@ -887,7 +926,11 @@ uv run python -m scripts.aggregate data/benchmarks/ --sweep v3_depth3_final --le
 
 The default path strictly validates complete runtime artifacts and keys runs by `(condition, training_seed, depth)`. Statistical analysis requires training seeds `0,1,2,3` for every observed condition/depth and complete D4/No-D4 pairs. `--paper-mode` additionally requires a clean paper-grade benchmark and training manifest, with matching evaluation seed sets and execution provenance. Relative artifact paths, malformed JSON, missing files, empty files, and hash mismatches are rejected rather than repaired.
 
-The `--legacy` path is retained for historical JSON artifacts. Its summaries are model-weighted and use Student-t intervals, but legacy artifacts do not support the modern manifest-bound D4/No-D4 and cross-depth paired analysis.
+The `--legacy` path is retained for historical JSON artifacts supplied outside
+this checkout. No legacy JSON sweep is retained here, so the examples above do
+not invent a runnable legacy name. Its summaries are model-weighted and use
+Student-t intervals, but legacy artifacts do not support the modern
+manifest-bound D4/No-D4 and cross-depth paired analysis.
 
 **Arguments:**
 
@@ -940,26 +983,48 @@ Effect tables contain `n_models`, `df`, `mean_delta`, `sd_delta`, `ci95_low`,
 
 ---
 
-### **Multi-Seed Benchmarking**
+### **Multi-Seed Benchmarking (target protocol)**
 
-Multi-seed evaluation uses one explicit model path per invocation. The commands below reproduce the historical diagnostic artifacts; the official 200M training matrix must be completed first:
+The target v3 matrix uses training seeds `0,1,2,3`, both D4 conditions, and
+depths `0,1,2,3`. The current protocol is PRE-FREEZE. In particular, the
+existing D4 seed0 200M run under `data/official_200m/` is a diagnostic pilot
+excluded from the final matrix. Once a complete, manifest-bound model set
+exists, the following covers every target condition/seed/depth combination;
+use `--paper-mode` only after the complete matrix exists:
 
 ```bash
-for seed in 0 1 2; do
-  uv run python -m scripts.benchmark "data/models/hybrid_ppo_v3-seed${seed}/final_model.zip" \
-    --n-runs 100 --depth 3 --workers 1 \
-    --output "hybrid_ppo_v3-seed${seed}_depth3" \
-    --base-eval-seed 0 --sweep-name hybrid_ppo_v3_diagnostic
+MODEL_ROOT="data/pre_freeze_200m/models"
+for condition in d4 no_d4; do
+  if [ "${condition}" = "d4" ]; then
+    RUN_NAME="hybrid_ppo_v3"
+  else
+    RUN_NAME="hybrid_ppo_v3_no_d4"
+  fi
+  for seed in 0 1 2 3; do
+    for depth in 0 1 2 3; do
+      uv run python -m scripts.benchmark \
+        "${MODEL_ROOT}/${RUN_NAME}-seed${seed}/final_model.zip" \
+        --n-runs 100 --depth "${depth}" --workers 1 \
+        --output "v3_pre_freeze_${condition}_seed${seed}_depth${depth}" \
+        --base-eval-seed 20482048 --train-seed "${seed}" \
+        --sweep-name hybrid_ppo_v3_pre_freeze --paper-mode
+    done
+  done
 done
 ```
 
-Each run is a separate benchmark result. Give each invocation the same `--sweep-name`; the CSV aggregator discovers and combines the runs from their metadata, regardless of folder names.
+Each run is a separate benchmark result. Give each invocation the same
+`--sweep-name`; the CSV aggregator discovers and combines runs from their
+metadata, regardless of folder names. Historical diagnostic folder names are
+retained only for provenance.
 
 ---
 
-### **Performance Profiling**
+### **Performance Profiling (exploratory)**
 
-Use built-in W&B logging to track training metrics in real-time:
+Use `scripts/profile_train.py` for a short cProfile run, or built-in W&B
+logging to inspect exploratory training metrics in real time. Profiling,
+tuning, and W&B outputs are not part of the PRE-FREEZE paper protocol:
 
 Training automatically logs to W&B
 ```bash
@@ -985,7 +1050,9 @@ wandb login
 
 ### **Config File Templates**
 
-Example config is provided in `configs/train/`:
+The two current v3 training configs are provided in `configs/train/`. Smoke
+configs are test-only; v1/v2 and resume configs are archived history; the
+Optuna config is exploratory and does not define the v3 paper matrix:
 
 ```text
 configs/train/
@@ -1055,7 +1122,9 @@ Train a new v3 agent (the earlier 100M v3 run was diagnostic only):
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml
 ```
 
-Start the official v3 D4 or No-D4 four-seed sweep from scratch. The sweep begins with seed 0 and must not use `--resume-sweep`:
+Start the intended v3 D4 or No-D4 four-seed sweep from scratch. The protocol
+is still PRE-FREEZE; the sweep begins with seed 0 and must not use
+`--resume-sweep`:
 ```bash
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v3.yaml --seed-sweep 4
 uv run python scripts/train.py --config configs/train/hybrid_ppo_v3_no_d4.yaml --seed-sweep 4
@@ -1066,23 +1135,25 @@ Evaluate with visualization:
 uv run python scripts/evaluate.py data/models/release/Hybrid-PPO-Expectimax-v3.zip --depth 3
 ```
 
-Run the official benchmark suite after training (paper-grade; the model directory must contain its matching `effective_config.json` and manifest):
+Run the target benchmark suite only after the complete matrix is trained. The
+model directory must contain its matching `effective_config.json` and manifest;
+the existing D4 seed0 200M pilot is diagnostic and excluded from this command:
 ```bash
-uv run python -m scripts.benchmark data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
+uv run python -m scripts.benchmark data/pre_freeze_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
   --n-runs 100 --depth 3 --workers 1 --output depth3_expectimax_test \
   --base-eval-seed 20482048 --train-seed 0 \
-  --sweep-name hybrid_ppo_v3_official_200m --paper-mode
+  --sweep-name hybrid_ppo_v3_pre_freeze --paper-mode
 ```
 
 Throughput-mode benchmark (CPU, 8 workers):
 ```bash
-uv run python -m scripts.benchmark data/official_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
+uv run python -m scripts.benchmark data/pre_freeze_200m/models/hybrid_ppo_v3-seed0/final_model.zip \
   --n-runs 200 --depth 3 --workers 8 --device cpu --output depth3_throughput
 ```
 
 Aggregate a sweep's results into summary.csv + figures:
 ```bash
-uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1
+uv run python -m scripts.aggregate data/benchmarks/ --sweep hybrid_ppo_v3_pre_freeze
 ```
 
 ---
@@ -1090,12 +1161,12 @@ uv run python -m scripts.aggregate data/benchmarks/ --sweep sweep-v1
 ## **D4 Augmentation**
 
 The C++ searcher's `BoardEncoder::canonicalize` is a positional optimisation
-that lets the transposition table share entries between boards that are
-rotations or reflections of each other. This is sound **only if the value
-network is D4-invariant** (i.e. it returns the same value for all 8
-symmetries of any given board). If the model is not invariant, the
-canonical form the C++ uses for batch-eval differs from the
-search-time orientation, and every leaf evaluation is biased.
+that lets the transposition table and deferred-batching queue share entries
+between boards that are rotations or reflections of each other. C++ unpacks
+the canonical key before invoking the Python callback. The current v3 callback
+is `D4ValueEvaluator`, which evaluates all eight D4 orientations and returns
+their arithmetic mean. Canonicalization is therefore a cache/batch-key
+optimization, not a single-value canonicalized critic evaluation.
 
 `Game2048Env` accepts an opt-in `d4_augment=True` flag that, on every
 `reset()` and `step()`, presents the board under a uniformly random D4
@@ -1120,19 +1191,16 @@ ACTION_TO_CANONICAL = np.array([
 invariance without per-script configuration. Benchmark, evaluate, and
 visualizer paths are untouched (the env defaults to `d4_augment=False`).
 
-**Verify on the historical 100M diagnostic v3 model:**
+**Diagnostic only — verify a model's raw critic symmetry:**
 
 ```bash
 uv run python scripts/check_d4_invariance.py
 ```
 
-On 100 random mid-game boards the historical diagnostic v3 model has mean abs diff
-~0.35 and max diff ~1.65 across the 7 non-identity D4 elements. The OLD
-v1 release (pre-augmentation) had mean ~1.0, max ~6.0 on the same boards
-— a 3-4× improvement in D4 invariance. The 0.01 tolerance is aspirational; the CustomCNN is not rotation-equivariant
-by design, so the 100M diagnostic run gets the model close but not perfect. The
-residual error is small enough that the C++ search still picks strong
-moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
+The command reports raw-critic symmetry error and is useful for root-cause
+diagnostics. Its historical v1/v3 measurements and any retained benchmark
+scores are not paper results or acceptance criteria for the PRE-FREEZE matrix;
+the current evaluation path is the exact eight-way mean above.
 
 ---
 
@@ -1165,24 +1233,25 @@ moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 │       ├── sparkline.py           # SparklineRenderer (score/think/nodes charts)
 │       └── visualizer_theme.json  # pygame_gui theme for the dashboard
 ├── scripts/
-│   ├── train.py                   # PPO training (D4-augment on by default)
-│   ├── tune.py                    # Optuna hyperparameter search
-│   ├── benchmark.py               # CLI entry point (thin wrapper over benchmark_runner)
+│   ├── train.py                   # v3 PPO training entry point
+│   ├── tune.py                    # Exploratory Optuna hyperparameter search
+│   ├── benchmark.py               # Benchmark CLI (one explicit model per run)
 │   ├── benchmark_io.py            # Schema, dataclasses, CSVWriter (single source of truth)
 │   ├── benchmark_runner.py        # Master process: spawn workers, drain queues, write outputs
 │   ├── benchmark_worker.py        # run_worker subprocess function
 │   ├── benchmark_summary.py       # compute_summary_from_rows
 │   ├── aggregate.py               # Post-processing aggregator for sweeps
 │   ├── evaluate.py                # Visual dashboard (launches Visualizer)
-│   ├── profile_train.py           # Training profile run
-│   └── check_d4_invariance.py     # D4 invariance check for the value net
+│   ├── profile_train.py           # Exploratory training profile run
+│   ├── check_d4_invariance.py     # D4 raw-critic diagnostic
+│   └── diagnose_canonicalization_sensitivity.py # Value/critic diagnostic
 ├── tests/
-│   ├── unit/                      # Fast unit tests (no subprocess)
+│   ├── unit/                      # Focused tests; real-model cases are slow
 │   │   ├── test_benchmark_io.py   # Schema, dataclasses, CSVWriter
 │   │   ├── test_benchmarker.py    # Benchmarker class (raw-policy + search)
 │   │   ├── test_benchmark_worker.py # run_worker subprocess
 │   │   └── test_searcher_determinism.py
-│   ├── integration/               # End-to-end CLI tests (require production model)
+│   ├── integration/               # Real-model CLI tests (marked slow/integration)
 │   │   └── test_benchmark_csv.py
 │   ├── test_d4_transforms.py
 │   ├── test_depth4_convergence.py
@@ -1193,24 +1262,26 @@ moves (mean 38,431 at depth 3 over n=100, vs the OLD's 26,523).
 │   ├── test_seed_utils.py
 │   ├── test_sparkline.py
 │   ├── test_visualizer_config.py
-│   └── stress_depth4_real.py      # Real-model depth-4 stress test
+│   └── stress_depth4_real.py      # Manual real-model depth-4 stress diagnostic
 ├── data/
 │   ├── models/
 │   │   ├── release/Hybrid-PPO-Expectimax-v3.zip  # Historical D4 diagnostic model
 │   │   ├── hybrid_ppo_v3/sweep_status.json       # Seed-sweep completion manifest
 │   │   └── hybrid_ppo_v3-seed{0,1,2}/final_model.zip
-│   ├── official_200m/             # Ignored official v3 training outputs
-│   └── benchmarks/                # 8 final runs force-added; future runs stay ignored
+│   ├── official_200m/             # Ignored v3 outputs; D4 seed0 200M is diagnostic pilot
+│   └── benchmarks/                # Retained historical runs; future runs stay ignored
 ├── configs/
 │   ├── train/
-│   │   ├── hybrid_ppo_v1.yaml     # v1 (no D4 aug)
-│   │   ├── hybrid_ppo_v2_sweep.yaml
-│   │   ├── hybrid_ppo_v3.yaml     # v3 (D4-augmented, official 200M condition)
-│   │   ├── hybrid_ppo_v3_no_d4.yaml # v3 comparison (No-D4, official 200M condition)
-│   │   └── resume_training.yaml
+│   │   ├── hybrid_ppo_v3.yaml     # v3 D4 condition (target 200M matrix)
+│   │   ├── hybrid_ppo_v3_no_d4.yaml # v3 No-D4 condition (target matrix)
+│   │   ├── smoke_d4.yaml           # Test-only smoke config
+│   │   └── smoke_no_d4.yaml        # Test-only smoke config
+│   ├── archive/                    # Historical v1/v2/resume configs
 │   └── tune/
 │       └── bayesian_opt_search.yaml
-├── docs/                              # gitignored; design/spec notes live here locally
+├── docs/
+│   ├── PAPER_EXPERIMENT_MANIFEST.yaml # Target matrix; PRE-FREEZE
+│   └── archive/                    # Historical/superseded design notes
 └── twenty_forty_eight_ai.egg-info/        # build artifact (gitignored)
 ```
 

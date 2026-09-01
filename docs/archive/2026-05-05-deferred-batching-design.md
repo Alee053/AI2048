@@ -1,9 +1,14 @@
-# Design Document: Deferred Batching for Neural-Expectimax
+# Historical Design Note: Deferred Batching for Neural-Expectimax
 
-**Date:** 2026-05-05  
-**Status:** Approved  
-**Branch:** `searcher-improvements`  
-**Author:** AI Assistant (brainstorming session)  
+> Retained for design history. This proposal is superseded by the current v3
+> implementation and is not part of the PRE-FREEZE paper protocol. References
+> to alpha-beta pruning below describe this 2026-05-05 proposal, not the
+> current behavior.
+
+**Date:** 2026-05-05
+**Status:** Historical / superseded
+**Branch:** `searcher-improvements` (historical)
+**Author:** AI Assistant (brainstorming session)
 
 ---
 

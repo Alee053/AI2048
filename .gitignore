@@ -9,7 +9,6 @@ build
 twenty_forty_eight_ai.egg-info
 .envrc
 
-docs
 .claude
 .worktrees
 .venv
@@ -22,12 +21,18 @@ data/models/hybrid_ppo_v2_sweep-seed1
 data/models/hybrid_ppo_v2_sweep-seed2
 
 logs
+# Local tuning and profiling outputs
+data/studies.db
+data/profiling/
+*.prof
+*.pstats
 .superpowers
 .superset/
 data/benchmarks/
 # Training outputs are reproducible runtime artifacts, not source files.
 data/models/hybrid_ppo_v3*/
 data/official_200m/
+data/pre_freeze_200m/
 # Local diagnostic outputs and temporary mini-training models
 data/diagnostics/
 data/models/v3_diagnostic_*/

@@ -4,9 +4,12 @@ Post-processing aggregator for AI2048 benchmark results.
 Produces summary.csv and paper_figures/ with violin plots, bar charts, and heatmaps
 across seeds and depths for a given sweep.
 
+The v3 target examples below apply only after the complete PRE-FREEZE matrix
+has been produced; the diagnostic pilot is not an input to paper aggregation.
+
 Usage:
-    python scripts/aggregate.py data/benchmarks/ --sweep sweep-v1
-    python scripts/aggregate.py data/benchmarks/ --sweep sweep-v1 --win-threshold 4096
+    python scripts/aggregate.py data/benchmarks/ --sweep hybrid_ppo_v3_pre_freeze
+    python scripts/aggregate.py data/benchmarks/ --sweep hybrid_ppo_v3_pre_freeze --win-threshold 4096
 
 Output: summary.csv + paper_figures/ in the benchmark root directory.
 """
