@@ -103,13 +103,13 @@ uv run python scripts/diagnostics/check_d4_invariance.py
 ```
 
 <p align="center">
-  <img src="assets/fig_depth_ablation.png" width="720" alt="Score distribution by search depth"/>
-  <br/><em>Per-episode score by search depth (n=100 each, same tile-spawn seeds). Diamonds = mean. Each depth increment shifts the whole distribution right; depth 3 is the first depth with a substantial 4096 tail.</em>
+  <img src="assets/archive/fig_depth_ablation.png" width="720" alt="Historical pre-freeze score distribution by search depth"/>
+  <br/><em>Historical/pre-freeze diagnostic: per-episode score by search depth (n=100 each, same tile-spawn seeds). Diamonds = mean. This is not a paper result.</em>
 </p>
 
 <p align="center">
-  <img src="assets/fig_winrate_by_depth.png" width="680" alt="Win rate by depth and tile threshold"/>
-  <br/><em>Win-rate step change at depth 3: 2048+ jumps from 35% (d=2) to 87% (d=3).</em>
+  <img src="assets/archive/fig_winrate_by_depth.png" width="680" alt="Historical pre-freeze win rate by depth and tile threshold"/>
+  <br/><em>Historical/pre-freeze diagnostic: win-rate step change at depth 3. This is not a paper result.</em>
 </p>
 
 
@@ -143,8 +143,8 @@ The historical diagnostic set contains four retained model artifacts (the releas
 **Model-level statistics (n=4 seeds):** mean **36,268**, sample SD **2,665**, 95% CI **[32,027, 40,509]** (t-interval, df=3). Pooled across all 400 episodes: mean 36,268, median 34,834, p25/p75 = 27,416 / 37,053, range 7,424–79,808; win rates 1024+ **100%**, 2048+ **82%**, 4096+ **21%**. The best-to-lowest mean spread is 6,035 points (release vs seed 1); this four-run sweep quantifies seed sensitivity but is not a hypothesis test.
 
 <p align="center">
-  <img src="assets/fig_multiseed_d3.png" width="720" alt="Depth-3 score across training seeds"/>
-  <br/><em>Depth-3 score distribution per training seed (n=100 each). Diamonds = per-model mean; dashed line = model-level mean (36,268); shaded band = model-level 95% CI [32,027, 40,509].</em>
+  <img src="assets/archive/fig_multiseed_d3.png" width="720" alt="Historical pre-freeze depth-3 score across training seeds"/>
+  <br/><em>Historical/pre-freeze diagnostic: depth-3 score distribution per training seed (n=100 each). This is not a paper result.</em>
 </p>
 
 ### **Historical Diagnostic Models and Benchmark Artifacts**
