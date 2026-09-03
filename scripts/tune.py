@@ -1111,6 +1111,10 @@ def _start_wandb_run(
     mode = spec.wandb_config.get("mode")
     if mode:
         kwargs["mode"] = mode
+    # Both conditions are materialized before the paired trial starts.  Ask
+    # W&B for an independent run explicitly; the default reinit policy can
+    # otherwise return the already-active condition run.
+    kwargs["reinit"] = "create_new"
     try:
         run = wandb.init(**kwargs)
         if run is None or not getattr(run, "id", None):

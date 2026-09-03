@@ -359,6 +359,31 @@ def test_execute_trial_uses_one_param_set_and_prunes_only_after_both_conditions(
     assert trial_manifest["paper_grade"] is False
 
 
+def test_wandb_runs_are_independent_for_paired_conditions(monkeypatch, tmp_path):
+    config = tune.load_tuning_yaml(TUNING_CONFIG)
+    config["storage_root"] = str(tmp_path / "tuning")
+    config["wandb"]["enabled"] = True
+    spec = tune.build_study_spec(config, config_path=TUNING_CONFIG)
+    calls = []
+
+    class FakeRun:
+        def __init__(self, run_id):
+            self.id = run_id
+
+    def fake_init(**kwargs):
+        calls.append(kwargs)
+        return FakeRun(f"run-{len(calls)}")
+
+    monkeypatch.setattr(tune.wandb, "init", fake_init)
+    effective_config = {"tuning": {"sampled_hyperparameters": {}}}
+    d4 = tune._start_wandb_run(spec, 3, "d4", effective_config)
+    no_d4 = tune._start_wandb_run(spec, 3, "no_d4", effective_config)
+
+    assert d4.id != no_d4.id
+    assert [call["reinit"] for call in calls] == ["create_new", "create_new"]
+    assert [call["tags"][-1] for call in calls] == ["d4", "no_d4"]
+
+
 def test_dry_run_reports_cost_without_constructing_a_study(tmp_path):
     spec = _spec(tmp_path)
     dry_trial = tune.dry_run_trial(spec)
